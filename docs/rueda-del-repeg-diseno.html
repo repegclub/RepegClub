@@ -1,0 +1,751 @@
+<title>La Rueda del Repeg — Documento de diseño</title>
+<style>
+  :root {
+    --bg: #F1F4F0;
+    --surface: #FFFFFF;
+    --surface-alt: #E7ECE7;
+    --border: #D3DBD2;
+    --text: #1A2420;
+    --text-dim: #56645D;
+    --accent: #A97A1F;
+    --accent-2: #2E7F71;
+    --good: #3F8452;
+    --warn: #B5731F;
+    --risk: #A83F32;
+    --shadow: 0 1px 2px rgba(20, 30, 25, 0.07);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0E1512;
+      --surface: #172420;
+      --surface-alt: #1E2E28;
+      --border: #2A3B34;
+      --text: #EDEAE1;
+      --text-dim: #9BAAA2;
+      --accent: #C99A3B;
+      --accent-2: #4FA697;
+      --good: #6FAE7D;
+      --warn: #D98C2B;
+      --risk: #C1584B;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0E1512;
+    --surface: #172420;
+    --surface-alt: #1E2E28;
+    --border: #2A3B34;
+    --text: #EDEAE1;
+    --text-dim: #9BAAA2;
+    --accent: #C99A3B;
+    --accent-2: #4FA697;
+    --good: #6FAE7D;
+    --warn: #D98C2B;
+    --risk: #C1584B;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #F1F4F0;
+    --surface: #FFFFFF;
+    --surface-alt: #E7ECE7;
+    --border: #D3DBD2;
+    --text: #1A2420;
+    --text-dim: #56645D;
+    --accent: #A97A1F;
+    --accent-2: #2E7F71;
+    --good: #3F8452;
+    --warn: #B5731F;
+    --risk: #A83F32;
+    --shadow: 0 1px 2px rgba(20, 30, 25, 0.07);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  .font-display {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  }
+
+  .font-mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+
+  /* header */
+  .hero {
+    position: relative;
+    padding: 72px 0 40px;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: -180px;
+    right: -160px;
+    width: 460px;
+    height: 460px;
+    border-radius: 50%;
+    opacity: 0.14;
+    background: conic-gradient(
+      from 0deg,
+      var(--accent) 0deg 38deg,
+      transparent 38deg 90deg,
+      var(--accent-2) 90deg 128deg,
+      transparent 128deg 180deg,
+      var(--accent) 180deg 218deg,
+      transparent 218deg 270deg,
+      var(--accent-2) 270deg 308deg,
+      transparent 308deg 360deg
+    );
+    filter: blur(1px);
+    pointer-events: none;
+  }
+
+  .eyebrow {
+    position: relative;
+    font-size: 0.75rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  .hero h1 {
+    position: relative;
+    margin: 14px 0 10px;
+    font-size: 2.75rem;
+    line-height: 1.08;
+    text-wrap: balance;
+    font-weight: 600;
+  }
+
+  .hero .sub {
+    position: relative;
+    margin: 0;
+    max-width: 46ch;
+    color: var(--text-dim);
+    font-size: 1.05rem;
+  }
+
+  .meta-row {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin-top: 26px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  .meta-row span b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* sections */
+  section { margin-top: 64px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .sec-num {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .sec-head h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 14px; }
+  p.lead { color: var(--text-dim); }
+
+  section > p:last-child { margin-bottom: 0; }
+
+  /* split bar */
+  .split-bar {
+    display: flex;
+    width: 100%;
+    height: 34px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .split-bar div { height: 100%; }
+
+  .split-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 26px;
+    margin-top: 16px;
+  }
+
+  .split-legend .item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.9rem;
+  }
+
+  .split-legend .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex: none;
+    transform: translateY(1px);
+  }
+
+  .split-legend .pct {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  .split-legend .label { color: var(--text-dim); }
+
+  /* lifecycle */
+  .lifecycle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .stage {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 16px 18px;
+    flex: 1 1 150px;
+    box-shadow: var(--shadow);
+  }
+
+  .stage + .stage { margin-left: 10px; }
+
+  .stage-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    margin-bottom: 6px;
+  }
+
+  .stage-desc {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.45;
+  }
+
+  .arrow {
+    align-self: center;
+    color: var(--text-dim);
+    padding: 0 6px;
+    font-size: 1.1rem;
+  }
+
+  @media (max-width: 640px) {
+    .lifecycle { flex-direction: column; }
+    .stage + .stage { margin-left: 0; margin-top: 10px; }
+    .arrow { display: none; }
+  }
+
+  /* architecture grid */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  @media (max-width: 560px) {
+    .arch-grid { grid-template-columns: 1fr; }
+  }
+
+  .module {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+
+  .module h3 {
+    margin: 0 0 6px;
+    font-size: 1rem;
+  }
+
+  .module p {
+    margin: 0;
+    font-size: 0.87rem;
+    color: var(--text-dim);
+  }
+
+  .module .tag {
+    display: inline-block;
+    margin-top: 10px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.72rem;
+    color: var(--accent-2);
+    background: var(--surface-alt);
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  td.num { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+
+  .pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 100px;
+    white-space: nowrap;
+  }
+
+  .pill.good { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+  .pill.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .pill.risk { background: color-mix(in srgb, var(--risk) 18%, transparent); color: var(--risk); }
+
+  .disclaimer {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 20px;
+    font-size: 0.87rem;
+    color: var(--text-dim);
+  }
+
+  ol.steps, ul.plain {
+    margin: 0;
+    padding-left: 1.15em;
+  }
+
+  ol.steps li, ul.plain li {
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+  }
+
+  ol.steps li::marker, ul.plain li::marker {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  a { color: var(--accent-2); }
+
+  .subhead {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 32px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  section .subhead:first-of-type { margin-top: 4px; }
+
+  .field-list {
+    margin: 0 0 16px;
+    padding-left: 1.15em;
+  }
+
+  .field-list li { margin-bottom: 6px; font-size: 0.92rem; }
+
+  .field-list .fname {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.85rem;
+    color: var(--accent-2);
+  }
+
+  table td.who { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; }
+</style>
+
+<div class="doc">
+
+  <div class="hero">
+    <div class="eyebrow">Repeg Club · LUNC · Terra Classic — CosmWasm</div>
+    <h1 class="font-display">La Rueda del Repeg</h1>
+    <p class="sub">Documento de diseño v0.3 — producto insignia de Repeg Club, la plataforma de sorteos on-chain.</p>
+    <div class="meta-row">
+      <span>Estado: <b>borrador de diseño</b></span>
+      <span>Cadena: <b>Terra Classic (CosmWasm)</b></span>
+      <span>Moneda de ticket: <b>USDC</b></span>
+      <span>Fecha: <b>2026-07-06</b></span>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>El concepto</h2></div>
+    <p>Un jugador compra un ticket en USDC para entrar a una rueda. Cuando la rueda gira, el ganador no recibe efectivo: recibe el <b>derecho a canjear sus propios USTC por USDC a razón 1:1</b>, hasta agotar el pool de premio de esa rueda. Como el USTC vale hoy una fracción de centavo, este derecho vale para el ganador muchísimo más que lo que costaría comprar esa misma cantidad de USDC en el mercado — es un repeg personal, financiado enteramente por lo recaudado en tickets, sin depender de un fondo externo ni de la apreciación futura de USTC.</p>
+    <p><b>Wheel of Repeg</b> es el producto insignia de <b>Repeg Club</b>, la marca paraguas del proyecto. La sección 08 describe la segunda pata de la plataforma: una herramienta genérica para que terceros creen sus propios sorteos con el mismo mecanismo.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>Economía por rueda</h2></div>
+    <p class="lead">Ticket de ejemplo: 10 USDC. Cada rueda gira cuando se cumple lo que ocurra primero: un máximo de jugadores (ej. 10) o un timeout (ej. 48–72 hs) — siempre que ya haya un piso mínimo de 2 jugadores. Lo recaudado se reparte así:</p>
+
+    <div class="split-bar">
+      <div style="width:60%; background:var(--accent);"></div>
+      <div style="width:5%; background:var(--accent-2);"></div>
+      <div style="width:20%; background:var(--good);"></div>
+      <div style="width:12%; background:var(--border);"></div>
+      <div style="width:3%; background:var(--warn);"></div>
+    </div>
+    <div class="split-legend">
+      <div class="item"><span class="swatch" style="background:var(--accent);"></span><span class="pct">60%</span><span class="label">pool de premio inmediato</span></div>
+      <div class="item"><span class="swatch" style="background:var(--accent-2);"></span><span class="pct">5%</span><span class="label">acumula para la próxima rueda</span></div>
+      <div class="item"><span class="swatch" style="background:var(--good);"></span><span class="pct">20%</span><span class="label">acumula para la ronda semanal</span></div>
+      <div class="item"><span class="swatch" style="background:var(--border);"></span><span class="pct">12%</span><span class="label">tesoro del proyecto</span></div>
+      <div class="item"><span class="swatch" style="background:var(--warn);"></span><span class="pct">3%</span><span class="label">honorario del admin (dirección separada del tesoro)</span></div>
+    </div>
+
+    <p style="margin-top:24px;"><b>Múltiples niveles simultáneos.</b> No hace falta un solo precio de ticket: pueden correr varias ruedas en paralelo con distintos montos (ej. 5 / 10 / 30 / 50 / 100 USDC), cada una su propia instancia del mismo Wheel Manager. Los porcentajes de split son los mismos en todos los niveles; el 5% de "próxima rueda" se queda dentro de su propio nivel (un ticket de $5 no infla ni diluye el pool de uno de $50). La ronda semanal es la excepción: acumula el 20% de <b>todos</b> los niveles juntos, en un solo pozo compartido más grande, en vez de fragmentarse por nivel.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nivel</th><th>Ticket</th><th>Lanzamiento</th></tr></thead>
+        <tbody>
+          <tr><td>Bajo</td><td class="num">5 USDC</td><td>Primer nivel en salir, para validar la mecánica con poco riesgo.</td></tr>
+          <tr><td>Medio</td><td class="num">10 / 30 USDC</td><td>Se suman una vez probado el nivel bajo.</td></tr>
+          <tr><td>Alto</td><td class="num">50 / 100 USDC</td><td>Último en sumarse, con la mecánica ya validada.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Ciclo de vida de una rueda</h2></div>
+    <p class="lead">Máquina de estados propuesta, con aleatoriedad definida por el hash de un bloque futuro (sin oráculo externo, sin intervención del admin, y sin pedirle una segunda transacción al jugador):</p>
+    <div class="lifecycle">
+      <div class="stage">
+        <div class="stage-title">Abierta</div>
+        <div class="stage-desc">Venta de tickets. Múltiples wallets pueden comprar múltiples tickets — más gasto, más chances.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="stage-title">Cierre</div>
+        <div class="stage-desc">Se cumple máximo de jugadores o vence el timer, lo que ocurra primero — con piso mínimo de 2 jugadores.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="stage-title">Sorteo</div>
+        <div class="stage-desc">El hash de un bloque futuro (post-cierre) determina la wallet ganadora de forma verificable on-chain.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="stage-title">Liquidación</div>
+        <div class="stage-desc">Se aplican los splits y la wallet ganadora queda whitelisteada en el contrato de redención.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="stage-title">Redención</div>
+        <div class="stage-desc">El ganador envía USTC y recibe USDC 1:1 hasta agotar su pool.</div>
+      </div>
+    </div>
+    <p style="margin-top:20px;">La rueda visual que gira en pantalla (al estilo wheelofnames.com) es una capa de presentación del frontend, no la fuente de la aleatoriedad: cada jugador ocupa un segmento proporcional a sus tickets comprados (igual que una "weighted wheel"), pero el resultado ya quedó fijado on-chain en el paso de Sorteo antes de que la animación arranque. La rueda simplemente se calcula para frenar sobre el segmento del ganador ya conocido — el mismo patrón que usan los sorteos de streaming/casino.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>Redención del premio</h2></div>
+    <p>El USDC del pool queda en escrow en el contrato de la rueda. Solo la wallet ganadora (whitelisteada) puede enviar USTC y recibir USDC a cambio, 1:1, hasta agotar el monto. El burn tax vigente de la red es del <b>0.5%</b> (<span class="font-mono">burn_tax_rate</span>, parámetro de gobernanza confirmado en vivo), del cual 80% se quema y 20% va a oráculo/community pool. La documentación oficial de Terra Classic confirma que enviar fondos adjuntos a un <span class="font-mono">MsgExecuteContract</span> (como haría el ganador al llamar a la función de redención) es libre de tax, y el USDC de vuelta, al ser un denom IBC, tampoco es taxable — el canje no debería pagar tax en ningún tramo. Se valida igual en testnet (rebel-2) antes de operar en mainnet.</p>
+    <p>El admin conserva una función de override: puede liberar fondos directamente o reasignar el whitelist si el ganador demuestra ser dueño de la wallet pero pierde acceso a ella. Es una centralización deliberada y aceptada, que conviene dejar explícita en el disclaimer del proyecto.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Ronda semanal</h2></div>
+    <p>Misma mecánica que una rueda normal, pero el pool arranca reforzado con el 20% acumulado de todas las ruedas de la semana — puede ser mucho o poco, no se sabe de antemano. El ticket es específico para la semanal, con precio ascendente día a día:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Día</th><th>Precio del ticket (ejemplo)</th></tr></thead>
+        <tbody>
+          <tr><td>Lunes</td><td class="num">10.0 USDC</td></tr>
+          <tr><td>Martes</td><td class="num">11.0 USDC</td></tr>
+          <tr><td>Miércoles</td><td class="num">12.0 USDC</td></tr>
+          <tr><td>Jueves</td><td class="num">13.0 USDC</td></tr>
+          <tr><td>Viernes</td><td class="num">14.0 USDC</td></tr>
+          <tr><td>Día del sorteo</td><td class="num">15.0 USDC</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Tesoro y reciclaje de USTC</h2></div>
+    <p>Cada canje deja al contrato con USTC que valen centavos frente al USDC entregado. En vez de inmovilizar ese saldo, la idea es convertirlo en un evento periódico — sorteo o airdrop de ese USTC acumulado entre jugadores. El destino exacto (frecuencia, criterio de elegibilidad, sorteo vs. reparto proporcional) se resolverá por votación de la comunidad en Telegram cuando llegue el momento — no es urgente, porque el saldo tardará en alcanzar siquiera USD 1.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><h2>Arquitectura de contratos (CosmWasm)</h2></div>
+    <div class="arch-grid">
+      <div class="module">
+        <h3>Wheel Manager</h3>
+        <p>Un contrato por cada nivel de ticket de Wheel of Repeg (uno para $5, otro para $10, etc.). Corre rondas sucesivas puertas adentro: vende tickets, cierra, sortea con datos del bloque, reparte automáticamente y guarda el premio hasta que el ganador lo redime contra su propio USTC.</p>
+        <span class="tag">custodia + redención incluidas</span>
+      </div>
+      <div class="module">
+        <h3>Weekly Round</h3>
+        <p>Un solo contrato para toda la plataforma. Recibe el 20% de cada ronda de cada nivel de Wheel Manager, vende su propio ticket con precio ascendente día a día, y sortea con el mismo mecanismo.</p>
+        <span class="tag">pool compartido entre niveles</span>
+      </div>
+      <div class="module">
+        <h3>Treasury</h3>
+        <p>No es un contrato — es una wallet (recomendado: multisig) que recibe el 12% de cada ronda y el USTC que cada contrato junta con <span class="font-mono">SweepUstc</span>. El reciclaje de ese USTC se define más adelante, por votación de la comunidad.</p>
+        <span class="tag">wallet, no contrato</span>
+      </div>
+      <div class="module">
+        <h3>Admin Fee</h3>
+        <p>Wallet única del fundador (recomendado: multisig), configurada como destino del 3% en cada Wheel Manager y Weekly Round, y del tercio que le corresponde en cada sorteo de Create Your Own Luck. También es la dirección con permiso para las funciones de recuperación de wallet.</p>
+        <span class="tag">wallet, no contrato</span>
+      </div>
+      <div class="module">
+        <h3>Create Your Own Luck</h3>
+        <p>Un contrato por cada sorteo de un tercero, reutilizando el código de Wheel Manager como base. Agrega premio propio del creador, modos de reparto (un ganador, podio de 3, o airdrop entre todos), entrada gratis u opcional con lista de wallets permitidas, y comisión de servicio fija en USTC.</p>
+        <span class="tag">self-service para terceros</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><h2>Repeg Club: la plataforma y Create Your Own Luck</h2></div>
+    <p>Wheel of Repeg es el primer producto de <b>Repeg Club</b>, pero el mecanismo de fondo — venta de entradas, cierre por umbral o timeout, sorteo verificable por hash de bloque futuro, liquidación y pago al ganador — es genérico. La segunda pata de la plataforma, <b>Create Your Own Luck</b>, ofrece ese mismo mecanismo como servicio: cualquier creador o proyecto puede armar su propio sorteo (poner un premio, elegir condiciones básicas en un formulario) para que sus seguidores participen, sin que Repeg Club tenga que operar cada rueda a mano.</p>
+    <p class="lead">Alcance de v1, para no complicar el lanzamiento de Wheel of Repeg: entrada paga únicamente (en el token que el creador elija), premio en tokens nativos o CW20 solamente. NFTs, premios fuera de la cadena y sorteos gratuitos con verificación social (ej. "debe seguirme en Twitter") quedan para una fase 2 — esto último ni siquiera lo puede verificar un contrato, necesita un paso fuera de la cadena.</p>
+    <p><b>Arquitectura:</b> mismo <span class="font-mono">code_id</span> del Wheel Manager y el contrato de Escrow que ya diseñamos para Wheel of Repeg. Cada creador instancia su propia rueda vía <span class="font-mono">MsgInstantiateContract</span> con su propia configuración — separar la subida de código de la instanciación es justamente el patrón nativo de CosmWasm en esta cadena, pensado para esto.</p>
+    <p><b>Comisión de servicio — monto fijo, no un porcentaje del premio:</b> cobrar un % del premio era absurdo si el creador sortea un token sin valor real. En cambio, la comisión es un <b>monto fijo en USTC, equivalente a una referencia en USD</b> (ej. USD 3) al momento de crear el sorteo — así no importa en qué token sortee el creador, el ingreso de la plataforma siempre vale algo real, sin necesidad de restringir qué tokens se pueden usar como premio.</p>
+    <p>La equivalencia USTC↔USD se consulta <b>on-chain, encadenando dos pools de Terraport</b> — no existe un par USTC/USDC directo con liquidez usable (el único que hay tiene apenas ~USD 35 de profundidad, un 8.5% se movería con una sola comisión de $3; descartado). En cambio se combina <span class="font-mono">USTC/LUNC</span> (<span class="font-mono">terra1dlffujgmvdl7tuv3car5n9asfvvqsrxkdtrc2afvemexvnuy2wnsrf5uy0</span>) con <span class="font-mono">LUNC/USDC</span> (<span class="font-mono">terra1a29fltd5h5y8se0xanw48wkmqg7nfpmv5jsl472uun0274h8xatqd3yzfh</span>), ambos en Terraport, vía dos <span class="font-mono">query pool</span> de solo lectura (sin fee de trading — no se ejecuta ningún swap, solo se leen reservas). Un contrato CosmWasm no tiene acceso a precios externos tipo Binance o TradingView, solo puede leer estado on-chain. Se evaluó también un par LUNC/USDC en Garuda DEX (misma profundidad, ~USD 22K, fee de trading menor al 0.5% de Terraport) pero se descartó: como no se ejecuta swap, el fee de trading es irrelevante para esta cotización, y usar Terraport para ambas patas evita depender de dos DEXs distintos. El precio de un pool se puede manipular momentáneamente, pero a esta escala (unos pocos dólares) no compensa el costo de intentarlo — mismo criterio que la aleatoriedad por hash de bloque. El monto de referencia en USD debe ser un <b>parámetro configurable</b> por el admin, no hardcodeado, ya que USTC es volátil y el precio del servicio probablemente se ajuste con el tiempo.</p>
+    <p class="lead">Ejemplo con reservas on-chain reales (julio 2026, ambos pools de Terraport): 1 USTC ≈ USD 0.00564 → USD 3 equivalen a ≈ 532 USTC. Consistente con el precio de referencia de Binance USTC/USDT (~USD 0.00569).</p>
+    <p>La comisión recaudada se reparte en <b>partes iguales entre el fundador de Repeg Club, el tesoro y la wallet de quema de LUNC</b> — mismo espíritu de "todo suma al repeg" que en Wheel of Repeg, ahora aplicado también al ingreso B2B. El tercio del fundador se acredita automáticamente, rueda por rueda, en la misma wallet de <span class="font-mono">Admin Fee</span> que ya cobra el 3% de honorario de Wheel of Repeg — es una sola dirección para todo el ingreso del fundador en toda la plataforma, no una por producto.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">09</span><h2>Especificación de mensajes de los contratos</h2></div>
+    <p class="lead">Cómo se interactúa con cada contrato: los "botones" (<span class="font-mono">ExecuteMsg</span>, acciones que cambian algo y cuestan gas) y las "preguntas" (<span class="font-mono">QueryMsg</span>, lectura gratuita de datos). Todavía es especificación, no código — sirve de base directa para escribir el contrato en Rust.</p>
+
+    <div class="subhead">Wheel Manager</div>
+    <p>Un contrato por nivel de ticket. Configuración de fábrica al crearlo (<span class="font-mono">Instantiate</span>):</p>
+    <ul class="field-list">
+      <li><span class="fname">ticket_price</span> — precio del ticket de este nivel (ej. 5 USDC)</li>
+      <li><span class="fname">min_players</span> / <span class="fname">max_players</span> — piso y techo de jugadores por ronda (ej. 2 / 10)</li>
+      <li><span class="fname">round_timeout_seconds</span> — tiempo máximo antes de poder cerrar por timeout (ej. 48-72hs)</li>
+      <li><span class="fname">draw_delay_blocks</span> — bloques de espera obligatoria después del cierre antes de poder sortear</li>
+      <li><span class="fname">treasury_address</span>, <span class="fname">admin_fee_address</span>, <span class="fname">weekly_round_address</span> — a dónde van los repartos automáticos</li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ExecuteMsg</th><th>Quién</th><th>Qué hace</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">BuyTicket</td><td class="who">Cualquiera</td><td>Manda el precio del ticket adjunto; queda anotado en la ronda actual. Si con esto se llega al máximo, cierra la ronda en el mismo paso.</td></tr>
+          <tr><td class="font-mono">CloseRound</td><td class="who">Cualquiera</td><td>Solo funciona si se llegó al máximo, o venció el timeout y hay al menos el mínimo. Anota desde qué bloque se puede sortear.</td></tr>
+          <tr><td class="font-mono">DrawWinner</td><td class="who">Cualquiera</td><td>Solo tras el bloque mínimo. Calcula el ganador, reparte 60/5/20/12/3 automáticamente, y abre la ronda siguiente.</td></tr>
+          <tr><td class="font-mono">Redeem { round_id }</td><td class="who">Solo la wallet ganadora de esa ronda</td><td>Manda USTC adjunto, recibe USDC 1:1 hasta agotar el pool de esa ronda. Se puede repetir hasta agotarlo.</td></tr>
+          <tr><td class="font-mono">SweepUstc</td><td class="who">Solo el fundador</td><td>Manda todo el USTC acumulado en este contrato a la wallet del Tesoro.</td></tr>
+          <tr><td class="font-mono">AdminReassignWinner { round_id, new_winner }</td><td class="who">Solo el fundador</td><td>Reasigna quién puede redimir el premio de una ronda, para recuperación de wallet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>QueryMsg</th><th>Qué devuelve</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">GetCurrentRound</td><td>Estado de la ronda actual: abierta/cerrada/sorteada, jugadores, pool acumulado, tiempo restante.</td></tr>
+          <tr><td class="font-mono">GetRoundHistory { round_id }</td><td>Datos de una ronda pasada: participantes, ganador, bloque usado para el sorteo.</td></tr>
+          <tr><td class="font-mono">GetMyWinnings { wallet }</td><td>Todas las rondas que ganó esa wallet y todavía tienen saldo sin redimir.</td></tr>
+          <tr><td class="font-mono">GetConfig</td><td>La configuración de fábrica de este nivel.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">Weekly Round</div>
+    <p>Un solo contrato para toda la plataforma. <span class="font-mono">Instantiate</span> similar a Wheel Manager, cambiando el precio fijo por <span class="fname">base_ticket_price</span> + <span class="fname">price_increment_per_day</span>, y <span class="fname">round_timeout_seconds</span> por <span class="fname">draw_day</span> (qué día de la semana cierra).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ExecuteMsg</th><th>Quién</th><th>Qué hace</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">ContributeToPool { source_wheel, source_round_id }</td><td class="who">Solo los Wheel Manager, automático</td><td>Recibe el 20% de una ronda y anota de dónde vino, para el historial.</td></tr>
+          <tr><td class="font-mono">BuyWeeklyTicket</td><td class="who">Cualquiera</td><td>Igual que <span class="font-mono">BuyTicket</span>, pero el precio se calcula solo según el día de la semana.</td></tr>
+          <tr><td class="font-mono">CloseWeek</td><td class="who">Cualquiera</td><td>Igual que <span class="font-mono">CloseRound</span>, con el día de la semana como condición.</td></tr>
+          <tr><td class="font-mono">DrawWeeklyWinner</td><td class="who">Cualquiera</td><td>Igual que <span class="font-mono">DrawWinner</span>, reparto 85% pool / 12% tesoro / 3% fundador.</td></tr>
+          <tr><td class="font-mono">Redeem / SweepUstc / AdminReassignWinner</td><td class="who">Igual que Wheel Manager</td><td>Mismo comportamiento, por semana en vez de por ronda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>QueryMsg</th><th>Qué devuelve</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">GetCurrentWeek</td><td>Estado, acumulado hasta ahora (tickets propios + aportes de las ruedas), días restantes.</td></tr>
+          <tr><td class="font-mono">GetTodayPrice</td><td>Cuánto vale el ticket hoy — lo calcula el contrato, no la web, para que nunca haya desfasaje.</td></tr>
+          <tr><td class="font-mono">GetWeekHistory / GetMyWinnings / GetConfig</td><td>Igual que en Wheel Manager, por semana.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subhead">Treasury y Admin Fee</div>
+    <p>No son contratos — son wallets comunes (recomendado: multisig) configuradas como destino en los demás contratos. No tienen <span class="font-mono">ExecuteMsg</span> ni <span class="font-mono">QueryMsg</span> propios: su saldo se lee directo de la blockchain (balance público de la dirección), lo cual de paso permite mostrar el saldo del Tesoro en tiempo real en la web sin desarrollo extra.</p>
+
+    <div class="subhead">Create Your Own Luck</div>
+    <p><span class="font-mono">Instantiate</span>:</p>
+    <ul class="field-list">
+      <li><span class="fname">raffle_type</span> — <span class="font-mono">SingleWinner</span>, <span class="font-mono">Podium</span> (premios de 1°/2°/3°), o <span class="font-mono">Airdrop</span></li>
+      <li><span class="fname">ticket_price</span> — puede ser 0 (gratis)</li>
+      <li><span class="fname">allowed_entrants</span> — lista opcional de wallets permitidas</li>
+      <li><span class="fname">min_players</span> / <span class="fname">max_players</span> / <span class="fname">round_timeout_seconds</span> / <span class="fname">draw_delay_blocks</span> — igual que Wheel Manager</li>
+      <li><span class="fname">unclaimed_deadline_days</span> — plazo para reclamar en modo Airdrop (ej. 90 días)</li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ExecuteMsg</th><th>Quién</th><th>Qué hace</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">DepositPrize</td><td class="who">Solo el creador</td><td>Deposita el premio y la comisión de servicio en USTC — cotizada fresca contra el pool del DEX en ese instante, con devolución automática de cualquier excedente. Habilita la venta de tickets.</td></tr>
+          <tr><td class="font-mono">BuyTicket</td><td class="who">Cualquiera (o solo los de la lista, si existe)</td><td>Igual que en Wheel Manager, pero puede ser gratis.</td></tr>
+          <tr><td class="font-mono">CloseRound</td><td class="who">Cualquiera</td><td>Igual que en Wheel Manager.</td></tr>
+          <tr><td class="font-mono">DrawWinner</td><td class="who">Cualquiera</td><td>SingleWinner/Podium: sortea y paga automático. Airdrop: no sortea, solo calcula cuánto le toca a cada uno.</td></tr>
+          <tr><td class="font-mono">ClaimAirdropShare</td><td class="who">Cualquier participante (modo Airdrop)</td><td>Reclama su parte proporcional del premio.</td></tr>
+          <tr><td class="font-mono">ReclaimUnclaimed</td><td class="who">Solo el creador, tras el plazo</td><td>Recupera lo que nadie reclamó del Airdrop.</td></tr>
+          <tr><td class="font-mono">CancelRaffle</td><td class="who">Solo el creador, antes del cierre</td><td>Cancela y devuelve todo: premio, comisión, y tickets ya vendidos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>QueryMsg</th><th>Qué devuelve</th></tr></thead>
+        <tbody>
+          <tr><td class="font-mono">GetRaffleStatus</td><td>Estado, tipo de sorteo, premio(s), tiempo restante.</td></tr>
+          <tr><td class="font-mono">GetWinners</td><td>Ganador(es) una vez sorteado.</td></tr>
+          <tr><td class="font-mono">GetMyAirdropShare { wallet }</td><td>Cuánto le toca a esa wallet y si ya lo reclamó (modo Airdrop).</td></tr>
+          <tr><td class="font-mono">GetConfig</td><td>Configuración de fábrica de ese sorteo.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">10</span><h2>Bitácora de decisiones</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Punto</th><th>Estado</th><th>Detalle</th></tr></thead>
+        <tbody>
+          <tr><td>Redención parcial vía escrow + whitelist</td><td><span class="pill good">Definido</span></td><td>El ganador solo redime lo que efectivamente tiene en USTC, a su propio ritmo.</td></tr>
+          <tr><td>Override de admin sobre whitelist</td><td><span class="pill risk">Riesgo aceptado</span></td><td>Centralización deliberada para recuperación de wallet.</td></tr>
+          <tr><td>Trigger de cierre (max jugadores / timeout)</td><td><span class="pill good">Definido</span></td><td>Gira lo que ocurra primero; puede lanzar con pocos jugadores si vence el timer.</td></tr>
+          <tr><td>Piso mínimo absoluto de jugadores</td><td><span class="pill good">Definido</span></td><td>Mínimo de 2 jugadores. El ganador se lleva el pool de esa rueda más cualquier arrastre acumulado (o el compuesto, si es la semanal).</td></tr>
+          <tr><td>Aleatoriedad del sorteo</td><td><span class="pill good">Definido</span></td><td>Hash de un bloque futuro (post-cierre) combinado con los datos de los tickets, no commit-reveal. Más simple en UX (no requiere una segunda transacción del jugador) y suficientemente robusto: dado el tamaño de los premios, un validador no tiene incentivo real para manipular el orden de un bloque.</td></tr>
+          <tr><td>Contabilidad del burn tax en el canje</td><td><span class="pill good">Definido</span></td><td>Confirmado en vivo vía LCD (<span class="font-mono">/terra/tax/v1beta1/params</span>): <span class="font-mono">burn_tax_rate = 0.5%</span>, repartido 80% quema / 20% oráculo+community pool. Es un parámetro de gobernanza — consultar en runtime, no hardcodear. La documentación oficial confirma explícitamente que <b>enviar fondos adjuntos a un <span class="font-mono">MsgExecuteContract</span> es libre de tax</b> en Terra Classic, y el USDC (IBC) tampoco es un denom taxable — el flujo de redención (USTC adjunto a la llamada → USDC de vuelta) no debería pagar tax en ningún tramo. Existe además <span class="font-mono">x/taxexemption</span>: la gobernanza puede eximir "zonas" de direcciones del tax por completo — camino futuro si se quisiera blindar aún más.</td></tr>
+          <tr><td>Reciclaje del USTC del tesoro</td><td><span class="pill good">Definido</span></td><td>Se resolverá por votación de la comunidad en Telegram; sin urgencia porque el saldo tardará en alcanzar siquiera USD 1.</td></tr>
+          <tr><td>Precio ascendente de la ronda semanal</td><td><span class="pill good">Definido</span></td><td>Valores de ejemplo, no finales.</td></tr>
+          <tr><td>Porcentajes de reparto por rueda</td><td><span class="pill good">Definido</span></td><td>60% pool / 5% próxima rueda / 20% semanal / 12% tesoro / 3% honorario admin — tesoro y admin en direcciones separadas.</td></tr>
+          <tr><td>Create Your Own Luck — a quién corresponde "el creador" en el reparto de la comisión</td><td><span class="pill good">Definido</span></td><td>Es el fundador de Repeg Club, no el tercero que paga por el sorteo. Los fondos llegan automáticamente, rueda por rueda, a la misma wallet <span class="font-mono">Admin Fee</span> que cobra el 3% de Wheel of Repeg — una sola dirección para todo el ingreso del fundador en la plataforma.</td></tr>
+          <tr><td>Create Your Own Luck — mecanismo de la comisión</td><td><span class="pill good">Definido</span></td><td>Monto fijo en USTC equivalente a una referencia en USD (ej. $3), no un % del premio. Se cotiza on-chain contra un pool de DEX. El monto de referencia en USD debe ser configurable por el admin.</td></tr>
+          <tr><td>Create Your Own Luck — pools concretos para la cotización USTC↔USD</td><td><span class="pill good">Definido</span></td><td>No hay par directo USTC/USDC con liquidez usable (el único existente, <span class="font-mono">terra1aw8sgcxcrn5w8t8yuuawdn9lzpduk3kfjfr39hu3augmwsrdrrjs2q07pk</span>, tiene solo ~USD 35 de profundidad — descartado). Se usa una ruta de 2 pasos, ambos en <b>Terraport</b>: <span class="font-mono">USTC/LUNC</span> (<span class="font-mono">terra1dlffujgmvdl7tuv3car5n9asfvvqsrxkdtrc2afvemexvnuy2wnsrf5uy0</span>) + <span class="font-mono">LUNC/USDC</span> (<span class="font-mono">terra1a29fltd5h5y8se0xanw48wkmqg7nfpmv5jsl472uun0274h8xatqd3yzfh</span>). Se evaluó un par LUNC/USDC alternativo en Garuda DEX (<span class="font-mono">terra1vnt3tjg0v98hgp0vx8nynvklnjqzkzsqvtpzv9v56r800gdhmxwstv5y64</span>, profundidad casi idéntica, fee de trading menor al 0.5%) pero se descartó a favor de Terraport-only: la cotización es un <span class="font-mono">query</span> de solo lectura (no ejecuta swap), así que el fee de trading no aplica, y concentrar ambas patas en un solo DEX evita depender de dos protocolos distintos. Denom IBC de USDC usado en ambos pools: <span class="font-mono">ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5</span>.</td></tr>
+          <tr><td>Create Your Own Luck — valor de referencia en USD por defecto</td><td><span class="pill good">Definido</span></td><td>USD 3 de partida (≈ 600 USTC redondeado, al precio actual). El admin lo ajusta manualmente con el tiempo: lo baja si USTC sube fuerte (1x-2x), lo sube si el mantenimiento del servicio genera más costos.</td></tr>
+          <tr><td>Create Your Own Luck — nombre de marca</td><td><span class="pill good">Definido</span></td><td>Nombre confirmado para la herramienta de sorteos de terceros.</td></tr>
+          <tr><td>Idioma del producto</td><td><span class="pill good">Definido</span></td><td>El sitio y el producto son en inglés (de ahí los nombres: Repeg Club, Wheel of Repeg, Create Your Own Luck). El desarrollo y la documentación interna del equipo siguen en español. Traducción a otros idiomas queda como roadmap, no para v1.</td></tr>
+          <tr><td>Múltiples niveles de ticket en Wheel of Repeg</td><td><span class="pill good">Definido</span></td><td>Varias ruedas en paralelo (ej. 5/10/30/50/100 USDC), misma configuración de splits, cada nivel autocontenido salvo la semanal (que agrega todos los niveles). Lanzamiento escalonado: nivel bajo primero, niveles altos después de validar.</td></tr>
+          <tr><td>Viabilidad del nivel de ticket más bajo (ej. $1)</td><td><span class="pill good">Validado en testnet</span></td><td>Con piso mínimo de 2 jugadores (sin cambios), pool de $2 → premio ~$1.20 (60%). El burn tax y el fee de plataforma no comen el premio (ya cubiertos por otras filas de esta bitácora: canje libre de tax, y el 60% ya es neto post-fee) — el único riesgo real era el <b>gas de <span class="font-mono">Redeem</span></b>. Criterio de aceptación: si el gas de redimir supera el <b>10% del premio</b> en testnet, ese tier no se lanza tal cual. <b>Resultado (rebel-2, 2026-07-08):</b> un contrato mínimo de prueba (<span class="font-mono">BuyTicket</span>/<span class="font-mono">SetWinner</span>/<span class="font-mono">Redeem</span>) gastó 279.932 de gas en <span class="font-mono">Redeem</span>. Al precio de gas recomendado (28.325 uluna, vía FCD) y al precio de LUNC on-chain (~$0.0000583, pool LUNC/USDC de Terraport), eso es <b>~$0.00046 USD</b> — frente a un premio real de $1.20 en el piso del tier de $1, representa <b>~0.04% del premio</b>, muy por debajo del umbral del 10%. El tier de $1 es viable en cuanto a gas.</td></tr>
+          <tr><td>Mensaje de premio al ganador — ROI% en vivo</td><td><span class="pill good">Definido</span></td><td>En vez de forzar un piso más alto de jugadores en los tiers bajos, se resuelve con incentivo/UX: mientras la rueda está abierta se muestra el retorno en % en tiempo real (ej. con 2 jugadores: premio $1.20, <b>+20%</b>; con 3 jugadores: premio $1.80, <b>+80%</b>), no solo el monto absoluto en centavos. Esto incentiva a invitar más jugadores o esperar, sin romper el piso mínimo de 2 ya definido. Si el timeout vence con el piso mínimo, la rueda igual gira y el ganador se lleva ese %.</td></tr>
+          <tr><td>Canje libre de tax — confirmado en testnet (no solo en la doc)</td><td><span class="pill good">Validado en testnet</span></td><td>Se desplegó un contrato mínimo en <span class="font-mono">rebel-2</span> (Cosmos SDK v0.53.6, igual que mainnet) y dos jugadores compraron ticket mandando fondos adjuntos a un <span class="font-mono">MsgExecuteContract</span> (<span class="font-mono">BuyTicket</span>). Ninguna de las dos transacciones generó evento <span class="font-mono">tax_payment</span> — confirma en vivo que el tramo entrante (fondos adjuntos a una llamada de contrato) es libre de tax, tal como decía la doc oficial. El pago saliente del premio (<span class="font-mono">BankMsg::Send</span> desde el contrato) sí generó <span class="font-mono">tax_payment</span> del 0.5% exacto — pero la prueba usó LUNC nativo (denom taxable) para ambas patas por falta de USTC/USDC en testnet; en producción esa pata sale en USDC, que no está registrado como denom taxable, así que ese 0.5% probablemente no aplica en el diseño real.</td></tr>
+          <tr><td>Wheel Manager y Weekly Round: arquitectura de "un contrato, muchas rondas"</td><td><span class="pill good">Definido</span></td><td>Cada nivel de ticket es un único contrato que corre rondas sucesivas puertas adentro (no un contrato nuevo por ronda). El 5% de "próxima rueda" es solo contabilidad interna. Redención por <span class="font-mono">round_id</span>, disponible para siempre, independiente de en qué ronda vaya el juego.</td></tr>
+          <tr><td>Treasury y Admin Fee: wallets, no contratos</td><td><span class="pill good">Definido</span></td><td>Ninguno de los dos necesita lógica propia — son direcciones (recomendado multisig) configuradas como destino en los demás contratos. Saldo del Tesoro visible en tiempo real en la web sin desarrollo extra, por ser una consulta pública directa a la blockchain. El saldo del admin no se muestra en la UI (igual es rastreable por cualquiera con la dirección).</td></tr>
+          <tr><td>Create Your Own Luck: entrada gratis, podio y airdrop</td><td><span class="pill good">Definido</span></td><td>Se suman al alcance de v1 (originalmente pensado solo para entrada paga y un ganador). Entrada gratis con lista opcional de wallets permitidas (<span class="font-mono">allowed_entrants</span>) — la UI debe mostrar un disclaimer obligatorio si no hay lista, avisando que sin ella cualquiera puede usar varias wallets. Fondos de airdrop no reclamados en 90 días vuelven al creador vía <span class="font-mono">ReclaimUnclaimed</span> (debe estar visible en la UI desde la creación del sorteo).</td></tr>
+          <tr><td>Create Your Own Luck: comisión escalonada por cantidad de participantes (modo Airdrop)</td><td><span class="pill warn">Definido en criterio, números a confirmar</span></td><td>Descuento progresivo por volumen (no escalones fijos parejos) — justificado porque el gas de cada reclamo lo paga cada participante, no la plataforma, así que no hay costo real que crezca linealmente; el descuento es un incentivo de crecimiento. Tabla configurable por el admin, no fija en el código. Números de ejemplo: $3/100, $7/300, $12/600, $18-20/1000 — a confirmar los definitivos.</td></tr>
+          <tr><td>Create Your Own Luck: tolerancia de precio en el pago de la comisión</td><td><span class="pill good">Definido</span></td><td><span class="font-mono">DepositPrize</span> cotiza el precio USTC↔USD fresco en el momento de la ejecución (no el que vio el usuario en pantalla), acepta cualquier monto igual o mayor al requerido, y devuelve el excedente automáticamente en la misma transacción. Si mandó de menos, falla limpio con el monto exacto que hacía falta.</td></tr>
+          <tr><td>Wheel Manager: contrato de producción escrito y validado en testnet</td><td><span class="pill good">Hecho</span></td><td>Implementado en Rust (<span class="font-mono">contracts/wheel-manager/</span>) con los 6 <span class="font-mono">ExecuteMsg</span> y 4 <span class="font-mono">QueryMsg</span> de esta sección. 13 tests unitarios cubren montos de ticket incorrectos, conteo de jugadores únicos vs. tickets, cierre por máximo/timeout, ventana de espera del sorteo, reparto 60/5/20/12/3 exacto, redención con reembolso de excedente, e indexado de premios pendientes. Validado en vivo en <span class="font-mono">rebel-2</span> con una ronda de 2 jugadores y otra de 3 (dos instancias separadas del mismo contrato), de punta a punta (compra → sorteo → redención), con los montos de reparto coincidiendo exactamente con lo esperado. <b>Confirmado con el usuario:</b> comprar más de 1 ticket en la misma ronda no cuenta como jugador adicional para <span class="font-mono">min_players</span>/<span class="font-mono">max_players</span> — esos umbrales son por wallet única, no por ticket.</td></tr>
+          <tr><td>Weekly Round: contrato de producción escrito y validado en testnet</td><td><span class="pill good">Hecho</span></td><td>Implementado en Rust (<span class="font-mono">contracts/weekly-round/</span>), contrato independiente de Wheel Manager (no comparten crate — la lógica difiere lo suficiente como para que forzar código compartido entre solo 2 consumidores no valiera la pena). <b>Cierre semanal definido con el usuario:</b> duración fija desde que abre la ronda (ej. 7 días), no un día calendario real fijo — si un sorteo se atrasa, la siguiente ronda se corre la misma cantidad en vez de "recuperar" un día fijo; más simple, sin aritmética de calendario. La consulta <span class="font-mono">GetCurrentWeek</span> expone <span class="font-mono">seconds_remaining</span> y el precio de hoy, para que la UI muestre la cuenta regresiva y cuándo conviene comprar barato. <span class="font-mono">ContributeToPool</span> queda deliberadamente sin permisos (cualquiera puede llamarlo) — el peor caso de un llamador arbitrario es un bonus gratis al pozo, no vale la complejidad de una lista blanca de Wheel Managers válidos. 11 tests unitarios (incluye el split 85/12/3 con un aporte de rueda sumado al pool bruto). Validado en vivo en <span class="font-mono">rebel-2</span> con una semana de 2 jugadores, de punta a punta, mismos porcentajes exactos (ajustados por el 0.5% de tax ya conocido en los pagos salientes planos).</td></tr>
+          <tr><td>Create Your Own Luck: contrato de producción escrito y validado</td><td><span class="pill good">Hecho</span></td><td>Implementado en Rust (<span class="font-mono">contracts/create-your-own-luck/</span>), escrito mientras el usuario estaba ausente por unas horas (autorizado a avanzar sin bloquear por aprobaciones), y revisado punto por punto al volver. La spec tenía varios huecos reales, resueltos así (los 4 primeros confirmados por el usuario sin cambios):<br><br>
+          <b>¿A dónde van las ventas de tickets?</b> Van al creador al momento de <span class="font-mono">DrawWinner</span>, como un ingreso de "entrada", separado del premio y de la comisión de la plataforma.<br><br>
+          <b>La comisión en USTC queda retenida, no se reparte al depositar.</b> Se cotiza y retiene en <span class="font-mono">DepositPrize</span>/<span class="font-mono">PayServiceFee</span>, se reparte recién en un <span class="font-mono">DrawWinner</span> exitoso, se devuelve entera si se cancela (necesario para que <span class="font-mono">CancelRaffle</span> pueda devolver "premio, comisión, y tickets" tal como pide la spec).<br><br>
+          <b>Reparto Podium 50/30/20</b> (hardcodeado, número ilustrativo). Exige 3 wallets únicas distintas.<br><br>
+          <b>Airdrop reparte en partes iguales por wallet única</b>, no ponderado por tickets.<br><br>
+          <b>CW20 como premio: implementado</b> (el usuario lo pidió explícitamente, para atraer a creadores de proyectos que quieran rifar su propio token). Un token CW20 no se puede adjuntar como fondos a una transacción — el flujo pasa a 2 pasos: primero <span class="font-mono">PayServiceFee</span> (paga y fija la comisión en USTC), después el creador llama al <span class="font-mono">Send</span> del propio token CW20 apuntando a este contrato, que dispara el nuevo entry point <span class="font-mono">Receive</span> y recién ahí abre el sorteo.<br><br>
+          <b>Premio en USTC (mismo denom que la comisión) — resuelto con el mismo mecanismo de 2 pasos</b>, sugerido por el usuario: en vez de prohibirlo, si el premio nativo coincide con el denom de la comisión, el creador simplemente llama <span class="font-mono">PayServiceFee</span> primero y <span class="font-mono">DepositPrize</span> después (dos transacciones separadas, sin ambigüedad posible sobre cuánto es premio y cuánto es comisión). El camino de un solo llamado a <span class="font-mono">DepositPrize</span> sigue andando para el caso común (denoms distintos).<br><br>
+          <b>Oráculo de precio USTC↔USD</b>: reutiliza la ruta de 2 saltos ya diseñada en §08 (pools Terraport USTC/LUNC y LUNC/USDC), vía <span class="font-mono">query_wasm_smart</span>.<br><br>
+          12 tests unitarios (incluye el flujo CW20 completo y el de premio-en-USTC). <b>Validación en vivo</b>: <span class="font-mono">rebel-2</span> solo tiene una moneda de prueba real (<span class="font-mono">uluna</span>), así que no se pudo correr una ronda completa de punta a punta con dos monedas reales distintas — se desplegaron 2 pools mock (<span class="font-mono">contracts/mock-dex-pool/</span>) y se confirmó en vivo que la consulta cruzada de 2 saltos al DEX calcula la comisión correcta (coincide exacto con el cálculo independiente en JS, re-verificado tras el cambio de esquema por CW20). Se investigó si hay USTC real disponible en testnet: existe oferta real (~9.55M USTC) pero sin faucet ni DEX accesible para conseguirlo — quedaría como gestión manual en la comunidad de Terra Classic si se quisiera cerrar esa prueba en vivo más adelante.</td></tr>
+          <tr><td>Auditoría de seguridad manual — un bug corregido, un cambio de diseño, dos riesgos aceptados</td><td><span class="pill good">Hecho</span></td><td><b>Bug corregido (los 3 contratos):</b> faltaba validar <span class="font-mono">min_players</span>/<span class="font-mono">max_players</span> al instanciar — con <span class="font-mono">min_players: 0</span> una ronda podía cerrarse y sortearse con cero participantes, y el cálculo del ganador revienta por división por cero, dejando la ronda (y cualquier fondo adentro) trabada para siempre. Ahora se rechaza <span class="font-mono">min_players &lt; 2</span> o <span class="font-mono">max_players &lt; min_players</span> al crear el contrato.<br><br>
+          <b>Confirmado sin bugs:</b> nadie puede reclamar sin ser el ganador verificado (chequeo <span class="font-mono">info.sender == winner</span> en todos los pagos); nadie puede vaciar un pool más allá de lo que corresponde (<span class="font-mono">payout = min(enviado, restante)</span>, transacciones atómicas); el hook <span class="font-mono">Receive</span> de CW20 valida correctamente que el token que llama es el configurado, evitando que un token falso simule un depósito.<br><br>
+          <b>Cambio de diseño: se eliminó <span class="font-mono">AdminReassignWinner</span> (Wheel Manager y Weekly Round), reemplazado por un barrido automático a los 90 días, sin permisos especiales.</b> Era, por lejos, el mayor riesgo del proyecto: permitía al admin redirigir el premio en vivo de cualquier ronda ya sorteada, a cualquier dirección, en cualquier momento — una clave comprometida podía robar cualquier premio no reclamado. Ahora <span class="font-mono">SweepExpiredPrize</span> lo puede llamar cualquiera (nadie decide, el código lo hace solo) una vez pasado el plazo desde el sorteo, y manda lo no reclamado al tesoro. Cualquier reclamo legítimo de recuperación de wallet se resuelve desde ahí (idealmente multisig), no desde el contrato. Validado en vivo en <span class="font-mono">rebel-2</span>: una wallet espectadora, sin ningún privilegio, activó el barrido con éxito.<br><br>
+          <b>Dos riesgos explicados, no corregidos en código — decisión consciente:</b> (1) <span class="font-mono">DrawWinner</span> es permissionless sin límite superior de tiempo — en teoría alguien podría simular el sorteo bloque por bloque y solo mandarlo cuando el resultado lo favorece; mitigación operativa (no de código): correr un bot que dispare el sorteo automáticamente apenas se cumple el mínimo. (2) Ningún contrato tiene función de migración — quedan inmutables tal como se decidió (ver fila siguiente).</td></tr>
+          <tr><td>Plan de despliegue: inmutable, sin migración — reemplazo completo en vez de parche</td><td><span class="pill good">Definido</span></td><td>Ningún contrato tiene entry point <span class="font-mono">migrate</span> — una vez desplegados, su código no se puede cambiar nunca, ni siquiera por el equipo. Decisión consciente: más seguro que dejar una llave de actualización (que sería, otra vez, el punto de falla más crítico si se compromete). <b>Plan de fases:</b> corre una beta/etapa de prueba primero (todavía con margen para arreglar bugs o migrar si la propia cadena tiene un upgrade que los vuelve obsoletos); pasado ese período, se hace un redespliegue completo, ya probado, 100% inmutable, para el lanzamiento público real. Actualizaciones futuras se manejan igual: un redespliegue completo nuevo (no un parche in-place), tratado como un relanzamiento con mejoras basadas en lo aprendido, no como una migración discreta. <b>Fricción a tener en cuenta:</b> las direcciones entre contratos quedan fijas para siempre al instanciarse (ej. cada Wheel Manager guarda la dirección de su Weekly Round) — reemplazar un contrato de la cadena no actualiza automáticamente a quien lo referencia; o se acepta que sigan apuntando al viejo, o se redespliega también toda la cadena de dependientes. No urgente, anotado para cuando haga falta un reemplazo real.</td></tr>
+          <tr><td>Bot keeper: dispara el sorteo apenas es posible, sin ventana de espera</td><td><span class="pill good">Hecho</span></td><td>Implementado (<span class="font-mono">scripts/testnet/src/keeper.ts</span>): cada 15 segundos revisa cada contrato desplegado y llama <span class="font-mono">CloseRound</span>/<span class="font-mono">CloseWeek</span> apenas se cumple el timeout real (con el mínimo de jugadores ya alcanzado), y <span class="font-mono">DrawWinner</span>/<span class="font-mono">DrawWeeklyWinner</span> apenas se puede — sin dejarle a nadie la ventana de "esperar el bloque que me favorece". No tiene ningún privilegio especial (son acciones que cualquiera puede llamar), solo necesita una wallet con fondos para pagar su propio gas. <b>Aclarado con el usuario:</b> el "mínimo" que persigue el bot es la demora de bloques post-cierre (<span class="font-mono">draw_after_height</span>), no <span class="font-mono">min_players</span> — llegar al mínimo de jugadores no cierra nada por sí solo, la ronda cierra por máximo de wallets o por el timeout completo. Nadie queda afuera antes de tiempo por culpa del bot. También se confirmó que los plazos de calendario (<span class="font-mono">round_timeout_seconds</span>, <span class="font-mono">round_duration_days</span>, <span class="font-mono">unclaimed_deadline_days</span>) ya usan el timestamp real certificado por consenso, no una aproximación por cantidad de bloques (más robusto que "asumir 6 segundos por bloque"). <b>Bug real encontrado probándolo en vivo</b> (no se hubiera visto solo leyendo el código): los enums de estado (<span class="font-mono">RoundStatus</span>, <span class="font-mono">RaffleType</span>, etc.) serializaban en mayúscula ("Closed") en vez de snake_case ("closed"), inconsistente con el resto de la API — el bot nunca disparaba porque comparaba contra el valor en minúscula. Corregido en los tres contratos, revalidado en vivo: una wallet espectadora activó el sorteo automáticamente, sin intervención.</td></tr>
+          <tr><td>Tope de tickets por wallet (protege contra bloqueo por gas)</td><td><span class="pill good">Hecho</span></td><td>Hallazgo nuevo del usuario: como <span class="font-mono">max_players</span> cuenta wallets únicas, no tickets, una sola wallet podía comprar tickets ilimitados sin nunca activar el cierre automático — en el extremo, eso podía inflar la lista de participantes lo suficiente como para que sortear (que necesita "leer" toda la lista) supere el límite de gas de una transacción, dejando esa ronda trabada para siempre. Costoso de explotar (cada ticket cuesta plata real) pero real. Se descartó la idea inicial de redefinir <span class="font-mono">max_players</span> como "cupo total de tickets" (un caso extremo: una sola ballena podría comprar el 100% del cupo y bloquear el sorteo por no alcanzar <span class="font-mono">min_players</span> de wallets distintas). En cambio: <span class="font-mono">max_players</span> queda exactamente como estaba (cupo de wallets únicas), y se agrega un tope de tickets por wallet aparte — sin campo de configuración nuevo, calculado siempre como <span class="font-mono">max(1, max_players / 2)</span> (opción "50%" del usuario, elegida por dar una garantía clara de cara a la comunidad: "ninguna wallet puede tener más de la mitad de las chances de una ronda"). Implementado igual en los tres contratos. Con los tiers reales planeados (<span class="font-mono">max_players≈10</span>), el tope da ~5 tickets por wallet en todos lados — el caso "tope=1" solo aparece si algún sorteo puntual (ej. en Create Your Own Luck) configura un <span class="font-mono">max_players</span> chico a propósito. 43 tests unitarios en total. Validado en vivo en <span class="font-mono">rebel-2</span>: con <span class="font-mono">max_players=4</span> (tope=2), el 3er ticket de la misma wallet se rechaza correctamente en cadena real.</td></tr>
+          <tr><td>Tesoro multisig: compromiso confirmado, con matiz aceptado</td><td><span class="pill warn">Confirmado, con limitación conocida</span></td><td>El usuario va a armar un multisig 2-de-3 para el tesoro, pero por ahora las 3 llaves las maneja él mismo (no tiene socios a quién delegar todavía). Es una mejora real (hace falta comprometer más de un secreto guardado por separado, no una sola frase semilla filtrada) pero no elimina el punto único de falla estructural: un ataque dirigido a la persona (no a un dispositivo) sigue comprometiendo todo. Recomendado: umbral 2-de-3, hardware genuinamente distinto por llave, backups en ubicaciones físicas separadas, y el multisig nativo de Cosmos SDK (no hace falta contrato CosmWasm, es una wallet estándar). Migrar a un multisig con varias personas reales es pura operación de wallet, no toca los contratos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">11</span><h2>Nota regulatoria</h2></div>
+    <div class="disclaimer">
+      Todo el flujo de fondos vive on-chain y es auditable públicamente: reglas de sorteo, splits y redención quedan fijados en el contrato, no en manos discrecionales del proyecto (salvo el override de recuperación de wallet, documentado arriba). Esto no reemplaza asesoramiento legal: la clasificación regulatoria de un juego de azar con premios en dinero depende de cada jurisdicción y debe revisarse antes de operar públicamente.
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">12</span><h2>Próximos pasos</h2></div>
+    <ol class="steps">
+      <li>Diseñar el mecanismo concreto de reciclaje del USTC del tesoro (sorteo vs. airdrop, frecuencia, elegibilidad).</li>
+      <li>Prototipo en la testnet oficial de Terra Classic (<span class="font-mono">rebel-2</span>) para validar el ciclo completo: compra → sorteo → redención, incluyendo el comportamiento real del burn tax y el peso del gas sobre un ticket de bajo valor (ej. $1-5).</li>
+      <li>Definir los números finales de la tabla de comisión escalonada de Create Your Own Luck (participantes vs. USD) — la sección 09 usa valores de ejemplo.</li>
+      <li>Planear la arquitectura de internacionalización (i18n) del sitio para soportar traducción a otros idiomas más adelante — no bloquea el lanzamiento en inglés.</li>
+      <li>Escribir el código real en Rust/CosmWasm a partir de esta especificación, y auditar antes de mainnet.</li>
+    </ol>
+  </section>
+
+  <footer>
+    Documento vivo — v0.3. Construido en conversación, sujeto a revisión antes de cualquier implementación.
+  </footer>
+
+</div>
