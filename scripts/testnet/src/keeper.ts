@@ -37,13 +37,27 @@ function discoverTargets(): Target[] {
   return targets;
 }
 
-async function currentBlockHeight(): Promise<number> {
+// Chain height + time in one call. Using the block time here (not
+// Date.now()) matters: the contract's deadline/duration checks compare
+// against block.time, and this machine's clock can drift from it - CodeRabbit
+// review (2026-07-15) flagged that a drifted local clock could make the
+// keeper submit close_round/close_week slightly early and burn gas on an
+// avoidable rejection.
+async function currentChainState(): Promise<{ height: number; nowSeconds: number }> {
   const res = await fetch(`${RPC}/status`);
   const body = await res.json();
-  return Number(body.result.sync_info.latest_block_height);
+  return {
+    height: Number(body.result.sync_info.latest_block_height),
+    nowSeconds: Math.floor(new Date(body.result.sync_info.latest_block_time).getTime() / 1000),
+  };
 }
 
-async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: Target, height: number) {
+async function tickWheelManager(
+  keeper: ReturnType<typeof loadWallet>,
+  target: Target,
+  height: number,
+  nowSeconds: number
+) {
   const [round, config] = await Promise.all([
     queryContract<any>(RPC, { address: target.address, query: { get_current_round: {} } }),
     queryContract<any>(RPC, { address: target.address, query: { get_config: {} } }),
@@ -58,7 +72,6 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
     // `reached_max` isn't checked here - BuyTicket already auto-closes the
     // round the instant max_players is hit, so status never sits "open" with
     // reached_max true waiting on this poll.
-    const nowSeconds = Math.floor(Date.now() / 1000);
     const hasMin = round.unique_player_count >= config.min_players;
     const deadlinePassed = round.deadline !== null && nowSeconds >= round.deadline;
     const hardCapPassed = nowSeconds >= round.opened_at + config.max_round_age_seconds;
@@ -78,14 +91,18 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
   }
 }
 
-async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Target, height: number) {
+async function tickWeeklyRound(
+  keeper: ReturnType<typeof loadWallet>,
+  target: Target,
+  height: number,
+  nowSeconds: number
+) {
   const [week, config] = await Promise.all([
     queryContract<any>(RPC, { address: target.address, query: { get_current_week: {} } }),
     queryContract<any>(RPC, { address: target.address, query: { get_config: {} } }),
   ]);
 
   if (week.status === "open") {
-    const nowSeconds = Math.floor(Date.now() / 1000);
     const durationElapsed = nowSeconds >= week.opened_at + config.round_duration_days * 86400;
     const hasMin = week.unique_player_count >= config.min_players;
     if (durationElapsed && hasMin) {
@@ -151,13 +168,13 @@ async function sendExecuteAndWarnIfRearmed(
 }
 
 async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
-  const height = await currentBlockHeight();
+  const { height, nowSeconds } = await currentChainState();
   for (const target of targets) {
     try {
       if (target.type === "wheel-manager") {
-        await tickWheelManager(keeper, target, height);
+        await tickWheelManager(keeper, target, height, nowSeconds);
       } else {
-        await tickWeeklyRound(keeper, target, height);
+        await tickWeeklyRound(keeper, target, height, nowSeconds);
       }
     } catch (err) {
       console.error(`[${target.label}] tick error: ${(err as Error).message}`);
