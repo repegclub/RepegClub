@@ -1,0 +1,223 @@
+{
+  "marquee": {
+    "eyebrow": "Repeg Club — prototype"
+  },
+  "lead": "🔁 Win the RIGHT to REPEG your own USTC 1:1 for USDC — up to the entire accumulated prize pool!",
+  "myWinnings": {
+    "title": "🏆 Your unclaimed prizes",
+    "round": "Round #{{roundId}} — {{amount}} USDC left to redeem"
+  },
+  "platformRepegged": {
+    "label": "Total USTC REPEGGED by Repeg Club:",
+    "tagline": "One repeg at a time — real USTC, redeemed 1:1, verifiable on-chain."
+  },
+  "lifetimeStats": {
+    "investedLabel": "🎟️ You've played",
+    "repeggedLabel": "🔁 USTC you've repegged"
+  },
+  "feedback": {
+    "button": "✉️ Feedback",
+    "title": "Send us feedback",
+    "messagePlaceholder": "Found a bug? Have an idea? Tell us here...",
+    "emailPlaceholder": "Your email (optional, if you want a reply)",
+    "send": "Send",
+    "sending": "Sending…",
+    "sent": "Thanks! Your message is on its way to us.",
+    "error": "Couldn't send right now — try again in a moment."
+  },
+  "history": {
+    "open": "📜 History",
+    "title": "Your round history",
+    "loading": "Loading your history…",
+    "empty": "No past rounds found for this wallet yet.",
+    "loadMore": "Load older rounds",
+    "won": "🏆 Won — {{amount}} USDC",
+    "lost": "Didn't win",
+    "expired": "Round expired"
+  },
+  "ticketBooth": {
+    "label": "Ticket price",
+    "buy": "Buy ticket",
+    "buying": "Buying…",
+    "buyFailed": "Purchase failed.",
+    "connectFirst": "Connect your wallet first.",
+    "roundExpiredHint": "This round expired without reaching the minimum players. Tap \"Expire round\" below the wheel and confirm — that opens a fresh round you can buy into.",
+    "roundNotOpenHint": "This round already closed to new tickets. A new round opens automatically right after the winner is drawn — check back in a moment.",
+    "ticketCapHint": "You've reached the most tickets one wallet can buy in this round ({{max}}, half of this round's maximum player capacity) — buy from another wallet, or wait for the next round.",
+    "available_one": "🎟️ {{count}} ticket available (max)",
+    "available_other": "🎟️ {{count}} tickets available (max)",
+    "availableLast": "🎟️ Only 1 ticket available — hurry, this could be the best value of the round!",
+    "maxPerWallet": "Max {{max}} tickets per wallet"
+  },
+  "otherTickets": {
+    "title": "Your other active tickets"
+  },
+  "tierTabs": {
+    "myTickets_one": "{{count}} ticket here",
+    "myTickets_other": "{{count}} tickets here"
+  },
+  "wheel": {
+    "roundBadge": "Round #{{roundId}}",
+    "prizeLabel": "Accumulated prize",
+    "roiCaption": "return if you win with 1 ticket ({{price}})",
+    "spin": "Reveal winner",
+    "drawnByYou": "Winner decided — reveal it!",
+    "drawnByOther": "Another player already closed this round and drew the winner. Find out who won!",
+    "viewPreviousRound": "🎡 Check round #{{roundId}} — see if you won!",
+    "spinning": "Revealing…",
+    "initialResult": "{{count}} tickets sold — {{amount}} pool",
+    "winPrefix": "Won",
+    "winSuffix": "— redeem up to {{amount}}",
+    "winSuffixRedeemed": "— already fully redeemed.",
+    "loading": "…",
+    "testnetNotice": "testnet",
+    "closeRound": "Close round",
+    "closing": "Closing…",
+    "waitingToClose": "Waiting for more tickets or the timeout.",
+    "waitingForPlayers": "Waiting for more players to start the countdown.",
+    "waitingForMinPlayers": "Minimum players: {{min}}. The countdown to close starts once the minimum buys in.",
+    "withdrawTicket": "Withdraw my ticket(s)",
+    "withdrawing": "Withdrawing…",
+    "withdrawnNote": "Withdrawn — your money is on its way back to your wallet.",
+    "withdrawLockInNote": "Once a second player buys in, your ticket locks in and can no longer be withdrawn.",
+    "closesIn": "Closes in {{time}} unless someone buys another ticket",
+    "closesInUrgent": "Last call! Closes in {{time}} unless someone buys another ticket",
+    "closedWaitingDraw": "Round closed — no more tickets accepted. The draw unlocks in a few seconds.",
+    "drawWinner": "Draw winner",
+    "drawing": "Drawing…",
+    "drawTooEarly": "Not confirmed yet — try again in a few seconds.",
+    "continueNextRound": "Continue to next round",
+    "actionFailed": "Action failed.",
+    "expireRound": "Expire round",
+    "expiring": "Expiring…",
+    "expiredNote": "This round never reached the minimum number of players and has expired. Buyers can reclaim their own tickets below.",
+    "reclaimTicket": "Reclaim my ticket",
+    "reclaiming": "Reclaiming…",
+    "reclaimedNote": "Reclaimed! Your ticket money is on its way back to your wallet.",
+    "redeem": "Redeem prize",
+    "redeeming": "Redeeming…",
+    "redeemHint": "This sends USTC from your own wallet and gets the same amount back in USDC, 1:1 — nothing is sent until you choose an amount and confirm below.",
+    "redeemYourBalance": "Your USTC balance: {{amount}}",
+    "redeemAmountLabel": "Amount of USTC to send (editable — send less if you don't hold the full amount)",
+    "redeemMax": "Max",
+    "redeemReceiveNote": "You'll send {{send}} — you'll receive {{receive}} back in USDC.",
+    "redeemInsufficientFunds": "Not enough USTC in this wallet for that amount. Lower it above and try again — you can always come back and redeem the rest later, up to {{days}} days after the draw.",
+    "redeemRejectedOrFeeTooHigh": "Not signed — either you cancelled it, or this wallet doesn't have enough LUNC to cover the network fee for this amount. Try lowering the redeem amount, or add more testnet LUNC and try again.",
+    "redeemedNote": "Redeemed! The funds are on their way to your wallet — check your balance in a moment."
+  },
+  "entrants": {
+    "title": "🎟️ Participants",
+    "ticket_one": "{{count}} ticket",
+    "ticket_other": "{{count}} tickets"
+  },
+  "banners": {
+    "left": "The only f*cking REPEG you'll ever get!!!",
+    "right": "Feeling lucky?"
+  },
+  "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (draw block height/time + ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
+  "faq": {
+    "title": "How does it work?",
+    "items": [
+      {
+        "q": "How does the game work?",
+        "a": "Buy a ticket. Once enough players join (or time runs out), the wheel closes and a winner is drawn on-chain. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
+      },
+      {
+        "q": "How is the winner picked?",
+        "a": "Weighted by tickets: buying more improves your odds, but anyone with at least one ticket has a real chance. The pick happens entirely on-chain — the spinning wheel only reveals a result that's already decided, it never chooses it."
+      },
+      {
+        "q": "What does \"on-chain and verifiable\" mean?",
+        "a": "Anyone can independently recompute the exact same result from public blockchain data, without taking our word for it. See \"Verify this round\" below any drawn round."
+      },
+      {
+        "q": "How is the winner obtained safely and verifiably from the blockchain?",
+        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this round\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the round, the block, and the ticket list together) that points to a single ticket. \"Verify this round\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
+      },
+      {
+        "q": "How do I know the app isn't just simulating the draw?",
+        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
+      },
+      {
+        "q": "What happens if a round never fills up?",
+        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — ticket money is never lost or stuck."
+      },
+      {
+        "q": "Can one wallet buy all the tickets?",
+        "a": "Every round has a fixed ticket cap per wallet: half of that round's maximum player capacity (minimum 1), no matter how many people actually end up joining. For example, a round that allows up to 10 players caps every wallet at 5 tickets. That's a hard ceiling on ticket count, not a live percentage guarantee — if only a couple of other players join, one wallet's tickets can still add up to more than half of that particular round's total (5 tickets out of 7 sold, say, if only two other wallets buy one each). The cap exists so nobody can buy an unlimited amount, not to promise an exact split. It cuts both ways, though: holding a bigger share means risking more of your own money on that round, and losing more if someone else wins — while a wallet with just one or two tickets risks very little and can multiply that small stake several times over if it wins. Bigger share, bigger risk; smaller share, bigger potential multiplier. That balance is what keeps the game fair even when a round doesn't fill evenly."
+      },
+      {
+        "q": "Does buying more tickets actually improve my odds, or does every wallet get the same chance?",
+        "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a round with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this round\" on any drawn round and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
+      },
+      {
+        "q": "Why does the countdown keep resetting?",
+        "a": "Once the minimum number of players joins, every new ticket purchase extends the countdown a bit — like a live auction, so nobody gets shut out by a split-second timer. It can't extend forever though; there's a hard cap."
+      }
+    ]
+  },
+  "verify": {
+    "title": "Verify this round",
+    "intro": "Don't take our word for who won — recompute it yourself from public blockchain data.",
+    "roundId": "Round ID (for your reference)",
+    "copy": "Copy",
+    "copied": "Copied",
+    "button": "Verify on-chain",
+    "verifying": "Verifying…",
+    "matchTrue": "Verified — matches the on-chain result",
+    "matchFalse": "Could not verify — this doesn't match",
+    "error": "Couldn't verify right now — try again in a moment.",
+    "drawHeight": "Draw block height",
+    "blockTime": "Block time (from the block itself)",
+    "entrantsCount": "Entrants",
+    "drawGap": "Drawn this many blocks after eligible",
+    "drawGapCaption": "0-2 is normal for an automated draw. Shown as a plain fact, not an accusation — a much larger number just means the drawing transaction landed later than the earliest possible block.",
+    "rawBlockLink": "Open this block's raw data ↗",
+    "rawBlockCaption": "Proves the block's real height and time are genuine — straight from the chain, not from us.",
+    "rawEntrantsLink": "Open the raw ticket list ↗",
+    "rawEntrantsCaption": "Proves the ticket list used below is genuine — also straight from the chain, not from us.",
+    "advancedTitle": "Show everything used in this calculation",
+    "advancedIntro": "Nothing here is hidden. This is every input the formula above used, plus where to fetch each one yourself — enough for anyone (including an AI you paste this to) to redo the whole calculation independently.",
+    "entrantsList": "Ticket list, in order (highlighted row = the computed winner)",
+    "digest": "SHA-256 result (hex)",
+    "winnerIndex": "Winning index",
+    "copyJson": "Copy full verification data (JSON)",
+    "copyJsonCaption": "Everything above in one file: round ID, draw height/time, the full ticket list, the formula, the resulting hash, and both source links. Paste it anywhere — including to an AI — and ask it to redo the math.",
+    "explanation": "This app doesn't ask our own servers who won. When you click \"Verify on-chain\", your browser fetches the actual block straight from Terra Classic's public network and recomputes the winner itself, using the exact formula the smart contract runs: hash the round ID, that block's real height and time, and every ticket bought, then pick a ticket weighted by the result. Nobody chooses the outcome — the formula does, from data that didn't exist yet while the round was still open. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
+  },
+  "wallet": {
+    "connect": "Connect Keplr",
+    "connecting": "Connecting…",
+    "disconnect": "Disconnect",
+    "install": "Install Keplr",
+    "retry": "Retry",
+    "notInstalled": "Keplr is not installed in this browser.",
+    "connectFailed": "Could not connect to the chain.",
+    "rejected": "Connection rejected.",
+    "ustcBalance": "USTC: {{amount}}"
+  },
+  "admin": {
+    "sweepButton": "Sweep stray funds",
+    "sweepNothing": "Nothing to sweep",
+    "sweeping": "Sweeping…",
+    "sweepDone": "Swept — sent to treasury."
+  },
+  "expiredPrizes": {
+    "open": "⏳ Expired prizes",
+    "title": "Expired & unredeemed prizes",
+    "intro": "Drawn prizes and expired-round pools nobody has redeemed or reclaimed yet, across every tier and Weekly Round. Once unclaimed_deadline_days has passed since the draw (or expiry), anyone can sweep that specific round's leftover funds to the treasury — e.g. covering a winner who lost access to their wallet.",
+    "loading": "Scanning rounds…",
+    "empty": "Nothing pending — no unredeemed prize or pool found in the scanned range.",
+    "wheelManagerLabel": "Wheel Manager ({{price}} USDC tier)",
+    "weeklyRoundLabel": "Weekly Round",
+    "roundLabel": "Round #{{id}}",
+    "weekLabel": "Week #{{id}}",
+    "amountLabel": "Amount",
+    "eligibleNow": "Eligible now",
+    "eligibleOn": "Eligible on {{date}}",
+    "sweepButton": "Sweep to treasury",
+    "sweeping": "Sweeping…",
+    "sweepDone": "Swept — sent to treasury.",
+    "sweepFailed": "Sweep failed."
+  }
+}

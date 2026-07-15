@@ -1,11 +1,11 @@
-import { arcs } from "./wheelData";
+import type { Arc } from "./wheelData";
 import { shade } from "./wheelPhysics";
 
 const CX = 170;
 const CY = 170;
 const R = 165;
 
-export function drawWheel(ctx: CanvasRenderingContext2D, rotation: number) {
+export function drawWheel(ctx: CanvasRenderingContext2D, rotation: number, arcs: Arc[]) {
   ctx.clearRect(0, 0, 340, 340);
   ctx.save();
   ctx.translate(CX, CY);
@@ -26,6 +26,10 @@ export function drawWheel(ctx: CanvasRenderingContext2D, rotation: number) {
     ctx.strokeStyle = "#05060a";
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    // Placeholder slots (empty round, no real entrant yet) carry no name -
+    // labeling them "0x" would misleadingly suggest a real, ticketless entry.
+    if (a.name === "") return;
 
     const mid = (a.start + a.end) / 2;
     const labelR = R * 0.68;

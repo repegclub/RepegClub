@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@goblinhunt/cosmes": "^0.0.71-ghunt.22",
+    "i18next": "^26.3.6",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-i18next": "^17.0.9"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",

@@ -1,19 +1,26 @@
-import { arcs, totalTickets } from "../../lib/wheelData";
+import { useTranslation } from "react-i18next";
+import type { Entrant } from "../../lib/wheelData";
 
-export function EntrantsPanel() {
+type EntrantsPanelProps = {
+  entrants: Entrant[];
+};
+
+export function EntrantsPanel({ entrants }: EntrantsPanelProps) {
+  const { t } = useTranslation();
+  const totalTickets = entrants.reduce((s, e) => s + e.tickets, 0);
   return (
     <div className="panel">
-      <p className="panel-title">Participantes</p>
+      <p className="panel-title">{t("entrants.title")}</p>
       <div>
-        {arcs.map((a) => (
+        {entrants.map((a) => (
           <div className="ticket" key={a.name}>
             <span className="swatch" style={{ background: a.color }} />
             <span className="entrant-name">{a.name}</span>
             <span className="entrant-meta">
-              {a.tickets} ticket{a.tickets > 1 ? "s" : ""}
+              {t("entrants.ticket", { count: a.tickets })}
               <br />
               <span className="entrant-pct">
-                {Math.round((a.tickets / totalTickets) * 100)}%
+                {totalTickets > 0 ? Math.round((a.tickets / totalTickets) * 100) : 0}%
               </span>
             </span>
           </div>
