@@ -126,7 +126,7 @@ pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
     if raffle.fee_paid {
         // Fee was already settled via a separate `PayServiceFee` call (this is
         // required, not just allowed, when the prize denom is the same as the
-        // USTC fee denom - see `MustPayServiceFeeSeparately` below).
+        // USDC fee denom - see `MustPayServiceFeeSeparately` below).
     } else {
         if native_denom == config.usdc_denom {
             return Err(ContractError::MustPayServiceFeeSeparately {});

@@ -12,6 +12,13 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, PrizeAsset, RaffleState, RaffleStatus, RaffleType, CONFIG, RAFFLE};
 
+/// Hard ceiling on `podium_shares_bps.len()`. Without this, a raffle with an
+/// unbounded number of places would do O(places x entrants) hashing and emit
+/// one BankMsg::Send per place inside a single `DrawWinner` call - if that
+/// ever exceeded the block gas limit, the raffle would be stuck `Closed`
+/// forever (undrawable, and `CancelRaffle` is blocked once `Closed`).
+const MAX_PODIUM_PLACES: u32 = 20;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -24,7 +31,12 @@ pub fn instantiate(
     }
     if msg.raffle_type == RaffleType::Podium {
         let places = msg.podium_shares_bps.len() as u32;
-        if places == 0 || msg.podium_shares_bps.iter().sum::<u32>() != 10_000 {
+        // Summed as u64 (not u32) so a crafted list of huge per-entry values
+        // can never wrap around to a false-positive 10000 - correctness here
+        // shouldn't depend on the `overflow-checks` release profile flag.
+        let sum: u64 = msg.podium_shares_bps.iter().map(|bps| *bps as u64).sum();
+        let has_zero_share = msg.podium_shares_bps.contains(&0);
+        if places == 0 || places > MAX_PODIUM_PLACES || sum != 10_000 || has_zero_share {
             return Err(ContractError::InvalidPodiumShares {});
         }
         if msg.min_players < places {

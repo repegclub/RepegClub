@@ -72,7 +72,7 @@ pub struct RaffleState {
     pub unique_players: Vec<Addr>,
     pub ticket_revenue: Uint128,
     pub prize_amount: Uint128,
-    /// USTC service fee, quoted and held at `DepositPrize`/`PayServiceFee` time;
+    /// USDC service fee, held at `DepositPrize`/`PayServiceFee` time;
     /// distributed at `DrawWinner`, refunded to the creator at `CancelRaffle`.
     pub fee_amount: Uint128,
     pub fee_paid: bool,

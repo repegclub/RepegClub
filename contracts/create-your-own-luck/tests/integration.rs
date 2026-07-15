@@ -129,6 +129,64 @@ fn podium_shares_must_sum_to_10000() {
 }
 
 #[test]
+fn podium_shares_reject_a_zero_percent_place() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
+        usdc_denom: USDC_DENOM.to_string(),
+        founder_fee_address: "founder".to_string(),
+        treasury_address: "treasury".to_string(),
+        podium_shares_bps: vec![10_000, 0], // sums to 10000, but a 0% "winner" is deceptive
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidPodiumShares {}));
+}
+
+#[test]
+fn podium_shares_reject_too_many_places() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    // 21 places (1 more than MAX_PODIUM_PLACES), summing to exactly 10000 so
+    // the place-count cap is the only reason this is rejected.
+    let mut too_many = vec![476u32; 20];
+    too_many.push(480);
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 21,
+        max_players: 30,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
+        usdc_denom: USDC_DENOM.to_string(),
+        founder_fee_address: "founder".to_string(),
+        treasury_address: "treasury".to_string(),
+        podium_shares_bps: too_many,
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidPodiumShares {}));
+}
+
+#[test]
 fn podium_shares_rejected_for_non_podium_raffle() {
     let mut deps = mock_dependencies();
     let env = mock_env();

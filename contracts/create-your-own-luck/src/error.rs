@@ -90,7 +90,7 @@ pub enum ContractError {
     #[error("This raffle's prize is a native token - use DepositPrize instead of a CW20 Send")]
     PrizeIsNative {},
 
-    #[error("Call PayServiceFee first: the prize denom matches the USTC fee denom (or the prize is CW20), so they can't be combined in a single call")]
+    #[error("Call PayServiceFee first: the prize denom matches the USDC fee denom (or the prize is CW20), so they can't be combined in a single call")]
     MustPayServiceFeeSeparately {},
 
     #[error("This wallet already holds the maximum of {max_per_wallet} tickets allowed for this raffle")]
