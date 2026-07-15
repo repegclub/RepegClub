@@ -15,10 +15,18 @@
     "check:cyol-oracle": "tsx src/checkCyolOracle.ts",
     "check:sweep": "tsx src/checkSweepExpiredPrize.ts",
     "keeper": "tsx src/keeper.ts",
-    "check:ticket-cap": "tsx src/checkTicketCap.ts"
+    "check:ticket-cap": "tsx src/checkTicketCap.ts",
+    "check:expire-reclaim": "tsx src/checkExpireAndReclaim.ts",
+    "check:draw-height": "tsx src/checkDrawHeight.ts",
+    "mainnet-test:deploy-weekly-stub": "tsx src/deployWeeklyStubMainnetTest.ts",
+    "mainnet-test:deploy-wheel": "tsx src/deployWheelManagerMainnetTest.ts",
+    "mainnet-test:play": "tsx src/playWheelManagerFlowMainnetTest.ts",
+    "derive-multisig": "tsx src/deriveMultisigAddress.ts",
+    "check:draw-grinding": "tsx src/checkDrawGrinding.ts"
   },
   "dependencies": {
     "@bufbuild/protobuf": "1.2.0",
+    "@cosmjs/amino": "^0.32.4",
     "@goblinhunt/cosmes": "^0.0.71-ghunt.22",
     "@noble/hashes": "^1.3.2",
     "@noble/secp256k1": "^2.0.0",

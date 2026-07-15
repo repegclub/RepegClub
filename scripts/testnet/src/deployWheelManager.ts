@@ -11,14 +11,48 @@ const WASM_PATH = path.resolve(
   "../../../contracts/wheel-manager/artifacts/wheel_manager.wasm"
 );
 
-// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers>
-const [, , label, maxPlayersArg, minPlayersArg] = process.argv;
+// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [drawWindowBlocks] [unclaimedDeadlineDays]
+const [
+  ,
+  ,
+  label,
+  maxPlayersArg,
+  minPlayersArg,
+  timeoutArg,
+  maxAgeArg,
+  ticketPriceArg,
+  drawWindowArg,
+  unclaimedDeadlineArg,
+] = process.argv;
 if (!label || !maxPlayersArg || !minPlayersArg) {
-  console.error("Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers>");
+  console.error(
+    "Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [drawWindowBlocks] [unclaimedDeadlineDays]"
+  );
   process.exit(1);
 }
 const maxPlayers = Number(maxPlayersArg);
 const minPlayers = Number(minPlayersArg);
+const roundTimeoutSeconds = timeoutArg ? Number(timeoutArg) : 3600;
+// Different tiers (see multi-tier UI work) need different ticket prices -
+// defaults to 1 LUNC to match every deploy before this option existed.
+const ticketPrice = ticketPriceArg ?? "1000000";
+// Hard ceiling on a round's Open lifetime (see max_round_age_seconds in the
+// contract) - defaults to 48h, the low end of the original 48-72h design
+// range. Real deploys should keep this default; testnet/dev deploys can pass
+// something much shorter to actually exercise ExpireRound/ReclaimTicket.
+const maxRoundAgeSeconds = maxAgeArg ? Number(maxAgeArg) : 172_800;
+// Width of the anti-grinding draw window (see draw_window_blocks in the
+// contract) - defaults to 60 blocks (~5-6 min at Terra Classic's ~5.6s block
+// time), sized to cover a keeper crash-restart (systemd: <=5s + up to 15s to
+// the next poll) and a typical VM reboot with comfortable margin, decided
+// 2026-07-15. Testnet/dev deploys can pass something much shorter to
+// exercise the rearm path without waiting minutes.
+const drawWindowBlocks = drawWindowArg ? Number(drawWindowArg) : 60;
+// Days before an unredeemed prize/pot becomes sweepable (see
+// unclaimed_deadline_days in the contract) - defaults to 90, matching the
+// design doc and the contract's own test defaults. Testnet/dev deploys can
+// pass 0 to exercise SweepExpiredPrize immediately.
+const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
 const weeklyStubDeploymentPath = path.resolve(__dirname, "../deployment-weekly-stub.json");
 
@@ -54,14 +88,16 @@ async function main() {
         codeId,
         label: `wheel-manager-${label}`,
         msg: {
-          ticket_price: "1000000",
+          ticket_price: ticketPrice,
           ticket_denom: "uluna",
           redemption_denom: "uluna",
           min_players: minPlayers,
           max_players: maxPlayers,
-          round_timeout_seconds: 3600,
+          round_timeout_seconds: roundTimeoutSeconds,
           draw_delay_blocks: 2,
-          unclaimed_deadline_days: 0,
+          draw_window_blocks: drawWindowBlocks,
+          unclaimed_deadline_days: unclaimedDeadlineDays,
+          max_round_age_seconds: maxRoundAgeSeconds,
           treasury_address: TREASURY_ADDRESS,
           admin_fee_address: ADMIN_FEE_ADDRESS,
           weekly_round_address: weeklyRoundAddress,
@@ -82,7 +118,11 @@ async function main() {
 
   writeFileSync(
     deploymentPath,
-    JSON.stringify({ codeId: codeId.toString(), contractAddress, maxPlayers, minPlayers }, null, 2)
+    JSON.stringify(
+      { codeId: codeId.toString(), contractAddress, maxPlayers, minPlayers, ticketPrice },
+      null,
+      2
+    )
   );
   console.log("Saved to", deploymentPath);
 }

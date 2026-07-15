@@ -62,6 +62,7 @@ async function main() {
           max_players: Number(maxPlayersArg),
           round_timeout_seconds: 3600,
           draw_delay_blocks: 2,
+          draw_window_blocks: 10,
           unclaimed_deadline_days: 90,
           prize_native_denom: "uluna",
           prize_cw20_address: null,

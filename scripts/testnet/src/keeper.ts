@@ -63,7 +63,7 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
   if (round.status === "closed") {
     if (round.draw_after_height !== null && height >= round.draw_after_height) {
       console.log(`[${target.label}] round ${round.round_id} eligible for draw at height ${height} - drawing now`);
-      await sendExecute(keeper, target.address, { draw_winner: {} });
+      await sendExecuteAndWarnIfRearmed(keeper, target.address, { draw_winner: {} }, target.label);
     }
   }
 }
@@ -88,7 +88,7 @@ async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Ta
   if (week.status === "closed") {
     if (week.draw_after_height !== null && height >= week.draw_after_height) {
       console.log(`[${target.label}] week ${week.week_id} eligible for draw at height ${height} - drawing now`);
-      await sendExecute(keeper, target.address, { draw_weekly_winner: {} });
+      await sendExecuteAndWarnIfRearmed(keeper, target.address, { draw_weekly_winner: {} }, target.label);
     }
   }
 }
@@ -104,14 +104,39 @@ async function sendExecute(keeper: ReturnType<typeof loadWallet>, contract: stri
           funds: [],
         }),
       ],
+      memo: "REPEG CLUB",
     });
     if (res.txResponse.code !== 0) {
       console.error(`  tx failed: ${res.txResponse.rawLog}`);
     } else {
       console.log(`  ok | gasUsed: ${res.txResponse.gasUsed} | tx: ${res.txResponse.txhash}`);
     }
+    return res;
   } catch (err) {
     console.error(`  broadcast error: ${(err as Error).message}`);
+    return undefined;
+  }
+}
+
+// DrawWinner/DrawWeeklyWinner rearm instead of drawing if called past the
+// draw window ceiling (see draw_window_blocks) - this keeper polls every
+// POLL_INTERVAL_MS and always draws the instant it's eligible, so a rearm
+// happening here means this keeper itself was delayed by an entire window's
+// worth of blocks (RPC lag, downtime, etc.) - worth a loud warning, since
+// that's exactly the operational signal a silently-unbounded window would
+// otherwise hide.
+async function sendExecuteAndWarnIfRearmed(
+  keeper: ReturnType<typeof loadWallet>,
+  contract: string,
+  msg: object,
+  label: string
+) {
+  const res = await sendExecute(keeper, contract, msg);
+  const action = res?.txResponse.events
+    .find((e) => e.type === "wasm")
+    ?.attributes.find((a) => a.key === "action")?.value;
+  if (action === "rearm_draw_window") {
+    console.warn(`[${label}] draw window was missed - rearmed instead of drawing. Check keeper uptime/latency.`);
   }
 }
 

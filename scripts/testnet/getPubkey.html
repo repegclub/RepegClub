@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Repeg Club - Get Keplr pubkey</title>
+<style>
+  body { font-family: monospace; max-width: 700px; margin: 40px auto; padding: 0 16px; }
+  button { font-size: 16px; padding: 8px 16px; cursor: pointer; }
+  .row { margin: 16px 0; }
+  .label { color: #666; font-size: 13px; }
+  .value { word-break: break-all; background: #f0f0f0; padding: 8px; border-radius: 4px; }
+  .error { color: #c00; }
+</style>
+</head>
+<body>
+<h2>Repeg Club — get pubkey from Keplr</h2>
+<p>Never asks for or touches a mnemonic. Only reads the public key of whichever account is currently active in the Keplr extension.</p>
+<ol>
+  <li>In the Keplr extension, switch to the account you want (e.g. <code>REPEG-TREASURY-SIGNER-1</code>).</li>
+  <li>Click the button below and approve the connection.</li>
+  <li>Copy the pubkey (base64) shown.</li>
+  <li>Switch account in Keplr and repeat for signer 2 and 3.</li>
+</ol>
+<button id="connect">Connect Keplr (columbus-5 mainnet)</button>
+<div id="result"></div>
+<script>
+const CHAIN_ID = "columbus-5";
+
+function toBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+document.getElementById("connect").addEventListener("click", async () => {
+  const resultEl = document.getElementById("result");
+  resultEl.innerHTML = "";
+  try {
+    if (!window.keplr) throw new Error("Keplr not found - is the extension installed and unlocked?");
+    await window.keplr.enable(CHAIN_ID);
+    const key = await window.keplr.getKey(CHAIN_ID);
+    const pubkeyB64 = toBase64(key.pubKey);
+    resultEl.innerHTML = `
+      <div class="row">
+        <div class="label">Account name (in Keplr)</div>
+        <div class="value">${key.name}</div>
+      </div>
+      <div class="row">
+        <div class="label">Address</div>
+        <div class="value">${key.bech32Address}</div>
+      </div>
+      <div class="row">
+        <div class="label">Pubkey (base64) - this is what you paste into the derive script</div>
+        <div class="value">${pubkeyB64}</div>
+      </div>
+    `;
+  } catch (err) {
+    resultEl.innerHTML = `<div class="error">${err.message || err}</div>`;
+  }
+});
+</script>
+</body>
+</html>
