@@ -13,6 +13,7 @@ pub struct InstantiateMsg {
     pub max_players: u32,
     pub round_duration_days: u64,
     pub draw_delay_blocks: u64,
+    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub treasury_address: String,
     pub admin_fee_address: String,
@@ -35,6 +36,22 @@ pub enum ExecuteMsg {
     /// admin discretion involved, replacing an earlier `AdminReassignWinner`
     /// design (see security review, 2026-07-08).
     SweepExpiredPrize { week_id: u64 },
+    /// Permissionless. Marks the current week `Expired` if `min_players` was
+    /// never reached and `round_duration_days` has elapsed since it opened,
+    /// then immediately opens the next week so the game isn't stuck. Ticket
+    /// money stays in the expired week for `ReclaimTicket`; only
+    /// `wheel_contributions` (not any specific buyer's money) rolls forward.
+    ExpireWeek {},
+    /// Callable by any wallet that bought a ticket in an `Expired` week -
+    /// refunds exactly what that wallet paid and removes it from that
+    /// week's entrant list.
+    ReclaimTicket { week_id: u64 },
+    /// Self-service refund for a wallet's own tickets in the current week,
+    /// only while `min_players` hasn't been reached yet. Refunds exactly what
+    /// that wallet paid (per `ticket_payments`, since price ramps by day) and
+    /// removes it from the week - deliberately no minimum wait before a
+    /// second player shows up.
+    WithdrawTicket { week_id: u64 },
 }
 
 #[cw_serde]
@@ -50,6 +67,10 @@ pub enum QueryMsg {
     GetMyWinnings { wallet: String },
     #[returns(ConfigResponse)]
     GetConfig {},
+    /// Lifetime per-wallet totals, for the frontend's "how much have I
+    /// invested" / "how much USTC have I actually repegged" display.
+    #[returns(WalletStatsResponse)]
+    GetWalletStats { wallet: String },
 }
 
 #[cw_serde]
@@ -69,6 +90,7 @@ pub struct WeekResponse {
     pub drawn_at: Option<u64>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
+    pub expired_at: Option<u64>,
 }
 
 #[cw_serde]
@@ -89,6 +111,12 @@ pub struct MyWinningsResponse {
 }
 
 #[cw_serde]
+pub struct WalletStatsResponse {
+    pub total_invested: Uint128,
+    pub total_redeemed: Uint128,
+}
+
+#[cw_serde]
 pub struct ConfigResponse {
     pub admin: Addr,
     pub base_ticket_price: Uint128,
@@ -99,6 +127,7 @@ pub struct ConfigResponse {
     pub max_players: u32,
     pub round_duration_days: u64,
     pub draw_delay_blocks: u64,
+    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,

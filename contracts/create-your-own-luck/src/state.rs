@@ -46,6 +46,10 @@ pub struct Config {
     pub max_players: u32,
     pub round_timeout_seconds: u64,
     pub draw_delay_blocks: u64,
+    /// Width, in blocks, of the window after `draw_after_height` during which
+    /// `DrawWinner` actually draws. See wheel-manager's `Config` for the full
+    /// rationale.
+    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
     pub fee_reference_usd_micros: Uint128,

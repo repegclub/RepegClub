@@ -57,6 +57,7 @@ pub fn instantiate(
         max_players: msg.max_players,
         round_timeout_seconds: msg.round_timeout_seconds,
         draw_delay_blocks: msg.draw_delay_blocks,
+        draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         prize_asset,
         fee_reference_usd_micros: msg.fee_reference_usd_micros,

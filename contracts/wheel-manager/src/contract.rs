@@ -2,8 +2,9 @@ use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Respons
 
 use crate::error::ContractError;
 use crate::execute::{
-    execute_buy_ticket, execute_close_round, execute_draw_winner, execute_redeem,
-    execute_sweep_expired_prize, execute_sweep_ustc, open_new_round,
+    execute_buy_ticket, execute_close_round, execute_draw_winner, execute_expire_round,
+    execute_reclaim_ticket, execute_redeem, execute_sweep_expired_prize, execute_sweep_ustc,
+    execute_withdraw_ticket, open_new_round,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -29,7 +30,9 @@ pub fn instantiate(
         max_players: msg.max_players,
         round_timeout_seconds: msg.round_timeout_seconds,
         draw_delay_blocks: msg.draw_delay_blocks,
+        draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
+        max_round_age_seconds: msg.max_round_age_seconds,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
         admin_fee_address: deps.api.addr_validate(&msg.admin_fee_address)?,
         weekly_round_address: deps.api.addr_validate(&msg.weekly_round_address)?,
@@ -65,6 +68,9 @@ pub fn execute(
         ExecuteMsg::SweepExpiredPrize { round_id } => {
             execute_sweep_expired_prize(deps, env, round_id)
         }
+        ExecuteMsg::ExpireRound {} => execute_expire_round(deps, env),
+        ExecuteMsg::ReclaimTicket { round_id } => execute_reclaim_ticket(deps, info, round_id),
+        ExecuteMsg::WithdrawTicket { round_id } => execute_withdraw_ticket(deps, info, round_id),
     }
 }
 

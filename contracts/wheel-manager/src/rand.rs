@@ -6,6 +6,24 @@ use sha2::{Digest, Sha256};
 /// randomness is the block height + time at the moment `DrawWinner` executes
 /// (checked by the caller to be `draw_delay_blocks` after the round closed),
 /// hashed together with the ordered list of entrants for that round.
+///
+/// KNOWN LIMITATION (security review, 2026-07-14): this is block-based
+/// randomness, which a block proposer can influence (they choose their own
+/// block's timestamp and whether to include the draw tx) - the classic
+/// "block.timestamp as randomness" class of issue. `Config::draw_window_blocks`
+/// bounds how many blocks a caller can wait through for a favorable one, which
+/// closes off grinding by casual (non-validator) callers, but a colluding
+/// validator retains some residual influence within that window. The
+/// stronger, self-contained fix (no external chain dependency) is
+/// commit-reveal: each entrant submits `sha256(secret)` at ticket-purchase
+/// time and reveals it before the draw, so the seed depends on entropy no
+/// single party - proposer included - controls or can predict. Not built yet
+/// because it requires an extra transaction per player (reveal step) - real
+/// UX cost, likely worth it once the pool size justifies it. The
+/// externally-hosted alternative (Nois Network, drand-over-IBC) was also
+/// evaluated and set aside: Terra Classic has no IBC channel to Nois today,
+/// and integrating one means new relayer infrastructure plus turning the draw
+/// into an async two-step (request/callback) flow.
 pub fn pick_winner_index(
     round_id: u64,
     block_height: u64,

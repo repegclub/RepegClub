@@ -53,4 +53,22 @@ pub enum ContractError {
 
     #[error("This wallet already holds the maximum of {max_per_wallet} tickets allowed for this round")]
     TicketCapExceeded { max_per_wallet: u32 },
+
+    #[error("Round has expired without reaching the minimum number of players - buy a ticket in the next round, or reclaim your ticket from this one")]
+    RoundExpired {},
+
+    #[error("Round cannot be expired yet: either the minimum players was already reached, or max_round_age_seconds has not elapsed")]
+    CannotExpireRound {},
+
+    #[error("Round {round_id} has not expired")]
+    RoundNotExpired { round_id: u64 },
+
+    #[error("This wallet did not buy any tickets in round {round_id}")]
+    NotAnEntrant { round_id: u64 },
+
+    #[error("Nothing left to sweep for round {round_id}")]
+    NothingToSweep { round_id: u64 },
+
+    #[error("Round {round_id} already reached the minimum number of players - tickets can no longer be withdrawn")]
+    RoundAlreadyLocked { round_id: u64 },
 }

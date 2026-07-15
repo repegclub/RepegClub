@@ -2,9 +2,10 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Env, StdResult};
 
 use crate::execute::today_price;
 use crate::msg::{
-    ConfigResponse, MyWinningsResponse, QueryMsg, TodayPriceResponse, WeekResponse, WinningEntry,
+    ConfigResponse, MyWinningsResponse, QueryMsg, TodayPriceResponse, WalletStatsResponse,
+    WeekResponse, WinningEntry,
 };
-use crate::state::{Week, CONFIG, STATE, WEEKS, WINNER_INDEX};
+use crate::state::{Week, CONFIG, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WEEKS, WINNER_INDEX};
 
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -13,6 +14,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetWeekHistory { week_id } => to_json_binary(&query_week(deps, env, week_id)?),
         QueryMsg::GetMyWinnings { wallet } => to_json_binary(&query_my_winnings(deps, wallet)?),
         QueryMsg::GetConfig {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::GetWalletStats { wallet } => to_json_binary(&query_wallet_stats(deps, wallet)?),
     }
 }
 
@@ -33,6 +35,7 @@ fn week_to_response(week: Week, seconds_remaining: u64, price: cosmwasm_std::Uin
         drawn_at: week.drawn_at.map(|t| t.seconds()),
         winner: week.winner,
         prize_remaining: week.prize_remaining,
+        expired_at: week.expired_at.map(|t| t.seconds()),
     }
 }
 
@@ -82,6 +85,16 @@ fn query_my_winnings(deps: Deps, wallet: String) -> StdResult<MyWinningsResponse
     Ok(MyWinningsResponse { winnings })
 }
 
+fn query_wallet_stats(deps: Deps, wallet: String) -> StdResult<WalletStatsResponse> {
+    let addr = deps.api.addr_validate(&wallet)?;
+    let total_invested = TOTAL_INVESTED.may_load(deps.storage, addr.clone())?.unwrap_or_default();
+    let total_redeemed = TOTAL_REDEEMED.may_load(deps.storage, addr)?.unwrap_or_default();
+    Ok(WalletStatsResponse {
+        total_invested,
+        total_redeemed,
+    })
+}
+
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(ConfigResponse {
@@ -94,6 +107,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         max_players: config.max_players,
         round_duration_days: config.round_duration_days,
         draw_delay_blocks: config.draw_delay_blocks,
+        draw_window_blocks: config.draw_window_blocks,
         unclaimed_deadline_days: config.unclaimed_deadline_days,
         treasury_address: config.treasury_address,
         admin_fee_address: config.admin_fee_address,

@@ -6,7 +6,9 @@ use cosmwasm_std::{
 
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
-use crate::state::{Round, RoundStatus, CONFIG, ROUNDS, STATE, WINNER_INDEX};
+use crate::state::{
+    Round, RoundStatus, CONFIG, ROUNDS, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WINNER_INDEX,
+};
 
 const PRIZE_BPS: u128 = 6000; // 60%
 const NEXT_ROUND_BPS: u128 = 500; // 5%
@@ -40,11 +42,14 @@ pub fn open_new_round(
         unique_players: vec![],
         pool: carry_in,
         opened_at: env.block.time,
+        deadline: None,
         closed_at: None,
         draw_after_height: None,
         drawn_at: None,
+        draw_height: None,
         winner: None,
         prize_remaining: Uint128::zero(),
+        expired_at: None,
     };
     ROUNDS.save(storage, round_id, &round)
 }
@@ -66,6 +71,16 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
 
     if round.status != RoundStatus::Open {
         return Err(ContractError::RoundNotOpen {});
+    }
+
+    // Once the round is stale (never reached min_players within
+    // max_round_age_seconds), stop accepting tickets - it must go through
+    // ExpireRound + ReclaimTicket instead, not keep growing indefinitely.
+    let has_min = round.unique_players.len() as u32 >= config.min_players;
+    let stale = !has_min
+        && env.block.time.seconds() >= round.opened_at.seconds() + config.max_round_age_seconds;
+    if stale {
+        return Err(ContractError::RoundExpired {});
     }
 
     let sent_amount = info
@@ -93,6 +108,14 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         round.unique_players.push(info.sender.clone());
     }
 
+    // Rolling "soft close" deadline: once min_players is reached, every
+    // further ticket purchase (from anyone, new player or not) pushes the
+    // close deadline forward by another round_timeout_seconds - the round
+    // only actually becomes closeable once nobody buys for a full window.
+    if round.unique_players.len() as u32 >= config.min_players {
+        round.deadline = Some(env.block.time.plus_seconds(config.round_timeout_seconds));
+    }
+
     let auto_closed = round.unique_players.len() as u32 >= config.max_players;
     if auto_closed {
         round.status = RoundStatus::Closed;
@@ -101,6 +124,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
     }
 
     ROUNDS.save(deps.storage, round.round_id, &round)?;
+    add_invested(deps.storage, &info.sender, sent_amount)?;
 
     Ok(Response::new()
         .add_attribute("action", "buy_ticket")
@@ -120,11 +144,18 @@ pub fn execute_close_round(deps: DepsMut, env: Env) -> Result<Response, Contract
     }
 
     let reached_max = round.unique_players.len() as u32 >= config.max_players;
+    // `deadline` is only ever set once min_players is reached (see
+    // execute_buy_ticket), so checking it alone already implies has_min.
+    let deadline_passed = round.deadline.is_some_and(|d| env.block.time >= d);
     let has_min = round.unique_players.len() as u32 >= config.min_players;
-    let timeout_elapsed =
-        env.block.time.seconds() >= round.opened_at.seconds() + config.round_timeout_seconds;
+    // Hard ceiling on how long the rolling deadline can keep getting pushed
+    // forward by new tickets - forces a close regardless, once min_players
+    // was reached. If min_players was *never* reached, this same age
+    // threshold is handled by ExpireRound instead, not here.
+    let hard_cap_passed =
+        env.block.time.seconds() >= round.opened_at.seconds() + config.max_round_age_seconds;
 
-    if !(reached_max || (timeout_elapsed && has_min)) {
+    if !(reached_max || deadline_passed || (has_min && hard_cap_passed)) {
         return Err(ContractError::CannotCloseRound {});
     }
 
@@ -138,6 +169,141 @@ pub fn execute_close_round(deps: DepsMut, env: Env) -> Result<Response, Contract
         .add_attribute("round_id", round.round_id.to_string()))
 }
 
+/// Permissionless. Only fires when `min_players` was never reached and
+/// `max_round_age_seconds` has elapsed - the counterpart to `CloseRound` for
+/// a round that never got enough interest. Opens the next round immediately
+/// so the game isn't stuck waiting on this one to be resolved.
+pub fn execute_expire_round(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
+    let mut round = ROUNDS.load(deps.storage, state.current_round_id)?;
+
+    if round.status != RoundStatus::Open {
+        return Err(ContractError::RoundNotOpen {});
+    }
+    let has_min = round.unique_players.len() as u32 >= config.min_players;
+    let age_reached =
+        env.block.time.seconds() >= round.opened_at.seconds() + config.max_round_age_seconds;
+    if has_min || !age_reached {
+        return Err(ContractError::CannotExpireRound {});
+    }
+
+    // Only the ticket money is owed to specific buyers (reclaimable below);
+    // anything else in the pool is the previous round's 5% carry-in, which
+    // isn't anyone's individual money and rolls forward to the next round
+    // instead of sitting stranded here.
+    let tickets_value = config.ticket_price * Uint128::from(round.entrants.len() as u128);
+    let carry_forward = round.pool.checked_sub(tickets_value).unwrap_or_default();
+    round.pool = tickets_value;
+    round.status = RoundStatus::Expired;
+    round.expired_at = Some(env.block.time);
+    let finished_round_id = round.round_id;
+    ROUNDS.save(deps.storage, round.round_id, &round)?;
+
+    state.current_round_id += 1;
+    let new_round_id = state.current_round_id;
+    STATE.save(deps.storage, &state)?;
+    open_new_round(deps.storage, &env, new_round_id, carry_forward)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "expire_round")
+        .add_attribute("round_id", finished_round_id.to_string())
+        .add_attribute("reclaimable_pool", tickets_value.to_string())
+        .add_attribute("carried_forward", carry_forward.to_string()))
+}
+
+/// Callable by any wallet that bought at least one ticket in an `Expired`
+/// round - refunds exactly what that wallet paid and removes its entries
+/// from the round, so it can't be reclaimed twice.
+pub fn execute_reclaim_ticket(
+    deps: DepsMut,
+    info: MessageInfo,
+    round_id: u64,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut round = ROUNDS
+        .may_load(deps.storage, round_id)?
+        .ok_or(ContractError::RoundNotFound { round_id })?;
+
+    if round.status != RoundStatus::Expired {
+        return Err(ContractError::RoundNotExpired { round_id });
+    }
+
+    let ticket_count = round.entrants.iter().filter(|e| **e == info.sender).count();
+    if ticket_count == 0 {
+        return Err(ContractError::NotAnEntrant { round_id });
+    }
+
+    let refund = config.ticket_price * Uint128::from(ticket_count as u128);
+    round.entrants.retain(|e| *e != info.sender);
+    round.unique_players.retain(|e| *e != info.sender);
+    round.pool = round.pool.checked_sub(refund).unwrap_or_default();
+    ROUNDS.save(deps.storage, round_id, &round)?;
+
+    Ok(Response::new()
+        .add_message(BankMsg::Send {
+            to_address: info.sender.to_string(),
+            amount: vec![Coin {
+                denom: config.ticket_denom,
+                amount: refund,
+            }],
+        })
+        .add_attribute("action", "reclaim_ticket")
+        .add_attribute("round_id", round_id.to_string())
+        .add_attribute("wallet", info.sender)
+        .add_attribute("amount", refund.to_string()))
+}
+
+/// Self-service refund for a wallet's own tickets in the current round,
+/// callable only while `min_players` hasn't been reached yet - deliberately
+/// no minimum wait time before a second player shows up, since the player
+/// can simply leave whenever they lose interest instead of being locked in.
+/// Once `min_players` is reached the rolling deadline takes over and this
+/// stops working, the same way `CloseRound`/`DrawWinner` treat that as the
+/// point the round is genuinely "in play" for everyone in it.
+pub fn execute_withdraw_ticket(
+    deps: DepsMut,
+    info: MessageInfo,
+    round_id: u64,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut round = ROUNDS
+        .may_load(deps.storage, round_id)?
+        .ok_or(ContractError::RoundNotFound { round_id })?;
+
+    if round.status != RoundStatus::Open {
+        return Err(ContractError::RoundNotOpen {});
+    }
+    if round.unique_players.len() as u32 >= config.min_players {
+        return Err(ContractError::RoundAlreadyLocked { round_id });
+    }
+
+    let ticket_count = round.entrants.iter().filter(|e| **e == info.sender).count();
+    if ticket_count == 0 {
+        return Err(ContractError::NotAnEntrant { round_id });
+    }
+
+    let refund = config.ticket_price * Uint128::from(ticket_count as u128);
+    round.entrants.retain(|e| *e != info.sender);
+    round.unique_players.retain(|e| *e != info.sender);
+    round.pool = round.pool.checked_sub(refund).unwrap_or_default();
+    ROUNDS.save(deps.storage, round_id, &round)?;
+    subtract_invested(deps.storage, &info.sender, refund)?;
+
+    Ok(Response::new()
+        .add_message(BankMsg::Send {
+            to_address: info.sender.to_string(),
+            amount: vec![Coin {
+                denom: config.ticket_denom,
+                amount: refund,
+            }],
+        })
+        .add_attribute("action", "withdraw_ticket")
+        .add_attribute("round_id", round_id.to_string())
+        .add_attribute("wallet", info.sender)
+        .add_attribute("amount", refund.to_string()))
+}
+
 pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut state = STATE.load(deps.storage)?;
@@ -149,6 +315,19 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
     let required_height = round.draw_after_height.unwrap_or(u64::MAX);
     if env.block.height < required_height {
         return Err(ContractError::DrawTooEarly { required_height });
+    }
+    // Ceiling on the draw window: past this, rearm to a fresh window based on
+    // the current block instead of drawing, rather than leaving the window
+    // open indefinitely (see `draw_window_blocks` doc comment on `Config`).
+    // Not an error - a caller here is doing exactly the right thing (trying
+    // to draw), the round just needs another pass through the keeper.
+    if env.block.height >= required_height + config.draw_window_blocks {
+        round.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        ROUNDS.save(deps.storage, round.round_id, &round)?;
+        return Ok(Response::new()
+            .add_attribute("action", "rearm_draw_window")
+            .add_attribute("round_id", round.round_id.to_string())
+            .add_attribute("new_draw_after_height", round.draw_after_height.unwrap().to_string()));
     }
     if (round.unique_players.len() as u32) < config.min_players {
         return Err(ContractError::NotEnoughPlayers {
@@ -179,6 +358,7 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
     round.winner = Some(winner.clone());
     round.prize_remaining = prize;
     round.drawn_at = Some(env.block.time);
+    round.draw_height = Some(env.block.height);
     let finished_round_id = round.round_id;
     ROUNDS.save(deps.storage, round.round_id, &round)?;
 
@@ -284,6 +464,7 @@ pub fn execute_redeem(
         remove_winning(deps.storage, &winner, round_id)?;
     }
     ROUNDS.save(deps.storage, round_id, &round)?;
+    add_redeemed(deps.storage, &winner, payout)?;
 
     let mut messages: Vec<CosmosMsg> = vec![BankMsg::Send {
         to_address: winner.to_string(),
@@ -339,11 +520,13 @@ pub fn execute_sweep_ustc(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         .add_attribute("amount", balance.amount.to_string()))
 }
 
-/// Anyone can call this once `unclaimed_deadline_days` have passed since the
-/// round was drawn - no admin discretion, no live redirection of an active
-/// prize. Sweeps whatever's left of the prize to the treasury; from there,
+/// Anyone can call this once `unclaimed_deadline_days` have passed - no admin
+/// discretion, no live redirection of funds. Handles two terminal round
+/// states, both measured against the same deadline window: a `Drawn` round's
+/// unredeemed `prize_remaining` (from `drawn_at`), or an `Expired` round's
+/// abandoned, never-reclaimed ticket pool (from `expired_at`). Either way,
 /// any legitimate wallet-recovery claim is handled off-chain by the
-/// (multisig) treasury, not by this contract.
+/// (multisig) treasury from there, not by this contract.
 pub fn execute_sweep_expired_prize(
     deps: DepsMut,
     env: Env,
@@ -353,21 +536,42 @@ pub fn execute_sweep_expired_prize(
     let mut round = ROUNDS
         .may_load(deps.storage, round_id)?
         .ok_or(ContractError::RoundNotFound { round_id })?;
-    if round.status != RoundStatus::Drawn {
-        return Err(ContractError::RoundNotDrawn {});
-    }
-    if round.prize_remaining.is_zero() {
-        return Err(ContractError::NothingToRedeem { round_id });
-    }
-    let drawn_at = round.drawn_at.ok_or(ContractError::RoundNotDrawn {})?;
-    let deadline = drawn_at.seconds() + config.unclaimed_deadline_days * 86400;
+
+    let (swept_amount, reference_time) = match round.status {
+        RoundStatus::Drawn => {
+            if round.prize_remaining.is_zero() {
+                return Err(ContractError::NothingToRedeem { round_id });
+            }
+            let drawn_at = round.drawn_at.ok_or(ContractError::RoundNotDrawn {})?;
+            (round.prize_remaining, drawn_at)
+        }
+        RoundStatus::Expired => {
+            if round.pool.is_zero() {
+                return Err(ContractError::NothingToSweep { round_id });
+            }
+            let expired_at = round
+                .expired_at
+                .ok_or(ContractError::RoundNotExpired { round_id })?;
+            (round.pool, expired_at)
+        }
+        _ => return Err(ContractError::RoundNotDrawn {}),
+    };
+
+    let deadline = reference_time.seconds() + config.unclaimed_deadline_days * 86400;
     if env.block.time.seconds() < deadline {
         return Err(ContractError::UnclaimedDeadlineNotReached { round_id });
     }
 
-    let swept_amount = round.prize_remaining;
     let winner = round.winner.clone();
-    round.prize_remaining = Uint128::zero();
+    match round.status {
+        RoundStatus::Drawn => round.prize_remaining = Uint128::zero(),
+        RoundStatus::Expired => {
+            round.pool = Uint128::zero();
+            round.entrants.clear();
+            round.unique_players.clear();
+        }
+        _ => unreachable!("matched above"),
+    }
     ROUNDS.save(deps.storage, round_id, &round)?;
 
     if let Some(winner) = winner {
@@ -404,4 +608,19 @@ fn remove_winning(storage: &mut dyn Storage, winner: &Addr, round_id: u64) -> St
         WINNER_INDEX.save(storage, winner.clone(), &winnings)?;
     }
     Ok(())
+}
+
+fn add_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+    let current = TOTAL_INVESTED.may_load(storage, wallet.clone())?.unwrap_or_default();
+    TOTAL_INVESTED.save(storage, wallet.clone(), &(current + amount))
+}
+
+fn subtract_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+    let current = TOTAL_INVESTED.may_load(storage, wallet.clone())?.unwrap_or_default();
+    TOTAL_INVESTED.save(storage, wallet.clone(), &current.saturating_sub(amount))
+}
+
+fn add_redeemed(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+    let current = TOTAL_REDEEMED.may_load(storage, wallet.clone())?.unwrap_or_default();
+    TOTAL_REDEEMED.save(storage, wallet.clone(), &(current + amount))
 }

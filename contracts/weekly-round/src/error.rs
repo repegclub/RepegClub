@@ -50,4 +50,22 @@ pub enum ContractError {
 
     #[error("This wallet already holds the maximum of {max_per_wallet} tickets allowed for this week")]
     TicketCapExceeded { max_per_wallet: u32 },
+
+    #[error("Week has expired without reaching the minimum number of players - buy a ticket in the next week, or reclaim your ticket from this one")]
+    WeekExpired {},
+
+    #[error("Week cannot be expired yet: either the minimum players was already reached, or round_duration_days has not elapsed")]
+    CannotExpireWeek {},
+
+    #[error("Week {week_id} has not expired")]
+    WeekNotExpired { week_id: u64 },
+
+    #[error("This wallet did not buy any tickets in week {week_id}")]
+    NotAnEntrant { week_id: u64 },
+
+    #[error("Nothing left to sweep for week {week_id}")]
+    NothingToSweep { week_id: u64 },
+
+    #[error("Week {week_id} already reached the minimum number of players - tickets can no longer be withdrawn")]
+    WeekAlreadyLocked { week_id: u64 },
 }

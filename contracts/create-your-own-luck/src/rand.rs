@@ -5,6 +5,11 @@ use sha2::{Digest, Sha256};
 /// times an address appears (one entry per ticket bought). `salt` lets Podium
 /// draw three independent-looking picks (1st/2nd/3rd) from the same block
 /// height/time by hashing a different salt for each sequential draw.
+///
+/// KNOWN LIMITATION: same block-based-randomness caveat as wheel-manager's
+/// `rand.rs` - see that file for the full writeup (residual validator-grinding
+/// risk within `draw_window_blocks`, and why commit-reveal / Nois were
+/// evaluated and deferred rather than built now).
 pub fn pick_winner_index(
     raffle_seed: u64,
     block_height: u64,

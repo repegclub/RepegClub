@@ -1,10 +1,12 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
+};
 
 use crate::error::ContractError;
 use crate::execute::{
     execute_buy_weekly_ticket, execute_close_week, execute_contribute_to_pool,
-    execute_draw_weekly_winner, execute_redeem, execute_sweep_expired_prize, execute_sweep_ustc,
-    open_new_week,
+    execute_draw_weekly_winner, execute_expire_week, execute_reclaim_ticket, execute_redeem,
+    execute_sweep_expired_prize, execute_sweep_ustc, execute_withdraw_ticket, open_new_week,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -31,13 +33,14 @@ pub fn instantiate(
         max_players: msg.max_players,
         round_duration_days: msg.round_duration_days,
         draw_delay_blocks: msg.draw_delay_blocks,
+        draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
         admin_fee_address: deps.api.addr_validate(&msg.admin_fee_address)?,
     };
     CONFIG.save(deps.storage, &config)?;
     STATE.save(deps.storage, &GlobalState { current_week_id: 1 })?;
-    open_new_week(deps.storage, &env, 1)?;
+    open_new_week(deps.storage, &env, 1, Uint128::zero())?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
@@ -62,6 +65,9 @@ pub fn execute(
         ExecuteMsg::Redeem { week_id } => execute_redeem(deps, info, week_id),
         ExecuteMsg::SweepUstc {} => execute_sweep_ustc(deps, env, info),
         ExecuteMsg::SweepExpiredPrize { week_id } => execute_sweep_expired_prize(deps, env, week_id),
+        ExecuteMsg::ExpireWeek {} => execute_expire_week(deps, env),
+        ExecuteMsg::ReclaimTicket { week_id } => execute_reclaim_ticket(deps, info, week_id),
+        ExecuteMsg::WithdrawTicket { week_id } => execute_withdraw_ticket(deps, info, week_id),
     }
 }
 

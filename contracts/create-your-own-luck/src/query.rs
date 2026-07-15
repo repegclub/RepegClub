@@ -73,6 +73,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         max_players: config.max_players,
         round_timeout_seconds: config.round_timeout_seconds,
         draw_delay_blocks: config.draw_delay_blocks,
+        draw_window_blocks: config.draw_window_blocks,
         unclaimed_deadline_days: config.unclaimed_deadline_days,
         prize_asset: config.prize_asset,
         fee_reference_usd_micros: config.fee_reference_usd_micros,

@@ -6,6 +6,11 @@ use sha2::{Digest, Sha256};
 /// randomness is the block height + time at the moment `DrawWeeklyWinner`
 /// executes (checked by the caller to be `draw_delay_blocks` after the week
 /// closed), hashed together with the ordered list of entrants for that week.
+///
+/// KNOWN LIMITATION: same block-based-randomness caveat as wheel-manager's
+/// `rand.rs` - see that file for the full writeup (residual validator-grinding
+/// risk within `draw_window_blocks`, and why commit-reveal / Nois were
+/// evaluated and deferred rather than built now).
 pub fn pick_winner_index(
     week_id: u64,
     block_height: u64,

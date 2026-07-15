@@ -74,6 +74,7 @@ fn setup_with_mock_dex(raffle_type: RaffleType, min_players: u32, max_players: u
         max_players,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
+        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
@@ -125,6 +126,7 @@ fn podium_requires_at_least_three_min_players() {
         max_players: 5,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
+        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
@@ -216,6 +218,7 @@ fn allowlist_rejects_wallets_not_on_the_list() {
         max_players: 2,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
+        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
@@ -255,6 +258,36 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
     assert_eq!(winners.winners.len(), 1);
     assert_eq!(winners.prize_shares, vec![Uint128::new(1000)]);
+}
+
+#[test]
+fn draw_winner_past_the_window_rearms_instead_of_drawing() {
+    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 100);
+    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap(); // auto-closes, draw_after_height = height + 5, window width 10
+
+    let mut too_late_env = env.clone();
+    too_late_env.block.height += 15; // first height past the ceiling
+    let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+
+    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert!(res.messages.is_empty());
+
+    let status = raffle_status(&deps, &too_late_env);
+    assert_eq!(status.status, RaffleStatus::Closed);
+    assert_eq!(status.draw_after_height, Some(too_late_env.block.height + 5));
+
+    let err = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
+    assert!(matches!(err, ContractError::DrawTooEarly { .. }));
+
+    let mut drawable_env = too_late_env.clone();
+    drawable_env.block.height += 5;
+    let draw_res = execute(deps.as_mut(), drawable_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    assert_eq!(draw_res.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
+    let winners_bin = query(deps.as_ref(), drawable_env, QueryMsg::GetWinners {}).unwrap();
+    let winners: WinnersResponse = from_json(winners_bin).unwrap();
+    assert_eq!(winners.winners.len(), 1);
 }
 
 #[test]
@@ -369,6 +402,7 @@ fn instantiate_with_prize(
         max_players: 2,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
+        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
         prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
@@ -508,6 +542,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
         max_players,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
+        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,

@@ -313,6 +313,15 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
     if env.block.height < required_height {
         return Err(ContractError::DrawTooEarly { required_height });
     }
+    // Ceiling on the draw window - see wheel-manager's execute_draw_winner
+    // for the full rationale. Not an error, just a rearm to a fresh window.
+    if env.block.height >= required_height + config.draw_window_blocks {
+        raffle.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        RAFFLE.save(deps.storage, &raffle)?;
+        return Ok(Response::new()
+            .add_attribute("action", "rearm_draw_window")
+            .add_attribute("new_draw_after_height", raffle.draw_after_height.unwrap().to_string()));
+    }
     if (raffle.unique_players.len() as u32) < config.min_players {
         return Err(ContractError::NotEnoughPlayers {
             min_players: config.min_players,
