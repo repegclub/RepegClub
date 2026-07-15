@@ -23,6 +23,36 @@ use crate::state::{Config, PrizeAsset, RaffleState, RaffleStatus, RaffleType, CO
 /// line into a disguised, cheaper Airdrop.
 const MAX_PODIUM_PLACES: u32 = 10;
 
+/// Flat service fee (USDC micros) for SingleWinner and Podium raffles.
+const FLAT_FEE_USDC: u128 = 3_000_000; // "$3"
+
+/// Volume-discount commission schedule for Airdrop raffles, keyed by
+/// `max_players` ceiling (ascending, USDC micros). Discount is a growth
+/// incentive, not cost-recovery - each participant pays their own claim gas,
+/// so the platform's per-participant cost doesn't scale linearly. Confirmed
+/// with the user 2026-07-15 (see docs/rueda-del-repeg-diseno.html §09, which
+/// had these as examples pending confirmation).
+const AIRDROP_FEE_TIERS_USDC: [(u32, u128); 4] = [
+    (100, 3_000_000),   // "$3"
+    (300, 7_000_000),   // "$7"
+    (600, 12_000_000),  // "$12"
+    (1000, 18_000_000), // "$18"
+];
+
+/// Computes the required service fee on-chain from `raffle_type` (and, for
+/// Airdrop, `max_players`) instead of trusting a creator-supplied amount -
+/// closes off a creator quietly setting their own fee to near-zero.
+fn required_fee_usdc(raffle_type: RaffleType, max_players: u32) -> Result<Uint128, ContractError> {
+    match raffle_type {
+        RaffleType::SingleWinner | RaffleType::Podium => Ok(Uint128::new(FLAT_FEE_USDC)),
+        RaffleType::Airdrop => AIRDROP_FEE_TIERS_USDC
+            .iter()
+            .find(|(cap, _)| max_players <= *cap)
+            .map(|(_, fee)| Uint128::new(*fee))
+            .ok_or(ContractError::MaxPlayersExceedsAirdropFeeTiers {}),
+    }
+}
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -62,6 +92,8 @@ pub fn instantiate(
         }
     };
 
+    let fee_amount_usdc = required_fee_usdc(msg.raffle_type, msg.max_players)?;
+
     let allowed_entrants = msg
         .allowed_entrants
         .map(|list| {
@@ -84,7 +116,7 @@ pub fn instantiate(
         draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         prize_asset,
-        fee_amount_usdc: msg.fee_amount_usdc,
+        fee_amount_usdc,
         usdc_denom: msg.usdc_denom,
         founder_fee_address: deps.api.addr_validate(&msg.founder_fee_address)?,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,

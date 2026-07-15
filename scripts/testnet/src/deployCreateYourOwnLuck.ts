@@ -65,7 +65,6 @@ async function main() {
           unclaimed_deadline_days: 90,
           prize_native_denom: "uluna",
           prize_cw20_address: null,
-          fee_amount_usdc: "3000000",
           usdc_denom: "utestusdc",
           founder_fee_address: admin.address,
           treasury_address: admin.address,

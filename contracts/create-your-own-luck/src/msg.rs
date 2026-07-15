@@ -21,7 +21,9 @@ pub struct InstantiateMsg {
     /// the CW20 token's own `Send` to this contract).
     pub prize_native_denom: Option<String>,
     pub prize_cw20_address: Option<String>,
-    pub fee_amount_usdc: Uint128,
+    /// Not creator-supplied - the service fee is computed on-chain from
+    /// `raffle_type` (and `max_players` for Airdrop). See `required_fee_usdc`
+    /// in contract.rs.
     pub usdc_denom: String,
     pub founder_fee_address: String,
     pub treasury_address: String,

@@ -43,7 +43,6 @@ fn setup(
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -91,7 +90,6 @@ fn podium_needs_min_players_covering_all_places() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -118,7 +116,6 @@ fn podium_shares_must_sum_to_10000() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -145,7 +142,6 @@ fn podium_shares_reject_a_zero_percent_place() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -176,7 +172,6 @@ fn podium_shares_reject_too_many_places() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -203,7 +198,6 @@ fn podium_shares_rejected_for_non_podium_raffle() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -211,6 +205,60 @@ fn podium_shares_rejected_for_non_podium_raffle() {
     };
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
     assert!(matches!(err, ContractError::PodiumSharesNotApplicable {}));
+}
+
+#[test]
+fn airdrop_fee_scales_by_max_players_tier() {
+    let cases = [
+        (100u32, 3_000_000u128),
+        (300, 7_000_000),
+        (600, 12_000_000),
+        (1000, 18_000_000),
+    ];
+    for (max_players, expected_fee) in cases {
+        let (deps, env) = setup(RaffleType::Airdrop, 2, max_players, 0, vec![]);
+        let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+        let config: ConfigResponse = from_json(bin).unwrap();
+        assert_eq!(
+            config.fee_amount_usdc,
+            Uint128::new(expected_fee),
+            "max_players={max_players} should charge {expected_fee}"
+        );
+    }
+}
+
+#[test]
+fn airdrop_rejects_max_players_over_the_last_fee_tier() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Airdrop,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 1001,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        usdc_denom: USDC_DENOM.to_string(),
+        founder_fee_address: "founder".to_string(),
+        treasury_address: "treasury".to_string(),
+        podium_shares_bps: vec![],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersExceedsAirdropFeeTiers {}));
+}
+
+#[test]
+fn single_winner_and_podium_always_charge_the_flat_fee_regardless_of_max_players() {
+    let (deps, env) = setup(RaffleType::SingleWinner, 2, 1000, 0, vec![]);
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
 }
 
 #[test]
@@ -282,7 +330,6 @@ fn allowlist_rejects_wallets_not_on_the_list() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -484,7 +531,6 @@ fn instantiate_with_prize(
         unclaimed_deadline_days: 90,
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
         prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),
@@ -620,7 +666,6 @@ fn instantiate_rejects_degenerate_player_bounds() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_amount_usdc: Uint128::new(FEE_AMOUNT_USDC),
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: "founder".to_string(),
         treasury_address: "treasury".to_string(),

@@ -21,6 +21,9 @@ pub enum ContractError {
     #[error("podium_shares_bps must be empty for non-Podium raffle types")]
     PodiumSharesNotApplicable {},
 
+    #[error("Airdrop raffles support at most 1000 max_players (see the fee tier schedule)")]
+    MaxPlayersExceedsAirdropFeeTiers {},
+
     #[error("Raffle is still waiting for DepositPrize")]
     StillFunding {},
 
