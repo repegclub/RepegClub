@@ -76,6 +76,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         draw_window_blocks: config.draw_window_blocks,
         unclaimed_deadline_days: config.unclaimed_deadline_days,
         prize_asset: config.prize_asset,
-        fee_reference_usd_micros: config.fee_reference_usd_micros,
+        fee_amount_usdc: config.fee_amount_usdc,
+        podium_shares_bps: config.podium_shares_bps,
     })
 }

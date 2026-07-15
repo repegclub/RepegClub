@@ -11,26 +11,25 @@ const WASM_PATH = path.resolve(
   "../../../contracts/create-your-own-luck/artifacts/create_your_own_luck.wasm"
 );
 
-// node src/deployCreateYourOwnLuck.ts <label> <raffleType> <minPlayers> <maxPlayers> <ticketPrice>
-const [, , label, raffleType, minPlayersArg, maxPlayersArg, ticketPriceArg] = process.argv;
+// node src/deployCreateYourOwnLuck.ts <label> <raffleType> <minPlayers> <maxPlayers> <ticketPrice> [podiumSharesBps]
+// podiumSharesBps: comma-separated basis points summing to 10000, e.g.
+// "5000,3000,2000" for a 50/30/20 podium of 3. Required (and only valid) when
+// raffleType is Podium - defaults to 50/30/20 if omitted for a Podium raffle.
+const [, , label, raffleType, minPlayersArg, maxPlayersArg, ticketPriceArg, podiumSharesArg] = process.argv;
 if (!label || !raffleType || !minPlayersArg || !maxPlayersArg || !ticketPriceArg) {
   console.error(
-    "Usage: tsx src/deployCreateYourOwnLuck.ts <label> <SingleWinner|Podium|Airdrop> <minPlayers> <maxPlayers> <ticketPrice>"
+    "Usage: tsx src/deployCreateYourOwnLuck.ts <label> <SingleWinner|Podium|Airdrop> <minPlayers> <maxPlayers> <ticketPrice> [podiumSharesBps]"
   );
   process.exit(1);
 }
+const podiumSharesBps = podiumSharesArg
+  ? podiumSharesArg.split(",").map(Number)
+  : raffleType === "Podium"
+    ? [5000, 3000, 2000]
+    : [];
 const deploymentPath = path.resolve(__dirname, `../deployment-cyol-${label}.json`);
 
 async function main() {
-  const { contractAddress: ustcLuncPool } = JSON.parse(
-    readFileSync(path.resolve(__dirname, "../deployment-mock-dex-pool-ustc-lunc.json"), "utf8")
-  );
-  const { contractAddress: luncUsdcPool } = JSON.parse(
-    readFileSync(path.resolve(__dirname, "../deployment-mock-dex-pool-lunc-usdc.json"), "utf8")
-  );
-  console.log("USTC/LUNC mock pool:", ustcLuncPool);
-  console.log("LUNC/USDC mock pool:", luncUsdcPool);
-
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin (creator) address:", admin.address);
 
@@ -66,15 +65,11 @@ async function main() {
           unclaimed_deadline_days: 90,
           prize_native_denom: "uluna",
           prize_cw20_address: null,
-          fee_reference_usd_micros: "3000000",
-          ustc_denom: "utestustc",
-          lunc_denom: "utestlunc",
+          fee_amount_usdc: "3000000",
           usdc_denom: "utestusdc",
-          ustc_lunc_pool: ustcLuncPool,
-          lunc_usdc_pool: luncUsdcPool,
           founder_fee_address: admin.address,
           treasury_address: admin.address,
-          burn_address: admin.address,
+          podium_shares_bps: podiumSharesBps,
         },
         funds: [],
       }),

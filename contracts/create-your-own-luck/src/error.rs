@@ -12,8 +12,14 @@ pub enum ContractError {
     #[error("This wallet is not in the allowlist for this raffle")]
     NotAllowed {},
 
-    #[error("Podium raffles need at least 3 min_players")]
-    PodiumNeedsThreePlayers {},
+    #[error("Podium raffles need min_players >= the number of podium places ({needed})")]
+    PodiumNeedsMorePlayers { needed: u32 },
+
+    #[error("podium_shares_bps must be non-empty and sum to exactly 10000 (100%)")]
+    InvalidPodiumShares {},
+
+    #[error("podium_shares_bps must be empty for non-Podium raffle types")]
+    PodiumSharesNotApplicable {},
 
     #[error("Raffle is still waiting for DepositPrize")]
     StillFunding {},

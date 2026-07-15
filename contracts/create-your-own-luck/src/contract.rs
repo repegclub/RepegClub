@@ -22,8 +22,16 @@ pub fn instantiate(
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
     }
-    if msg.raffle_type == RaffleType::Podium && msg.min_players < 3 {
-        return Err(ContractError::PodiumNeedsThreePlayers {});
+    if msg.raffle_type == RaffleType::Podium {
+        let places = msg.podium_shares_bps.len() as u32;
+        if places == 0 || msg.podium_shares_bps.iter().sum::<u32>() != 10_000 {
+            return Err(ContractError::InvalidPodiumShares {});
+        }
+        if msg.min_players < places {
+            return Err(ContractError::PodiumNeedsMorePlayers { needed: places });
+        }
+    } else if !msg.podium_shares_bps.is_empty() {
+        return Err(ContractError::PodiumSharesNotApplicable {});
     }
 
     let prize_asset = match (msg.prize_native_denom, msg.prize_cw20_address) {
@@ -60,15 +68,11 @@ pub fn instantiate(
         draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         prize_asset,
-        fee_reference_usd_micros: msg.fee_reference_usd_micros,
-        ustc_denom: msg.ustc_denom,
-        lunc_denom: msg.lunc_denom,
+        fee_amount_usdc: msg.fee_amount_usdc,
         usdc_denom: msg.usdc_denom,
-        ustc_lunc_pool: deps.api.addr_validate(&msg.ustc_lunc_pool)?,
-        lunc_usdc_pool: deps.api.addr_validate(&msg.lunc_usdc_pool)?,
         founder_fee_address: deps.api.addr_validate(&msg.founder_fee_address)?,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
-        burn_address: deps.api.addr_validate(&msg.burn_address)?,
+        podium_shares_bps: msg.podium_shares_bps,
     };
     CONFIG.save(deps.storage, &config)?;
 
