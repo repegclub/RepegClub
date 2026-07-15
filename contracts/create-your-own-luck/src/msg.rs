@@ -4,6 +4,10 @@ use cw20::Cw20ReceiveMsg;
 
 use crate::state::{PrizeAsset, RaffleStatus, RaffleType};
 
+/// The service fee amount, USDC denom, and founder/treasury addresses are
+/// deliberately NOT fields here - they're hardcoded platform constants in
+/// contract.rs, computed/fixed rather than creator-supplied, so a raffle
+/// creator can never redirect the fee or pay it in a fake token.
 #[cw_serde]
 pub struct InstantiateMsg {
     pub raffle_type: RaffleType,
@@ -21,22 +25,16 @@ pub struct InstantiateMsg {
     /// the CW20 token's own `Send` to this contract).
     pub prize_native_denom: Option<String>,
     pub prize_cw20_address: Option<String>,
-    pub fee_reference_usd_micros: Uint128,
-    pub ustc_denom: String,
-    pub lunc_denom: String,
-    pub usdc_denom: String,
-    pub ustc_lunc_pool: String,
-    pub lunc_usdc_pool: String,
-    pub founder_fee_address: String,
-    pub treasury_address: String,
-    pub burn_address: String,
+    /// Required (and must sum to 10000) when `raffle_type` is `Podium`; must
+    /// be empty otherwise. See `Config::podium_shares_bps`.
+    pub podium_shares_bps: Vec<u32>,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    /// Native-prize raffles only: attaches the prize + the USTC fee in one call.
+    /// Native-prize raffles only: attaches the prize + the USDC fee in one call.
     DepositPrize {},
-    /// CW20-prize raffles only: pays the USTC fee ahead of sending the CW20
+    /// CW20-prize raffles only: pays the USDC fee ahead of sending the CW20
     /// prize (a CW20 `Send` can't also carry native funds in the same tx).
     PayServiceFee {},
     /// Invoked by a CW20 token contract when the creator calls its `Send`
@@ -111,5 +109,9 @@ pub struct ConfigResponse {
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
-    pub fee_reference_usd_micros: Uint128,
+    pub fee_amount_usdc: Uint128,
+    pub usdc_denom: String,
+    pub founder_fee_address: Addr,
+    pub treasury_address: Addr,
+    pub podium_shares_bps: Vec<u32>,
 }

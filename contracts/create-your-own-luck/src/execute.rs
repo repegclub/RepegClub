@@ -6,14 +6,25 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 use crate::error::ContractError;
 use crate::msg::Cw20HookMsg;
-use crate::price_oracle::quote_ustc_fee;
 use crate::rand::pick_winner_index;
 use crate::state::{PrizeAsset, RaffleStatus, RaffleType, AIRDROP_CLAIMS, CONFIG, RAFFLE};
 
-const FEE_SPLIT_BPS: u128 = 3333; // ~1/3 each, dust to treasury (see draw_winner)
+const FEE_SPLIT_BPS: u128 = 5000; // 50/50 founder/treasury, dust to treasury (see draw_winner)
 const FEE_SPLIT_DENOM: u128 = 10000;
-const PODIUM_BPS: [u128; 3] = [5000, 3000, 2000]; // 50/30/20, dust to 1st place
-const PODIUM_DENOM: u128 = 10000;
+
+/// Rejects any attached coin whose denom isn't in `allowed` - otherwise an
+/// unrelated coin sent by mistake (wrong wallet UI, fat-fingered denom) would
+/// be silently absorbed by the contract with no sweep mechanism to recover it.
+fn reject_unexpected_funds(funds: &[Coin], allowed: &[&str]) -> Result<(), ContractError> {
+    for coin in funds {
+        if !allowed.contains(&coin.denom.as_str()) {
+            return Err(ContractError::UnexpectedFundsAttached {
+                denom: coin.denom.clone(),
+            });
+        }
+    }
+    Ok(())
+}
 
 fn prize_transfer_msg(prize_asset: &PrizeAsset, recipient: &Addr, amount: Uint128) -> CosmosMsg {
     match prize_asset {
@@ -38,18 +49,18 @@ fn prize_transfer_msg(prize_asset: &PrizeAsset, recipient: &Addr, amount: Uint12
     }
 }
 
-/// Quotes and holds the USTC service fee, refunding any overpayment. Shared by
+/// Holds the fixed USDC service fee, refunding any overpayment. Shared by
 /// `PayServiceFee` and the native `DepositPrize` convenience path.
-fn collect_service_fee(deps: &DepsMut, config: &crate::state::Config, sent_ustc: Uint128) -> Result<(Uint128, Uint128), ContractError> {
-    let required_ustc = quote_ustc_fee(&deps.querier, config)?;
-    if sent_ustc < required_ustc {
+fn collect_service_fee(config: &crate::state::Config, sent_usdc: Uint128) -> Result<(Uint128, Uint128), ContractError> {
+    let required_usdc = config.fee_amount_usdc;
+    if sent_usdc < required_usdc {
         return Err(ContractError::WrongFeePayment {
-            expected: required_ustc,
-            denom: config.ustc_denom.clone(),
+            expected: required_usdc,
+            denom: config.usdc_denom.clone(),
         });
     }
-    let refund = sent_ustc - required_ustc;
-    Ok((required_ustc, refund))
+    let refund = sent_usdc - required_usdc;
+    Ok((required_usdc, refund))
 }
 
 pub fn execute_pay_service_fee(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
@@ -66,15 +77,16 @@ pub fn execute_pay_service_fee(deps: DepsMut, info: MessageInfo) -> Result<Respo
         return Err(ContractError::AlreadyFunded {});
     }
 
-    let sent_ustc = info
+    reject_unexpected_funds(&info.funds, &[&config.usdc_denom])?;
+    let sent_usdc = info
         .funds
         .iter()
-        .find(|c| c.denom == config.ustc_denom)
+        .find(|c| c.denom == config.usdc_denom)
         .map(|c| c.amount)
         .unwrap_or_default();
-    let (required_ustc, refund) = collect_service_fee(&deps, &config, sent_ustc)?;
+    let (required_usdc, refund) = collect_service_fee(&config, sent_usdc)?;
 
-    raffle.fee_amount = required_ustc;
+    raffle.fee_amount = required_usdc;
     raffle.fee_paid = true;
     RAFFLE.save(deps.storage, &raffle)?;
 
@@ -84,7 +96,7 @@ pub fn execute_pay_service_fee(deps: DepsMut, info: MessageInfo) -> Result<Respo
             BankMsg::Send {
                 to_address: info.sender.to_string(),
                 amount: vec![Coin {
-                    denom: config.ustc_denom,
+                    denom: config.usdc_denom,
                     amount: refund,
                 }],
             }
@@ -95,7 +107,7 @@ pub fn execute_pay_service_fee(deps: DepsMut, info: MessageInfo) -> Result<Respo
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "pay_service_fee")
-        .add_attribute("fee_amount", required_ustc.to_string()))
+        .add_attribute("fee_amount", required_usdc.to_string()))
 }
 
 pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
@@ -114,6 +126,12 @@ pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
         return Err(ContractError::AlreadyFunded {});
     }
 
+    if raffle.fee_paid {
+        reject_unexpected_funds(&info.funds, &[&native_denom])?;
+    } else {
+        reject_unexpected_funds(&info.funds, &[&native_denom, &config.usdc_denom])?;
+    }
+
     let prize_sent = info
         .funds
         .iter()
@@ -129,26 +147,26 @@ pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
     if raffle.fee_paid {
         // Fee was already settled via a separate `PayServiceFee` call (this is
         // required, not just allowed, when the prize denom is the same as the
-        // USTC fee denom - see `MustPayServiceFeeSeparately` below).
+        // USDC fee denom - see `MustPayServiceFeeSeparately` below).
     } else {
-        if native_denom == config.ustc_denom {
+        if native_denom == config.usdc_denom {
             return Err(ContractError::MustPayServiceFeeSeparately {});
         }
-        let sent_ustc = info
+        let sent_usdc = info
             .funds
             .iter()
-            .find(|c| c.denom == config.ustc_denom)
+            .find(|c| c.denom == config.usdc_denom)
             .map(|c| c.amount)
             .unwrap_or_default();
-        let (required_ustc, refund) = collect_service_fee(&deps, &config, sent_ustc)?;
-        raffle.fee_amount = required_ustc;
+        let (required_usdc, refund) = collect_service_fee(&config, sent_usdc)?;
+        raffle.fee_amount = required_usdc;
         raffle.fee_paid = true;
         if !refund.is_zero() {
             messages.push(
                 BankMsg::Send {
                     to_address: info.sender.to_string(),
                     amount: vec![Coin {
-                        denom: config.ustc_denom.clone(),
+                        denom: config.usdc_denom.clone(),
                         amount: refund,
                     }],
                 }
@@ -211,15 +229,26 @@ pub fn execute_receive(deps: DepsMut, env: Env, info: MessageInfo, wrapper: Cw20
     }
 }
 
-/// No single wallet may hold more than half of a raffle's `max_players` worth
-/// of tickets - bounds the worst-case size of `entrants` (so `DrawWinner`'s
-/// winner-picking hash can never grow unbounded) while still leaving room for
-/// the weighted-odds "buy more, better chances" feature. Applies even to free
-/// (ticket_price = 0) raffles, since the concern is entrants-list size, not
-/// payment. Not a separate config field on purpose - always derived from
-/// `max_players`.
-pub fn max_tickets_per_wallet(max_players: u32) -> u32 {
-    std::cmp::max(1, max_players / 2)
+/// Bounds how many tickets a single wallet may hold. For SingleWinner/Podium,
+/// no more than half of `max_players` worth - bounds the worst-case size of
+/// `entrants` (so `DrawWinner`'s winner-picking hash can never grow
+/// unbounded) while still leaving room for the weighted-odds "buy more,
+/// better chances" feature. Applies even to free (ticket_price = 0) raffles,
+/// since the concern is entrants-list size, not payment.
+///
+/// Airdrop is capped at exactly 1 per wallet instead - CodeRabbit review
+/// (2026-07-15) flagged that at the top fee tier (max_players up to 1000),
+/// the SingleWinner/Podium formula would allow up to 500 tickets per wallet,
+/// so `entrants` could reach 500,000 - and `CancelRaffle` scans
+/// `unique_players x entrants` refunding everyone in a single transaction
+/// (unlike Wheel Manager's pull-based ReclaimTicket), which could exceed
+/// block gas and strand the raffle `Closed` forever. Airdrop splits equally
+/// per unique player anyway, so extra tickets per wallet buy nothing.
+pub fn max_tickets_per_wallet(raffle_type: RaffleType, max_players: u32) -> u32 {
+    match raffle_type {
+        RaffleType::Airdrop => 1,
+        RaffleType::SingleWinner | RaffleType::Podium => std::cmp::max(1, max_players / 2),
+    }
 }
 
 pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
@@ -235,7 +264,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         }
     }
 
-    let cap = max_tickets_per_wallet(config.max_players);
+    let cap = max_tickets_per_wallet(config.raffle_type, config.max_players);
     let already_bought = raffle.entrants.iter().filter(|e| **e == info.sender).count() as u32;
     if already_bought >= cap {
         return Err(ContractError::TicketCapExceeded { max_per_wallet: cap });
@@ -341,20 +370,23 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
         RaffleType::Podium => {
             let mut winners: Vec<Addr> = vec![];
             let mut pool = raffle.entrants.clone();
-            for place in 0..3u64 {
+            for place in 0..config.podium_shares_bps.len() as u64 {
                 let idx = pick_winner_index(0, env.block.height, env.block.time.nanos(), place, &pool);
                 let winner = pool[idx].clone();
                 winners.push(winner.clone());
                 pool.retain(|e| *e != winner);
             }
 
-            let allocated: Uint128 = PODIUM_BPS
+            const PODIUM_DENOM: u128 = 10_000;
+            let allocated: Uint128 = config
+                .podium_shares_bps
                 .iter()
-                .map(|bps| raffle.prize_amount.multiply_ratio(*bps, PODIUM_DENOM))
+                .map(|bps| raffle.prize_amount.multiply_ratio(*bps as u128, PODIUM_DENOM))
                 .sum();
-            let mut shares: Vec<Uint128> = PODIUM_BPS
+            let mut shares: Vec<Uint128> = config
+                .podium_shares_bps
                 .iter()
-                .map(|bps| raffle.prize_amount.multiply_ratio(*bps, PODIUM_DENOM))
+                .map(|bps| raffle.prize_amount.multiply_ratio(*bps as u128, PODIUM_DENOM))
                 .collect();
             shares[0] += raffle.prize_amount.checked_sub(allocated).unwrap_or_default();
 
@@ -388,22 +420,18 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
 
     if !raffle.fee_amount.is_zero() {
         let founder_cut = raffle.fee_amount.multiply_ratio(FEE_SPLIT_BPS, FEE_SPLIT_DENOM);
-        let burn_cut = raffle.fee_amount.multiply_ratio(FEE_SPLIT_BPS, FEE_SPLIT_DENOM);
-        let mut treasury_cut = raffle.fee_amount.multiply_ratio(FEE_SPLIT_BPS, FEE_SPLIT_DENOM);
-        let allocated = founder_cut + burn_cut + treasury_cut;
-        treasury_cut += raffle.fee_amount.checked_sub(allocated).unwrap_or_default();
+        let treasury_cut = raffle.fee_amount.checked_sub(founder_cut).unwrap_or_default();
 
         for (addr, amount) in [
             (&config.founder_fee_address, founder_cut),
             (&config.treasury_address, treasury_cut),
-            (&config.burn_address, burn_cut),
         ] {
             if !amount.is_zero() {
                 messages.push(
                     BankMsg::Send {
                         to_address: addr.to_string(),
                         amount: vec![Coin {
-                            denom: config.ustc_denom.clone(),
+                            denom: config.usdc_denom.clone(),
                             amount,
                         }],
                     }
@@ -518,7 +546,7 @@ pub fn execute_cancel_raffle(deps: DepsMut, info: MessageInfo) -> Result<Respons
             BankMsg::Send {
                 to_address: config.creator.to_string(),
                 amount: vec![Coin {
-                    denom: config.ustc_denom.clone(),
+                    denom: config.usdc_denom.clone(),
                     amount: raffle.fee_amount,
                 }],
             }

@@ -52,15 +52,17 @@ pub struct Config {
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
-    pub fee_reference_usd_micros: Uint128,
-    pub ustc_denom: String,
-    pub lunc_denom: String,
+    /// Fixed service fee, in USDC micros - charged directly in USDC (no
+    /// price-oracle conversion needed, since USDC is already dollar-pegged).
+    pub fee_amount_usdc: Uint128,
     pub usdc_denom: String,
-    pub ustc_lunc_pool: Addr,
-    pub lunc_usdc_pool: Addr,
     pub founder_fee_address: Addr,
     pub treasury_address: Addr,
-    pub burn_address: Addr,
+    /// Winner count and prize split for `RaffleType::Podium`, in basis points
+    /// (10000 = 100%), one entry per place in order (1st, 2nd, ...). Chosen by
+    /// the creator at instantiate time; must sum to exactly 10000. Empty for
+    /// non-Podium raffle types.
+    pub podium_shares_bps: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -70,7 +72,7 @@ pub struct RaffleState {
     pub unique_players: Vec<Addr>,
     pub ticket_revenue: Uint128,
     pub prize_amount: Uint128,
-    /// USTC service fee, quoted and held at `DepositPrize`/`PayServiceFee` time;
+    /// USDC service fee, held at `DepositPrize`/`PayServiceFee` time;
     /// distributed at `DrawWinner`, refunded to the creator at `CancelRaffle`.
     pub fee_amount: Uint128,
     pub fee_paid: bool,
@@ -78,8 +80,9 @@ pub struct RaffleState {
     pub closed_at: Option<Timestamp>,
     pub draw_after_height: Option<u64>,
     pub drawn_at: Option<Timestamp>,
-    /// 1 entry for SingleWinner, 3 for Podium (1st/2nd/3rd, in order), empty
-    /// for Airdrop (uses `airdrop_share` + `AIRDROP_CLAIMS` instead).
+    /// 1 entry for SingleWinner, `podium_shares_bps.len()` for Podium (in
+    /// place order), empty for Airdrop (uses `airdrop_share` +
+    /// `AIRDROP_CLAIMS` instead).
     pub winners: Vec<Addr>,
     pub prize_shares: Vec<Uint128>,
     pub airdrop_share: Uint128,

@@ -12,8 +12,20 @@ pub enum ContractError {
     #[error("This wallet is not in the allowlist for this raffle")]
     NotAllowed {},
 
-    #[error("Podium raffles need at least 3 min_players")]
-    PodiumNeedsThreePlayers {},
+    #[error("Podium raffles need min_players >= the number of podium places ({needed})")]
+    PodiumNeedsMorePlayers { needed: u32 },
+
+    #[error("podium_shares_bps must be non-empty and sum to exactly 10000 (100%)")]
+    InvalidPodiumShares {},
+
+    #[error("podium_shares_bps must be empty for non-Podium raffle types")]
+    PodiumSharesNotApplicable {},
+
+    #[error("Airdrop raffles support at most 1000 max_players (see the fee tier schedule)")]
+    MaxPlayersExceedsAirdropFeeTiers {},
+
+    #[error("SingleWinner and Podium raffles support at most {max} max_players")]
+    MaxPlayersTooHighForRaffleType { max: u32 },
 
     #[error("Raffle is still waiting for DepositPrize")]
     StillFunding {},
@@ -84,9 +96,12 @@ pub enum ContractError {
     #[error("This raffle's prize is a native token - use DepositPrize instead of a CW20 Send")]
     PrizeIsNative {},
 
-    #[error("Call PayServiceFee first: the prize denom matches the USTC fee denom (or the prize is CW20), so they can't be combined in a single call")]
+    #[error("Call PayServiceFee first: the prize denom matches the USDC fee denom (or the prize is CW20), so they can't be combined in a single call")]
     MustPayServiceFeeSeparately {},
 
     #[error("This wallet already holds the maximum of {max_per_wallet} tickets allowed for this raffle")]
     TicketCapExceeded { max_per_wallet: u32 },
+
+    #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd be stuck in the contract with no way to recover them")]
+    UnexpectedFundsAttached { denom: String },
 }

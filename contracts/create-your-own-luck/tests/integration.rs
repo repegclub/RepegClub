@@ -1,8 +1,5 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{
-    coin, coins, from_json, to_json_binary, ContractResult, CosmosMsg, SystemResult, Uint128,
-    WasmMsg, WasmQuery,
-};
+use cosmwasm_std::{coin, coins, from_json, to_json_binary, CosmosMsg, Uint128, WasmMsg};
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 use create_your_own_luck::contract::{execute, instantiate, query};
@@ -15,14 +12,8 @@ use create_your_own_luck::ContractError;
 
 const TICKET_DENOM: &str = "uusdc";
 const PRIZE_DENOM: &str = "unft"; // stand-in native "prize" denom for tests
-const USTC_DENOM: &str = "uustc";
-const LUNC_DENOM: &str = "uluna";
-const USDC_DENOM: &str = "uusdc_dex"; // deliberately distinct from ticket denom in these tests
-const USTC_LUNC_POOL: &str = "ustclunc_pool";
-const LUNC_USDC_POOL: &str = "luncusdc_pool";
-const FEE_REFERENCE_USD_MICROS: u128 = 3_000_000; // "$3"
-// With the mock reserves below, required USTC = fee_reference * 4 (see test file header math).
-const EXPECTED_FEE: u128 = FEE_REFERENCE_USD_MICROS * 4;
+const USDC_DENOM: &str = "utestusdc"; // must match the hardcoded USDC_DENOM constant in contract.rs
+const FEE_AMOUNT_USDC: u128 = 3_000_000; // "$3", charged directly - no oracle conversion anymore
 
 type Deps = cosmwasm_std::OwnedDeps<
     cosmwasm_std::testing::MockStorage,
@@ -30,40 +21,14 @@ type Deps = cosmwasm_std::OwnedDeps<
     cosmwasm_std::testing::MockQuerier,
 >;
 
-fn pool_response_json(assets: &[(&str, u128)]) -> cosmwasm_std::Binary {
-    let assets_json: Vec<serde_json::Value> = assets
-        .iter()
-        .map(|(denom, amount)| {
-            serde_json::json!({
-                "info": { "native_token": { "denom": denom } },
-                "amount": amount.to_string(),
-            })
-        })
-        .collect();
-    let body = serde_json::json!({ "assets": assets_json, "total_share": "0" });
-    to_json_binary(&body).unwrap()
-}
-
-fn setup_with_mock_dex(raffle_type: RaffleType, min_players: u32, max_players: u32, ticket_price: u128) -> (Deps, cosmwasm_std::Env) {
+fn setup(
+    raffle_type: RaffleType,
+    min_players: u32,
+    max_players: u32,
+    ticket_price: u128,
+    podium_shares_bps: Vec<u32>,
+) -> (Deps, cosmwasm_std::Env) {
     let mut deps = mock_dependencies();
-    deps.querier.update_wasm(|query| match query {
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == USTC_LUNC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[
-                (USTC_DENOM, 2_000_000),
-                (LUNC_DENOM, 1_000_000),
-            ])))
-        }
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == LUNC_USDC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[
-                (LUNC_DENOM, 1_000_000),
-                (USDC_DENOM, 500_000),
-            ])))
-        }
-        _ => SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
-            kind: "unmocked wasm query".to_string(),
-        }),
-    });
-
     let env = mock_env();
     let msg = InstantiateMsg {
         raffle_type,
@@ -78,15 +43,7 @@ fn setup_with_mock_dex(raffle_type: RaffleType, min_players: u32, max_players: u
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_reference_usd_micros: Uint128::new(FEE_REFERENCE_USD_MICROS),
-        ustc_denom: USTC_DENOM.to_string(),
-        lunc_denom: LUNC_DENOM.to_string(),
-        usdc_denom: USDC_DENOM.to_string(),
-        ustc_lunc_pool: USTC_LUNC_POOL.to_string(),
-        lunc_usdc_pool: LUNC_USDC_POOL.to_string(),
-        founder_fee_address: "founder".to_string(),
-        treasury_address: "treasury".to_string(),
-        burn_address: "burn".to_string(),
+        podium_shares_bps,
     };
     instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
     (deps, env)
@@ -94,7 +51,7 @@ fn setup_with_mock_dex(raffle_type: RaffleType, min_players: u32, max_players: u
 
 fn deposit_prize(deps: &mut Deps, env: &cosmwasm_std::Env, prize_amount: u128, fee_sent: u128) -> Result<cosmwasm_std::Response, ContractError> {
     let mut funds = coins(prize_amount, PRIZE_DENOM);
-    funds.push(cosmwasm_std::coin(fee_sent, USTC_DENOM));
+    funds.push(cosmwasm_std::coin(fee_sent, USDC_DENOM));
     execute(
         deps.as_mut(),
         env.clone(),
@@ -114,7 +71,7 @@ fn raffle_status(deps: &Deps, env: &cosmwasm_std::Env) -> RaffleStatusResponse {
 }
 
 #[test]
-fn podium_requires_at_least_three_min_players() {
+fn podium_needs_min_players_covering_all_places() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
@@ -130,32 +87,221 @@ fn podium_requires_at_least_three_min_players() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_reference_usd_micros: Uint128::new(FEE_REFERENCE_USD_MICROS),
-        ustc_denom: USTC_DENOM.to_string(),
-        lunc_denom: LUNC_DENOM.to_string(),
-        usdc_denom: USDC_DENOM.to_string(),
-        ustc_lunc_pool: USTC_LUNC_POOL.to_string(),
-        lunc_usdc_pool: LUNC_USDC_POOL.to_string(),
-        founder_fee_address: "founder".to_string(),
-        treasury_address: "treasury".to_string(),
-        burn_address: "burn".to_string(),
+        podium_shares_bps: vec![5000, 3000, 2000], // 3 places, but min_players is only 2
     };
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
-    assert!(matches!(err, ContractError::PodiumNeedsThreePlayers {}));
+    assert!(matches!(err, ContractError::PodiumNeedsMorePlayers { needed: 3 }));
 }
 
 #[test]
-fn deposit_prize_quotes_the_dex_fee_and_refunds_overpayment() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 0);
+fn podium_shares_must_sum_to_10000() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 3,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![5000, 3000, 1000], // sums to 9000, not 10000
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidPodiumShares {}));
+}
 
-    let err = deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE - 1).unwrap_err();
+#[test]
+fn podium_shares_reject_a_zero_percent_place() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![10_000, 0], // sums to 10000, but a 0% "winner" is deceptive
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidPodiumShares {}));
+}
+
+#[test]
+fn podium_shares_reject_too_many_places() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    // 11 places (1 more than MAX_PODIUM_PLACES), summing to exactly 10000 so
+    // the place-count cap is the only reason this is rejected.
+    let mut too_many = vec![910u32; 10];
+    too_many.push(900);
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 11,
+        max_players: 15,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: too_many,
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidPodiumShares {}));
+}
+
+#[test]
+fn podium_shares_rejected_for_non_podium_raffle() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![10_000], // not applicable - raffle_type isn't Podium
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::PodiumSharesNotApplicable {}));
+}
+
+#[test]
+fn airdrop_fee_scales_by_max_players_tier() {
+    let cases = [
+        (100u32, 3_000_000u128),
+        (300, 7_000_000),
+        (600, 12_000_000),
+        (1000, 18_000_000),
+    ];
+    for (max_players, expected_fee) in cases {
+        let (deps, env) = setup(RaffleType::Airdrop, 2, max_players, 0, vec![]);
+        let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+        let config: ConfigResponse = from_json(bin).unwrap();
+        assert_eq!(
+            config.fee_amount_usdc,
+            Uint128::new(expected_fee),
+            "max_players={max_players} should charge {expected_fee}"
+        );
+    }
+}
+
+#[test]
+fn airdrop_rejects_max_players_over_the_last_fee_tier() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Airdrop,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 1001,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersExceedsAirdropFeeTiers {}));
+}
+
+#[test]
+fn single_winner_and_podium_reject_max_players_over_100() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 101,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
+
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 3,
+        max_players: 101,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![5000, 3000, 2000],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
+}
+
+#[test]
+fn single_winner_and_podium_always_charge_the_flat_fee_regardless_of_max_players() {
+    // 100 is the max max_players allowed for these two raffle types (see
+    // MAX_PLAYERS_SINGLE_WINNER_PODIUM).
+    let (deps, env) = setup(RaffleType::SingleWinner, 2, 100, 0, vec![]);
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
+
+    let (deps, env) = setup(RaffleType::Podium, 10, 100, 0, vec![5000, 3000, 2000]);
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
+}
+
+#[test]
+fn deposit_prize_charges_the_fixed_usdc_fee_and_refunds_overpayment() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
+
+    let err = deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC - 1).unwrap_err();
     assert!(matches!(err, ContractError::WrongFeePayment { .. }));
 
-    let res = deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE + 500).unwrap();
+    let res = deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC + 500).unwrap();
     assert_eq!(res.messages.len(), 1); // refund of the 500 overpayment
     if let CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) = &res.messages[0].msg {
         assert_eq!(to_address, "creator");
-        assert_eq!(amount, &coins(500, USTC_DENOM));
+        assert_eq!(amount, &coins(500, USDC_DENOM));
     } else {
         panic!("expected a refund BankMsg::Send");
     }
@@ -167,7 +313,7 @@ fn deposit_prize_quotes_the_dex_fee_and_refunds_overpayment() {
 
 #[test]
 fn only_creator_can_deposit_prize_and_only_once() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 0);
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
     let err = execute(
         deps.as_mut(),
         env.clone(),
@@ -177,15 +323,15 @@ fn only_creator_can_deposit_prize_and_only_once() {
     .unwrap_err();
     assert!(matches!(err, ContractError::Unauthorized {}));
 
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
-    let err = deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap_err();
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    let err = deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap_err();
     assert!(matches!(err, ContractError::AlreadyFunded {}));
 }
 
 #[test]
 fn free_ticket_raffle_lets_anyone_enter_without_funds() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 0);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
 
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     let res = buy_ticket(&mut deps, &env, "player2", 0).unwrap();
@@ -199,15 +345,6 @@ fn free_ticket_raffle_lets_anyone_enter_without_funds() {
 #[test]
 fn allowlist_rejects_wallets_not_on_the_list() {
     let mut deps = mock_dependencies();
-    deps.querier.update_wasm(|query| match query {
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == USTC_LUNC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[(USTC_DENOM, 2_000_000), (LUNC_DENOM, 1_000_000)])))
-        }
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == LUNC_USDC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[(LUNC_DENOM, 1_000_000), (USDC_DENOM, 500_000)])))
-        }
-        _ => SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest { kind: "unmocked".to_string() }),
-    });
     let env = mock_env();
     let msg = InstantiateMsg {
         raffle_type: RaffleType::SingleWinner,
@@ -222,18 +359,10 @@ fn allowlist_rejects_wallets_not_on_the_list() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_reference_usd_micros: Uint128::new(FEE_REFERENCE_USD_MICROS),
-        ustc_denom: USTC_DENOM.to_string(),
-        lunc_denom: LUNC_DENOM.to_string(),
-        usdc_denom: USDC_DENOM.to_string(),
-        ustc_lunc_pool: USTC_LUNC_POOL.to_string(),
-        lunc_usdc_pool: LUNC_USDC_POOL.to_string(),
-        founder_fee_address: "founder".to_string(),
-        treasury_address: "treasury".to_string(),
-        burn_address: "burn".to_string(),
+        podium_shares_bps: vec![],
     };
     instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
 
     let err = buy_ticket(&mut deps, &env, "not-allowed", 0).unwrap_err();
     assert!(matches!(err, ContractError::NotAllowed {}));
@@ -242,8 +371,8 @@ fn allowlist_rejects_wallets_not_on_the_list() {
 
 #[test]
 fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 100);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 100).unwrap();
     buy_ticket(&mut deps, &env, "player2", 100).unwrap();
 
@@ -251,8 +380,23 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
     later_env.block.height += 5;
     let res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
-    // 1 prize payout + 1 ticket-revenue-to-creator + 3 fee-split payouts = 5
-    assert_eq!(res.messages.len(), 5);
+    // 1 prize payout + 1 ticket-revenue-to-creator + 2 fee-split payouts (founder/treasury) = 4
+    assert_eq!(res.messages.len(), 4);
+
+    let config_bin = query(deps.as_ref(), later_env.clone(), QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(config_bin).unwrap();
+    for (recipient, expected) in [
+        (&config.founder_fee_address, 1_500_000u128),
+        (&config.treasury_address, 1_500_000u128),
+    ] {
+        let sent = res.messages.iter().find_map(|m| match &m.msg {
+            CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) if to_address == recipient.as_str() => {
+                Some(amount.clone())
+            }
+            _ => None,
+        });
+        assert_eq!(sent, Some(coins(expected, USDC_DENOM)), "expected {expected} to {recipient}");
+    }
 
     let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -262,8 +406,8 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
 
 #[test]
 fn draw_winner_past_the_window_rearms_instead_of_drawing() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 2, 100);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 100).unwrap();
     buy_ticket(&mut deps, &env, "player2", 100).unwrap(); // auto-closes, draw_after_height = height + 5, window width 10
 
@@ -291,9 +435,9 @@ fn draw_winner_past_the_window_rearms_instead_of_drawing() {
 }
 
 #[test]
-fn podium_picks_three_distinct_winners_split_50_30_20() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::Podium, 3, 3, 0);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+fn podium_picks_three_distinct_winners_with_creator_chosen_50_30_20_split() {
+    let (mut deps, env) = setup(RaffleType::Podium, 3, 3, 0, vec![5000, 3000, 2000]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
     buy_ticket(&mut deps, &env, "player3", 0).unwrap();
@@ -311,9 +455,50 @@ fn podium_picks_three_distinct_winners_split_50_30_20() {
 }
 
 #[test]
+fn podium_supports_two_places_with_a_custom_split() {
+    let (mut deps, env) = setup(RaffleType::Podium, 2, 2, 0, vec![6000, 4000]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+
+    let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
+    let winners: WinnersResponse = from_json(winners_bin).unwrap();
+    assert_eq!(winners.winners.len(), 2);
+    assert_eq!(winners.prize_shares, vec![Uint128::new(600), Uint128::new(400)]);
+}
+
+#[test]
+fn podium_supports_more_than_three_places_and_rounds_dust_to_first_place() {
+    let (mut deps, env) = setup(RaffleType::Podium, 4, 4, 0, vec![3334, 2222, 2222, 2222]);
+    deposit_prize(&mut deps, &env, 100, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player4", 0).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+
+    let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
+    let winners: WinnersResponse = from_json(winners_bin).unwrap();
+    assert_eq!(winners.winners.len(), 4);
+    // 100 * 3334/10000 = 33 (floor), 100 * 2222/10000 = 22 (floor) x3 -> 99
+    // allocated, the 1 leftover unit of dust goes to first place.
+    assert_eq!(
+        winners.prize_shares,
+        vec![Uint128::new(34), Uint128::new(22), Uint128::new(22), Uint128::new(22)]
+    );
+}
+
+#[test]
 fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::Airdrop, 2, 2, 0);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
 
@@ -321,8 +506,8 @@ fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
     later_env.block.height += 5;
     let res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
     // no per-winner prize payout for Airdrop itself (that's pulled later via
-    // ClaimAirdropShare); the 3 messages here are the founder/treasury/burn fee split.
-    assert_eq!(res.messages.len(), 3);
+    // ClaimAirdropShare); the 2 messages here are the founder/treasury fee split.
+    assert_eq!(res.messages.len(), 2);
 
     let share_bin = query(deps.as_ref(), later_env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
     let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
@@ -348,8 +533,8 @@ fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
 
 #[test]
 fn cancel_raffle_refunds_prize_fee_and_tickets() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 3, 100);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 100).unwrap();
 
     let res = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap();
@@ -362,12 +547,13 @@ fn cancel_raffle_refunds_prize_fee_and_tickets() {
 
 #[test]
 fn get_config_returns_the_instantiate_settings() {
-    let (deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 6, 0);
+    let (deps, env) = setup(RaffleType::SingleWinner, 2, 6, 0, vec![]);
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
     let config: ConfigResponse = from_json(bin).unwrap();
     assert_eq!(config.max_players, 6);
     assert_eq!(config.min_players, 2);
     assert_eq!(config.raffle_type, RaffleType::SingleWinner);
+    assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
 }
 
 fn instantiate_with_prize(
@@ -375,23 +561,6 @@ fn instantiate_with_prize(
     prize_cw20_address: Option<&str>,
 ) -> (Deps, cosmwasm_std::Env) {
     let mut deps = mock_dependencies();
-    deps.querier.update_wasm(|query| match query {
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == USTC_LUNC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[
-                (USTC_DENOM, 2_000_000),
-                (LUNC_DENOM, 1_000_000),
-            ])))
-        }
-        WasmQuery::Smart { contract_addr, .. } if contract_addr == LUNC_USDC_POOL => {
-            SystemResult::Ok(ContractResult::Ok(pool_response_json(&[
-                (LUNC_DENOM, 1_000_000),
-                (USDC_DENOM, 500_000),
-            ])))
-        }
-        _ => SystemResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
-            kind: "unmocked wasm query".to_string(),
-        }),
-    });
     let env = mock_env();
     let msg = InstantiateMsg {
         raffle_type: RaffleType::SingleWinner,
@@ -406,15 +575,7 @@ fn instantiate_with_prize(
         unclaimed_deadline_days: 90,
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
         prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
-        fee_reference_usd_micros: Uint128::new(FEE_REFERENCE_USD_MICROS),
-        ustc_denom: USTC_DENOM.to_string(),
-        lunc_denom: LUNC_DENOM.to_string(),
-        usdc_denom: USDC_DENOM.to_string(),
-        ustc_lunc_pool: USTC_LUNC_POOL.to_string(),
-        lunc_usdc_pool: LUNC_USDC_POOL.to_string(),
-        founder_fee_address: "founder".to_string(),
-        treasury_address: "treasury".to_string(),
-        burn_address: "burn".to_string(),
+        podium_shares_bps: vec![],
     };
     instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
     (deps, env)
@@ -452,7 +613,7 @@ fn cw20_prize_needs_pay_service_fee_then_the_cw20_send_hook() {
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("creator", &coins(EXPECTED_FEE, USTC_DENOM)),
+        mock_info("creator", &coins(FEE_AMOUNT_USDC, USDC_DENOM)),
         ExecuteMsg::PayServiceFee {},
     )
     .unwrap();
@@ -493,15 +654,15 @@ fn cw20_prize_needs_pay_service_fee_then_the_cw20_send_hook() {
 }
 
 #[test]
-fn native_prize_same_denom_as_ustc_fee_needs_pay_service_fee_first() {
-    let (mut deps, env) = instantiate_with_prize(Some(USTC_DENOM), None);
+fn native_prize_same_denom_as_usdc_fee_needs_pay_service_fee_first() {
+    let (mut deps, env) = instantiate_with_prize(Some(USDC_DENOM), None);
 
     // Sending prize + fee combined in one DepositPrize call can't work here -
-    // there'd be no way to tell how much of the single uustc coin is which.
+    // there'd be no way to tell how much of the single coin is which.
     let err = execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("creator", &[coin(1000, USTC_DENOM)]),
+        mock_info("creator", &[coin(1000, USDC_DENOM)]),
         ExecuteMsg::DepositPrize {},
     )
     .unwrap_err();
@@ -510,7 +671,7 @@ fn native_prize_same_denom_as_ustc_fee_needs_pay_service_fee_first() {
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("creator", &coins(EXPECTED_FEE, USTC_DENOM)),
+        mock_info("creator", &coins(FEE_AMOUNT_USDC, USDC_DENOM)),
         ExecuteMsg::PayServiceFee {},
     )
     .unwrap();
@@ -518,7 +679,7 @@ fn native_prize_same_denom_as_ustc_fee_needs_pay_service_fee_first() {
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("creator", &coins(1000, USTC_DENOM)),
+        mock_info("creator", &coins(1000, USDC_DENOM)),
         ExecuteMsg::DepositPrize {},
     )
     .unwrap();
@@ -546,15 +707,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
         unclaimed_deadline_days: 90,
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
-        fee_reference_usd_micros: Uint128::new(FEE_REFERENCE_USD_MICROS),
-        ustc_denom: USTC_DENOM.to_string(),
-        lunc_denom: LUNC_DENOM.to_string(),
-        usdc_denom: USDC_DENOM.to_string(),
-        ustc_lunc_pool: USTC_LUNC_POOL.to_string(),
-        lunc_usdc_pool: LUNC_USDC_POOL.to_string(),
-        founder_fee_address: "founder".to_string(),
-        treasury_address: "treasury".to_string(),
-        burn_address: "burn".to_string(),
+        podium_shares_bps: vec![],
     };
 
     let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0, 5)).unwrap_err();
@@ -566,12 +719,22 @@ fn instantiate_rejects_degenerate_player_bounds() {
 
 #[test]
 fn ticket_cap_per_wallet_is_half_of_max_players_minimum_one() {
-    let (mut deps, env) = setup_with_mock_dex(RaffleType::SingleWinner, 2, 4, 0);
-    deposit_prize(&mut deps, &env, 1000, EXPECTED_FEE).unwrap();
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 4, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
 
     // max_players=4 -> cap = max(1, 4/2) = 2.
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     let err = buy_ticket(&mut deps, &env, "player1", 0).unwrap_err();
     assert!(matches!(err, ContractError::TicketCapExceeded { max_per_wallet: 2 }));
+}
+
+#[test]
+fn airdrop_caps_at_one_ticket_per_wallet_regardless_of_max_players() {
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 1000, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, 18_000_000).unwrap();
+
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    let err = buy_ticket(&mut deps, &env, "player1", 0).unwrap_err();
+    assert!(matches!(err, ContractError::TicketCapExceeded { max_per_wallet: 1 }));
 }
