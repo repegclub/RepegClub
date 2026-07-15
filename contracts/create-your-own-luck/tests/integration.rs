@@ -253,6 +253,26 @@ fn single_winner_and_podium_reject_max_players_over_100() {
     };
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
     assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
+
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::Podium,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 3,
+        max_players: 101,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![5000, 3000, 2000],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
 }
 
 #[test]
