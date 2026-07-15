@@ -39,6 +39,21 @@ const AIRDROP_FEE_TIERS_USDC: [(u32, u128); 4] = [
     (1000, 18_000_000), // "$18"
 ];
 
+/// Platform fee-recipient addresses, hardcoded (not creator-supplied) so a
+/// raffle creator can never redirect the service fee to their own wallet.
+/// Same addresses used platform-wide for Wheel Manager/Weekly Round's
+/// admin_fee_address/treasury_address (see scripts/testnet/src/config.ts) -
+/// one founder-fee wallet for the whole platform, not one per product.
+/// Testnet values today; swap for the real mainnet addresses (and
+/// USDC_DENOM below) in the final production redeploy, same as every other
+/// contract in this project.
+const FOUNDER_FEE_ADDRESS: &str = "terra15dv0f2rykyp6gyvuhawk8qgfd7ypm4lgkm4z39";
+const TREASURY_ADDRESS: &str = "terra1juzyema7r4gvrrvrkkznceyeyhfkdj6zvz20fd";
+/// Hardcoded for the same reason - a creator-chosen denom could be a
+/// worthless token dressed up as "USDC", satisfying the fee amount check
+/// without paying anything of real value.
+const USDC_DENOM: &str = "utestusdc";
+
 /// Computes the required service fee on-chain from `raffle_type` (and, for
 /// Airdrop, `max_players`) instead of trusting a creator-supplied amount -
 /// closes off a creator quietly setting their own fee to near-zero.
@@ -117,9 +132,9 @@ pub fn instantiate(
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         prize_asset,
         fee_amount_usdc,
-        usdc_denom: msg.usdc_denom,
-        founder_fee_address: deps.api.addr_validate(&msg.founder_fee_address)?,
-        treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
+        usdc_denom: USDC_DENOM.to_string(),
+        founder_fee_address: deps.api.addr_validate(FOUNDER_FEE_ADDRESS)?,
+        treasury_address: deps.api.addr_validate(TREASURY_ADDRESS)?,
         podium_shares_bps: msg.podium_shares_bps,
     };
     CONFIG.save(deps.storage, &config)?;

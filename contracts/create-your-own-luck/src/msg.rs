@@ -4,6 +4,10 @@ use cw20::Cw20ReceiveMsg;
 
 use crate::state::{PrizeAsset, RaffleStatus, RaffleType};
 
+/// The service fee amount, USDC denom, and founder/treasury addresses are
+/// deliberately NOT fields here - they're hardcoded platform constants in
+/// contract.rs, computed/fixed rather than creator-supplied, so a raffle
+/// creator can never redirect the fee or pay it in a fake token.
 #[cw_serde]
 pub struct InstantiateMsg {
     pub raffle_type: RaffleType,
@@ -21,12 +25,6 @@ pub struct InstantiateMsg {
     /// the CW20 token's own `Send` to this contract).
     pub prize_native_denom: Option<String>,
     pub prize_cw20_address: Option<String>,
-    /// Not creator-supplied - the service fee is computed on-chain from
-    /// `raffle_type` (and `max_players` for Airdrop). See `required_fee_usdc`
-    /// in contract.rs.
-    pub usdc_denom: String,
-    pub founder_fee_address: String,
-    pub treasury_address: String,
     /// Required (and must sum to 10000) when `raffle_type` is `Podium`; must
     /// be empty otherwise. See `Config::podium_shares_bps`.
     pub podium_shares_bps: Vec<u32>,
@@ -112,5 +110,8 @@ pub struct ConfigResponse {
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
     pub fee_amount_usdc: Uint128,
+    pub usdc_denom: String,
+    pub founder_fee_address: Addr,
+    pub treasury_address: Addr,
     pub podium_shares_bps: Vec<u32>,
 }

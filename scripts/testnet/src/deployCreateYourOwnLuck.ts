@@ -12,8 +12,8 @@ const WASM_PATH = path.resolve(
 );
 
 // node src/deployCreateYourOwnLuck.ts <label> <raffleType> <minPlayers> <maxPlayers> <ticketPrice> [podiumSharesBps]
-// podiumSharesBps: comma-separated basis points summing to 10000, e.g.
-// "5000,3000,2000" for a 50/30/20 podium of 3. Required (and only valid) when
+// podiumSharesBps: optional, comma-separated basis points summing to 10000,
+// e.g. "5000,3000,2000" for a 50/30/20 podium of 3. Only valid when
 // raffleType is Podium - defaults to 50/30/20 if omitted for a Podium raffle.
 const [, , label, raffleType, minPlayersArg, maxPlayersArg, ticketPriceArg, podiumSharesArg] = process.argv;
 if (!label || !raffleType || !minPlayersArg || !maxPlayersArg || !ticketPriceArg) {
@@ -22,11 +22,24 @@ if (!label || !raffleType || !minPlayersArg || !maxPlayersArg || !ticketPriceArg
   );
   process.exit(1);
 }
+if (!["SingleWinner", "Podium", "Airdrop"].includes(raffleType)) {
+  throw new Error(`Invalid raffle type: ${raffleType} (expected SingleWinner, Podium, or Airdrop)`);
+}
+if (podiumSharesArg && raffleType !== "Podium") {
+  throw new Error("podiumSharesBps is only valid for Podium raffles");
+}
 const podiumSharesBps = podiumSharesArg
   ? podiumSharesArg.split(",").map(Number)
   : raffleType === "Podium"
     ? [5000, 3000, 2000]
     : [];
+if (raffleType === "Podium") {
+  const sum = podiumSharesBps.reduce((total, share) => total + share, 0);
+  const allValid = podiumSharesBps.every((share) => Number.isInteger(share) && share > 0);
+  if (podiumSharesBps.length === 0 || podiumSharesBps.length > 10 || !allValid || sum !== 10_000) {
+    throw new Error("podiumSharesBps must be 1-10 positive integers summing to exactly 10000");
+  }
+}
 const deploymentPath = path.resolve(__dirname, `../deployment-cyol-${label}.json`);
 
 async function main() {
@@ -65,9 +78,6 @@ async function main() {
           unclaimed_deadline_days: 90,
           prize_native_denom: "uluna",
           prize_cw20_address: null,
-          usdc_denom: "utestusdc",
-          founder_fee_address: admin.address,
-          treasury_address: admin.address,
           podium_shares_bps: podiumSharesBps,
         },
         funds: [],

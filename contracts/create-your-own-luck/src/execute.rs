@@ -12,6 +12,20 @@ use crate::state::{PrizeAsset, RaffleStatus, RaffleType, AIRDROP_CLAIMS, CONFIG,
 const FEE_SPLIT_BPS: u128 = 5000; // 50/50 founder/treasury, dust to treasury (see draw_winner)
 const FEE_SPLIT_DENOM: u128 = 10000;
 
+/// Rejects any attached coin whose denom isn't in `allowed` - otherwise an
+/// unrelated coin sent by mistake (wrong wallet UI, fat-fingered denom) would
+/// be silently absorbed by the contract with no sweep mechanism to recover it.
+fn reject_unexpected_funds(funds: &[Coin], allowed: &[&str]) -> Result<(), ContractError> {
+    for coin in funds {
+        if !allowed.contains(&coin.denom.as_str()) {
+            return Err(ContractError::UnexpectedFundsAttached {
+                denom: coin.denom.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn prize_transfer_msg(prize_asset: &PrizeAsset, recipient: &Addr, amount: Uint128) -> CosmosMsg {
     match prize_asset {
         PrizeAsset::Native { denom } => BankMsg::Send {
@@ -63,6 +77,7 @@ pub fn execute_pay_service_fee(deps: DepsMut, info: MessageInfo) -> Result<Respo
         return Err(ContractError::AlreadyFunded {});
     }
 
+    reject_unexpected_funds(&info.funds, &[&config.usdc_denom])?;
     let sent_usdc = info
         .funds
         .iter()
@@ -109,6 +124,12 @@ pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
     }
     if raffle.status != RaffleStatus::Funding {
         return Err(ContractError::AlreadyFunded {});
+    }
+
+    if raffle.fee_paid {
+        reject_unexpected_funds(&info.funds, &[&native_denom])?;
+    } else {
+        reject_unexpected_funds(&info.funds, &[&native_denom, &config.usdc_denom])?;
     }
 
     let prize_sent = info
@@ -208,15 +229,26 @@ pub fn execute_receive(deps: DepsMut, env: Env, info: MessageInfo, wrapper: Cw20
     }
 }
 
-/// No single wallet may hold more than half of a raffle's `max_players` worth
-/// of tickets - bounds the worst-case size of `entrants` (so `DrawWinner`'s
-/// winner-picking hash can never grow unbounded) while still leaving room for
-/// the weighted-odds "buy more, better chances" feature. Applies even to free
-/// (ticket_price = 0) raffles, since the concern is entrants-list size, not
-/// payment. Not a separate config field on purpose - always derived from
-/// `max_players`.
-pub fn max_tickets_per_wallet(max_players: u32) -> u32 {
-    std::cmp::max(1, max_players / 2)
+/// Bounds how many tickets a single wallet may hold. For SingleWinner/Podium,
+/// no more than half of `max_players` worth - bounds the worst-case size of
+/// `entrants` (so `DrawWinner`'s winner-picking hash can never grow
+/// unbounded) while still leaving room for the weighted-odds "buy more,
+/// better chances" feature. Applies even to free (ticket_price = 0) raffles,
+/// since the concern is entrants-list size, not payment.
+///
+/// Airdrop is capped at exactly 1 per wallet instead - CodeRabbit review
+/// (2026-07-15) flagged that at the top fee tier (max_players up to 1000),
+/// the SingleWinner/Podium formula would allow up to 500 tickets per wallet,
+/// so `entrants` could reach 500,000 - and `CancelRaffle` scans
+/// `unique_players x entrants` refunding everyone in a single transaction
+/// (unlike Wheel Manager's pull-based ReclaimTicket), which could exceed
+/// block gas and strand the raffle `Closed` forever. Airdrop splits equally
+/// per unique player anyway, so extra tickets per wallet buy nothing.
+pub fn max_tickets_per_wallet(raffle_type: RaffleType, max_players: u32) -> u32 {
+    match raffle_type {
+        RaffleType::Airdrop => 1,
+        RaffleType::SingleWinner | RaffleType::Podium => std::cmp::max(1, max_players / 2),
+    }
 }
 
 pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
@@ -232,7 +264,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         }
     }
 
-    let cap = max_tickets_per_wallet(config.max_players);
+    let cap = max_tickets_per_wallet(config.raffle_type, config.max_players);
     let already_bought = raffle.entrants.iter().filter(|e| **e == info.sender).count() as u32;
     if already_bought >= cap {
         return Err(ContractError::TicketCapExceeded { max_per_wallet: cap });

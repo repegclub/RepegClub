@@ -77,6 +77,9 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         unclaimed_deadline_days: config.unclaimed_deadline_days,
         prize_asset: config.prize_asset,
         fee_amount_usdc: config.fee_amount_usdc,
+        usdc_denom: config.usdc_denom,
+        founder_fee_address: config.founder_fee_address,
+        treasury_address: config.treasury_address,
         podium_shares_bps: config.podium_shares_bps,
     })
 }

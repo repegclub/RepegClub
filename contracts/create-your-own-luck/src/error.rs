@@ -98,4 +98,7 @@ pub enum ContractError {
 
     #[error("This wallet already holds the maximum of {max_per_wallet} tickets allowed for this raffle")]
     TicketCapExceeded { max_per_wallet: u32 },
+
+    #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd be stuck in the contract with no way to recover them")]
+    UnexpectedFundsAttached { denom: String },
 }
