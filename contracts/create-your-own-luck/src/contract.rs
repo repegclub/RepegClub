@@ -12,12 +12,16 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, PrizeAsset, RaffleState, RaffleStatus, RaffleType, CONFIG, RAFFLE};
 
-/// Hard ceiling on `podium_shares_bps.len()`. Without this, a raffle with an
-/// unbounded number of places would do O(places x entrants) hashing and emit
-/// one BankMsg::Send per place inside a single `DrawWinner` call - if that
-/// ever exceeded the block gas limit, the raffle would be stuck `Closed`
-/// forever (undrawable, and `CancelRaffle` is blocked once `Closed`).
-const MAX_PODIUM_PLACES: u32 = 20;
+/// Hard ceiling on `podium_shares_bps.len()`. Two reasons: (1) gas safety -
+/// without this, a raffle with an unbounded number of places would do
+/// O(places x entrants) hashing and emit one BankMsg::Send per place inside a
+/// single `DrawWinner` call, and if that ever exceeded the block gas limit
+/// the raffle would be stuck `Closed` forever (undrawable, and
+/// `CancelRaffle` is blocked once `Closed`); (2) product clarity - "Podium"
+/// is meant to be a handful of ranked prize tiers, distinct from `Airdrop`
+/// (equal split across every player). A high place count would blur that
+/// line into a disguised, cheaper Airdrop.
+const MAX_PODIUM_PLACES: u32 = 10;
 
 #[entry_point]
 pub fn instantiate(

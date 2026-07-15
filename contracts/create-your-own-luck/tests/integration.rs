@@ -159,17 +159,17 @@ fn podium_shares_reject_a_zero_percent_place() {
 fn podium_shares_reject_too_many_places() {
     let mut deps = mock_dependencies();
     let env = mock_env();
-    // 21 places (1 more than MAX_PODIUM_PLACES), summing to exactly 10000 so
+    // 11 places (1 more than MAX_PODIUM_PLACES), summing to exactly 10000 so
     // the place-count cap is the only reason this is rejected.
-    let mut too_many = vec![476u32; 20];
-    too_many.push(480);
+    let mut too_many = vec![910u32; 10];
+    too_many.push(900);
     let msg = InstantiateMsg {
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
         allowed_entrants: None,
-        min_players: 21,
-        max_players: 30,
+        min_players: 11,
+        max_players: 15,
         round_timeout_seconds: 3600,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
