@@ -233,13 +233,38 @@ fn airdrop_rejects_max_players_over_the_last_fee_tier() {
 }
 
 #[test]
+fn single_winner_and_podium_reject_max_players_over_100() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 101,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
+}
+
+#[test]
 fn single_winner_and_podium_always_charge_the_flat_fee_regardless_of_max_players() {
-    let (deps, env) = setup(RaffleType::SingleWinner, 2, 1000, 0, vec![]);
+    // 100 is the max max_players allowed for these two raffle types (see
+    // MAX_PLAYERS_SINGLE_WINNER_PODIUM).
+    let (deps, env) = setup(RaffleType::SingleWinner, 2, 100, 0, vec![]);
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
     let config: ConfigResponse = from_json(bin).unwrap();
     assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
 
-    let (deps, env) = setup(RaffleType::Podium, 10, 1000, 0, vec![5000, 3000, 2000]);
+    let (deps, env) = setup(RaffleType::Podium, 10, 100, 0, vec![5000, 3000, 2000]);
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
     let config: ConfigResponse = from_json(bin).unwrap();
     assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));

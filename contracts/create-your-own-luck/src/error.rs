@@ -24,6 +24,9 @@ pub enum ContractError {
     #[error("Airdrop raffles support at most 1000 max_players (see the fee tier schedule)")]
     MaxPlayersExceedsAirdropFeeTiers {},
 
+    #[error("SingleWinner and Podium raffles support at most {max} max_players")]
+    MaxPlayersTooHighForRaffleType { max: u32 },
+
     #[error("Raffle is still waiting for DepositPrize")]
     StillFunding {},
 

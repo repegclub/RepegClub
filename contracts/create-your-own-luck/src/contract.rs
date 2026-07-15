@@ -23,6 +23,17 @@ use crate::state::{Config, PrizeAsset, RaffleState, RaffleStatus, RaffleType, CO
 /// line into a disguised, cheaper Airdrop.
 const MAX_PODIUM_PLACES: u32 = 10;
 
+/// Hard ceiling on `max_players` for SingleWinner/Podium raffles. CodeRabbit
+/// review (2026-07-15) found that, unlike Airdrop (naturally capped at 1000
+/// by the fee tiers, and capped at 1 ticket/wallet), SingleWinner/Podium had
+/// no ceiling at all: with the max_tickets_per_wallet formula (max_players/2),
+/// entrants can reach max_players^2/2, and CancelRaffle's
+/// unique_players x entrants scan can reach roughly max_players^3/2 - at
+/// max_players=1000 that's ~500 million comparisons in one transaction.
+/// Capped at 100 (worst case ~500k, comfortably safe) - confirmed with the
+/// user 2026-07-15.
+const MAX_PLAYERS_SINGLE_WINNER_PODIUM: u32 = 100;
+
 /// Flat service fee (USDC micros) for SingleWinner and Podium raffles.
 const FLAT_FEE_USDC: u128 = 3_000_000; // "$3"
 
@@ -77,6 +88,11 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
+    }
+    if msg.raffle_type != RaffleType::Airdrop && msg.max_players > MAX_PLAYERS_SINGLE_WINNER_PODIUM {
+        return Err(ContractError::MaxPlayersTooHighForRaffleType {
+            max: MAX_PLAYERS_SINGLE_WINNER_PODIUM,
+        });
     }
     if msg.raffle_type == RaffleType::Podium {
         let places = msg.podium_shares_bps.len() as u32;
