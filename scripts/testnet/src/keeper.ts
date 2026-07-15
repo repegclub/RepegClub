@@ -50,11 +50,21 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
   ]);
 
   if (round.status === "open") {
+    // Matches wheel-manager's real execute_close_round condition (rolling
+    // `deadline`, reset on every ticket since 2026-07-10 - NOT a fixed
+    // opened_at + round_timeout_seconds window, that formula was replaced by
+    // the rolling redesign and left this keeper checking the wrong signal,
+    // found live 2026-07-15 spamming rejected CloseRound calls every tick).
+    // `reached_max` isn't checked here - BuyTicket already auto-closes the
+    // round the instant max_players is hit, so status never sits "open" with
+    // reached_max true waiting on this poll.
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const timeoutElapsed = nowSeconds >= round.opened_at + config.round_timeout_seconds;
     const hasMin = round.unique_player_count >= config.min_players;
-    if (timeoutElapsed && hasMin) {
-      console.log(`[${target.label}] round ${round.round_id} timed out with enough players - closing`);
+    const deadlinePassed = round.deadline !== null && nowSeconds >= round.deadline;
+    const hardCapPassed = nowSeconds >= round.opened_at + config.max_round_age_seconds;
+    if (deadlinePassed || (hasMin && hardCapPassed)) {
+      const reason = deadlinePassed ? "rolling deadline passed" : "hard cap reached with min players";
+      console.log(`[${target.label}] round ${round.round_id} eligible to close (${reason}) - closing`);
       await sendExecute(keeper, target.address, { close_round: {} });
     }
     return;
