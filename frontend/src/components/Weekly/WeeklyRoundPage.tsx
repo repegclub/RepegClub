@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import "../../styles/wheel.css";
 import "../../styles/weekly.css";
 import { WeeklyHeroSign } from "./WeeklyHeroSign";
@@ -9,6 +8,7 @@ import { WeeklyWheelCard } from "./WeeklyWheelCard";
 import { MyWeeklyWinningsPanel } from "./MyWeeklyWinningsPanel";
 import { EntrantsPanel } from "../Wheel/EntrantsPanel";
 import { FeedbackButton } from "../Wheel/FeedbackButton";
+import { GameSwitcher } from "../Shared/GameSwitcher";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
@@ -62,9 +62,6 @@ export function WeeklyRoundPage() {
       <div className="wallet-bar">
         <ConnectWalletButton />
         <WalletBalance denom={weekState.status === "loaded" ? weekState.config.redemption_denom : undefined} />
-        <Link to="/" className="history-open-btn">
-          {t("weekly.navLinkToWheel")}
-        </Link>
         <FeedbackButton />
         <AdminSweepButton
           adminAddress={weekState.status === "loaded" ? weekState.config.admin : undefined}
@@ -74,6 +71,8 @@ export function WeeklyRoundPage() {
       </div>
 
       <WeeklyHeroSign />
+
+      <GameSwitcher current="/weekly-round" />
 
       {weekState.status === "loaded" && (
         <WeeklyPoolBanner

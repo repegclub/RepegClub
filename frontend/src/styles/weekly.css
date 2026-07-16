@@ -49,13 +49,18 @@
   line-height: 1.5;
 }
 
-/* ---------- Cross-links between the two games ---------- */
-.weekly-jackpot-link {
-  display: block;
-  text-align: center;
+/* ---------- Cross-links between the games - same slot, same look, right
+   below the hero sign, on every game page. ---------- */
+.game-switcher {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
   max-width: 620px;
   margin: 0 auto 1.6rem;
-  padding: 0.7rem 1.2rem;
+}
+.game-switcher-chip {
+  padding: 0.6rem 1.3rem;
   border-radius: 999px;
   border: 1px solid var(--gold-dim);
   background: rgba(255,209,102,0.08);
@@ -65,9 +70,14 @@
   text-decoration: none;
   transition: background 0.15s, border-color 0.15s;
 }
-.weekly-jackpot-link:hover {
+a.game-switcher-chip:hover {
   background: rgba(255,209,102,0.16);
   border-color: var(--gold);
+}
+.game-switcher-chip.active {
+  background: rgba(255,209,102,0.18);
+  border-color: var(--gold);
+  cursor: default;
 }
 
 /* ---------- Pool breakdown - the "this is the big one" proof ---------- */
@@ -256,14 +266,14 @@ canvas#weekly-wheel {
   32%, 100% { background-position: 130% 130%; }
 }
 .weekly-hero-sign,
-.weekly-jackpot-link,
+.game-switcher-chip.active,
 .weekly-pool-banner,
 .weekly-wheel-card .prize-tag {
   position: relative;
   overflow: hidden;
 }
 .weekly-hero-sign::before,
-.weekly-jackpot-link::before,
+.game-switcher-chip.active::before,
 .weekly-pool-banner::before,
 .weekly-wheel-card .prize-tag::before {
   content: "";
@@ -280,6 +290,6 @@ canvas#weekly-wheel {
   animation: gold-sweep 8.5s ease-in-out infinite;
   pointer-events: none;
 }
-.weekly-jackpot-link::before { animation-duration: 10.5s; animation-delay: 1.6s; }
+.game-switcher-chip.active::before { animation-duration: 10.5s; animation-delay: 1.6s; }
 .weekly-pool-banner::before { animation-duration: 9.5s; animation-delay: 3.7s; }
 .weekly-wheel-card .prize-tag::before { animation-duration: 12s; animation-delay: 2.4s; }
