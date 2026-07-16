@@ -226,9 +226,11 @@
     "sweepDone": "Swept — sent to treasury.",
     "sweepFailed": "Sweep failed."
   },
+  "gameSwitcher": {
+    "wheelOfRepeg": "🎡 Wheel of Repeg",
+    "weeklyRound": "👑 Weekly Round"
+  },
   "weekly": {
-    "navLinkFromWheel": "👉 This round also feeds the Weekly Jackpot — see it grow",
-    "navLinkToWheel": "🎡 Play Wheel of Repeg",
     "heroTitle": "The Weekly Jackpot",
     "heroSubtitle": "One grand prize, all week — fed by every Wheel of Repeg round on the platform, on top of its own rising-price ticket sales.",
     "poolBreakdownTitle": "Where this pool comes from",
