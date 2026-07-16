@@ -30,9 +30,12 @@ export const WHEEL_MANAGER_ADDRESSES = [
 ];
 
 // Weekly Round is platform-wide (a single instance, not one per tier).
-// Deployed 2026-07-12 with the same WithdrawTicket/GetWalletStats additions
-// as Wheel Manager above. Not yet consumed by any round-specific UI (see
-// project notes - still pending its own live testnet validation through the
-// frontend), only queried here for the lifetime wallet-stats aggregation.
+// Redeployed 2026-07-15 for its own real frontend page: added GetWeekEntrants
+// (needed for the public verification panel, mirroring Wheel Manager's
+// GetRoundEntrants - the previous deployment had no way to independently
+// recompute a drawn week's winner) and production-shaped config
+// (round_duration_days 7, was 1 as a testing shortcut; draw_window_blocks 60,
+// same reasoning as Wheel Manager's 2026-07-15 redeploy; max_players 10,
+// matching the live $1 Wheel Manager tier).
 export const WEEKLY_ROUND_ADDRESS =
-  "terra1hanrgzfps8k5366neard2rgfev5ld9cxlu99qdxdfp00vc0eul5qqmf6ee";
+  "terra1cph62ylyt75wd0p2kmk7que0689d0nkraslf2405h2ej5adgafdsxj2hvh";

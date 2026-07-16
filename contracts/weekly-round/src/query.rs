@@ -2,8 +2,8 @@ use cosmwasm_std::{to_json_binary, Binary, Deps, Env, StdResult};
 
 use crate::execute::today_price;
 use crate::msg::{
-    ConfigResponse, MyWinningsResponse, QueryMsg, TodayPriceResponse, WalletStatsResponse,
-    WeekResponse, WinningEntry,
+    ConfigResponse, EntrantsResponse, MyWinningsResponse, QueryMsg, TodayPriceResponse,
+    WalletStatsResponse, WeekResponse, WinningEntry,
 };
 use crate::state::{Week, CONFIG, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WEEKS, WINNER_INDEX};
 
@@ -15,7 +15,15 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetMyWinnings { wallet } => to_json_binary(&query_my_winnings(deps, wallet)?),
         QueryMsg::GetConfig {} => to_json_binary(&query_config(deps)?),
         QueryMsg::GetWalletStats { wallet } => to_json_binary(&query_wallet_stats(deps, wallet)?),
+        QueryMsg::GetWeekEntrants { week_id } => to_json_binary(&query_week_entrants(deps, week_id)?),
     }
+}
+
+fn query_week_entrants(deps: Deps, week_id: u64) -> StdResult<EntrantsResponse> {
+    let week = WEEKS.load(deps.storage, week_id)?;
+    Ok(EntrantsResponse {
+        entrants: week.entrants,
+    })
 }
 
 fn week_to_response(week: Week, seconds_remaining: u64, price: cosmwasm_std::Uint128) -> WeekResponse {

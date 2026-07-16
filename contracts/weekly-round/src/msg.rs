@@ -71,6 +71,18 @@ pub enum QueryMsg {
     /// invested" / "how much USTC have I actually repegged" display.
     #[returns(WalletStatsResponse)]
     GetWalletStats { wallet: String },
+    /// Full ordered entrant list for a week (one entry per ticket, duplicates
+    /// for wallets that bought more than one) - mirrors Wheel Manager's
+    /// GetRoundEntrants. Needed to independently recompute a drawn week's
+    /// winner (see rand.rs) for the frontend's public verification panel;
+    /// GetWeekHistory alone only has the counts already there.
+    #[returns(EntrantsResponse)]
+    GetWeekEntrants { week_id: u64 },
+}
+
+#[cw_serde]
+pub struct EntrantsResponse {
+    pub entrants: Vec<Addr>,
 }
 
 #[cw_serde]
