@@ -30,9 +30,13 @@ export const WHEEL_MANAGER_ADDRESSES = [
 ];
 
 // Weekly Round is platform-wide (a single instance, not one per tier).
-// Deployed 2026-07-12 with the same WithdrawTicket/GetWalletStats additions
-// as Wheel Manager above. Not yet consumed by any round-specific UI (see
-// project notes - still pending its own live testnet validation through the
-// frontend), only queried here for the lifetime wallet-stats aggregation.
+// Redeployed 2026-07-16: added `draw_height` (the actual block height used
+// by `pick_winner_index`, not just `draw_after_height`'s minimum) - without
+// it, GetWeekEntrants's own verification panel silently broke for every
+// drawn week (draw_height came back undefined, not null). Found via
+// CodeRabbit on PR #4, confirmed by an independent Opus+Fable review before
+// this redeploy. Config unchanged from the 2026-07-15 redeploy (which added
+// GetWeekEntrants itself and production-shaped round_duration_days/
+// draw_window_blocks/max_players - see git history for that entry).
 export const WEEKLY_ROUND_ADDRESS =
-  "terra1hanrgzfps8k5366neard2rgfev5ld9cxlu99qdxdfp00vc0eul5qqmf6ee";
+  "terra1yhnq6mmf09vwsjgatc9akpwvzhp3u9c22mnrg7mzxyrvar325lvszykmgc";

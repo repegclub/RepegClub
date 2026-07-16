@@ -33,6 +33,7 @@ pub fn open_new_week(
         closed_at: None,
         draw_after_height: None,
         drawn_at: None,
+        draw_height: None,
         winner: None,
         prize_remaining: Uint128::zero(),
         expired_at: None,
@@ -357,6 +358,7 @@ pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, C
     week.winner = Some(winner.clone());
     week.prize_remaining = prize;
     week.drawn_at = Some(env.block.time);
+    week.draw_height = Some(env.block.height);
     let finished_week_id = week.week_id;
     WEEKS.save(deps.storage, week.week_id, &week)?;
 

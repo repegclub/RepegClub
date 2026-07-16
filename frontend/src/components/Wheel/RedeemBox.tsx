@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
 import { useBalance } from "../../hooks/useBalance";
 import { redeem } from "../../lib/roundActions";
@@ -12,6 +13,18 @@ type RedeemBoxProps = {
   unclaimedDeadlineDays: number;
   contractAddress?: string;
   onRedeemed?: () => void;
+  // Defaults to Wheel Manager's redeem() (round_id-keyed). Weekly Round
+  // passes redeemWeekly bound to its own week_id-keyed message instead -
+  // everything else here (amount validation, Max button, error handling) is
+  // identical between the two, so this is injected rather than duplicating
+  // the whole component.
+  redeemAction?: (
+    wallet: ConnectedWallet,
+    id: number,
+    redemptionDenom: string,
+    amount: string,
+    contractAddress?: string
+  ) => ReturnType<typeof redeem>;
 };
 
 // Self-contained redeem flow (amount input, Max button, live receive
@@ -25,6 +38,7 @@ export function RedeemBox({
   unclaimedDeadlineDays,
   contractAddress,
   onRedeemed,
+  redeemAction = redeem,
 }: RedeemBoxProps) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
@@ -62,7 +76,7 @@ export function RedeemBox({
     setBusy(true);
     setError(null);
     try {
-      await redeem(walletState.wallet, roundId, redemptionDenom, amountUluna, contractAddress);
+      await redeemAction(walletState.wallet, roundId, redemptionDenom, amountUluna, contractAddress);
       setJustRedeemed(true);
       balance.refetch();
       onRedeemed?.();

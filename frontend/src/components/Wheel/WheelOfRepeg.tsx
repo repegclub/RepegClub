@@ -13,6 +13,7 @@ import { LifetimeStatsPanel } from "./LifetimeStatsPanel";
 import { HistoryButton } from "./HistoryButton";
 import { FeedbackButton } from "./FeedbackButton";
 import { PlatformRepeggedBanner } from "./PlatformRepeggedBanner";
+import { WeeklyJackpotLink } from "./WeeklyJackpotLink";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
@@ -130,6 +131,8 @@ export function WheelOfRepeg() {
       <HeroSign />
 
       <PlatformRepeggedBanner stats={platformRepegged} />
+
+      <WeeklyJackpotLink />
 
       <p className="lead">{t("lead")}</p>
 

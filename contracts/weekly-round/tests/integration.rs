@@ -3,8 +3,8 @@ use cosmwasm_std::{coins, from_json, CosmosMsg, Uint128};
 
 use weekly_round::contract::{execute, instantiate, query};
 use weekly_round::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, MyWinningsResponse, QueryMsg, TodayPriceResponse,
-    WalletStatsResponse, WeekResponse,
+    ConfigResponse, EntrantsResponse, ExecuteMsg, InstantiateMsg, MyWinningsResponse, QueryMsg,
+    TodayPriceResponse, WalletStatsResponse, WeekResponse,
 };
 use weekly_round::state::RoundStatus;
 use weekly_round::ContractError;
@@ -89,6 +89,27 @@ fn multiple_tickets_from_the_same_wallet_count_as_one_player() {
     assert_eq!(week.ticket_count, 2);
     assert_eq!(week.unique_player_count, 1);
     assert_eq!(week.status, RoundStatus::Open);
+}
+
+#[test]
+fn get_week_entrants_returns_one_entry_per_ticket_including_duplicates() {
+    let (mut deps, env) = setup(6, 2, 7);
+    buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
+
+    let week = current_week(&deps, &env);
+    let bin = query(
+        deps.as_ref(),
+        env,
+        QueryMsg::GetWeekEntrants { week_id: week.week_id },
+    )
+    .unwrap();
+    let resp: EntrantsResponse = from_json(bin).unwrap();
+    assert_eq!(
+        resp.entrants.iter().map(|a| a.as_str()).collect::<Vec<_>>(),
+        vec!["player1", "player1", "player2"]
+    );
 }
 
 #[test]

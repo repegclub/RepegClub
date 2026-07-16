@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
 import { buyTicket } from "../../lib/roundActions";
 
@@ -14,6 +15,15 @@ type TicketBoothProps = {
   availableTickets?: number | null;
   ticketCap?: number;
   onPurchased?: () => void;
+  // Defaults to Wheel Manager's buyTicket(). Weekly Round passes
+  // buyWeeklyTicket instead - everything else here (validation, error
+  // parsing, button state) is identical between the two.
+  buyAction?: (
+    wallet: ConnectedWallet,
+    ticketDenom: string,
+    ticketPriceAmount: string,
+    contractAddress?: string
+  ) => ReturnType<typeof buyTicket>;
 };
 
 export function TicketBooth({
@@ -24,6 +34,7 @@ export function TicketBooth({
   availableTickets,
   ticketCap,
   onPurchased,
+  buyAction = buyTicket,
 }: TicketBoothProps) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
@@ -37,18 +48,20 @@ export function TicketBooth({
     setBuying(true);
     setError(null);
     try {
-      await buyTicket(walletState.wallet, ticketDenom, ticketPriceAmount, contractAddress);
+      await buyAction(walletState.wallet, ticketDenom, ticketPriceAmount, contractAddress);
       onPurchased?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
-      // Matches contracts/wheel-manager/src/error.rs's actual Display text
-      // for these two ContractError variants, not the Rust variant names
-      // (which never appear in the raw_log) - both need a next-step
-      // pointer, not a raw RPC error dump.
+      // Matches contracts/wheel-manager/src/error.rs and
+      // contracts/weekly-round/src/error.rs's actual Display text for these
+      // ContractError variants (not the Rust variant names, which never
+      // appear in the raw_log) - substrings common to both ("Round .../Week
+      // ..." differ only in that one word) rather than the full sentence, so
+      // this one component covers both games' error text.
       const capMatch = message.match(/maximum of (\d+) tickets/);
-      if (message.includes("Round has expired without reaching the minimum")) {
+      if (message.includes("expired without reaching the minimum")) {
         setError(t("ticketBooth.roundExpiredHint"));
-      } else if (message.includes("Round is not open")) {
+      } else if (message.includes("is not open")) {
         setError(t("ticketBooth.roundNotOpenHint"));
       } else if (capMatch) {
         setError(t("ticketBooth.ticketCapHint", { max: capMatch[1] }));

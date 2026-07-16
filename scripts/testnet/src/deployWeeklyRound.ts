@@ -44,10 +44,14 @@ async function main() {
           ticket_denom: "uluna",
           redemption_denom: "uluna",
           min_players: 2,
-          max_players: 2,
-          round_duration_days: 1,
+          max_players: 10,
+          // Real "weekly" duration - was 1 (a day) as a testing shortcut to
+          // iterate fast; draw_window_blocks 60 matches the same reasoning
+          // already used for Wheel Manager's 2026-07-15 production redeploy
+          // (keeper crash-restart + VM reboot margin, see project notes).
+          round_duration_days: 7,
           draw_delay_blocks: 2,
-          draw_window_blocks: 10,
+          draw_window_blocks: 60,
           unclaimed_deadline_days: 90,
           treasury_address: TREASURY_ADDRESS,
           admin_fee_address: ADMIN_FEE_ADDRESS,
