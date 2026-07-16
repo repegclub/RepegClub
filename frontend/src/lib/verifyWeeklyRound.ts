@@ -61,7 +61,7 @@ export async function verifyWeeklyRound(
     getWeekHistory(weekId, contractAddress),
     getWeekEntrants(weekId, contractAddress),
   ]);
-  if (week.status !== "drawn" || week.draw_height === null || !week.winner) {
+  if (week.status !== "drawn" || week.draw_height == null || !week.winner) {
     throw new Error("This week has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;

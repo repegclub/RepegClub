@@ -325,16 +325,16 @@ export function WeeklyWheelCard({
   // directly, same pattern as WheelCard's deadline check).
   const secondsToDeadline =
     deadlineEstimate !== null ? Math.max(0, Math.ceil(deadlineEstimate - nowSec)) : null;
-  const closeEligible =
-    loaded &&
-    (weekState.week.unique_player_count >= weekState.config.max_players ||
-      (deadlineEstimate !== null && nowSec >= deadlineEstimate + DEADLINE_SAFETY_BUFFER_SECONDS));
-
   // Weekly Round has one single duration window (round_duration_days),
   // unlike Wheel Manager's separate rolling-deadline vs. hard-cap - so the
   // same deadlineEstimate serves both closeEligible (enough players) and
   // expireEligible (not enough players) below.
   const hasMinPlayers = loaded && weekState.week.unique_player_count >= weekState.config.min_players;
+  const closeEligible =
+    loaded &&
+    (weekState.week.unique_player_count >= weekState.config.max_players ||
+      (hasMinPlayers && deadlineEstimate !== null && nowSec >= deadlineEstimate + DEADLINE_SAFETY_BUFFER_SECONDS));
+
   const expireEligible =
     loaded &&
     !hasMinPlayers &&

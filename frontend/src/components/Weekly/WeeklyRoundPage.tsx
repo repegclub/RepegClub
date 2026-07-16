@@ -98,6 +98,7 @@ export function WeeklyRoundPage() {
         </div>
 
         <WeeklyWheelCard
+          key={weekState.status === "loaded" ? weekState.week.week_id : "loading"}
           weekState={weekState}
           entrants={entrants}
           contractAddress={WEEKLY_ROUND_ADDRESS}

@@ -106,10 +106,9 @@ fn get_week_entrants_returns_one_entry_per_ticket_including_duplicates() {
     )
     .unwrap();
     let resp: EntrantsResponse = from_json(bin).unwrap();
-    assert_eq!(resp.entrants.len(), 3);
     assert_eq!(
-        resp.entrants.iter().filter(|a| a.as_str() == "player1").count(),
-        2
+        resp.entrants.iter().map(|a| a.as_str()).collect::<Vec<_>>(),
+        vec!["player1", "player1", "player2"]
     );
 }
 

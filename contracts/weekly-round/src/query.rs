@@ -41,6 +41,7 @@ fn week_to_response(week: Week, seconds_remaining: u64, price: cosmwasm_std::Uin
         seconds_remaining,
         draw_after_height: week.draw_after_height,
         drawn_at: week.drawn_at.map(|t| t.seconds()),
+        draw_height: week.draw_height,
         winner: week.winner,
         prize_remaining: week.prize_remaining,
         expired_at: week.expired_at.map(|t| t.seconds()),

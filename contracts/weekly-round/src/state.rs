@@ -54,6 +54,11 @@ pub struct Week {
     pub closed_at: Option<Timestamp>,
     pub draw_after_height: Option<u64>,
     pub drawn_at: Option<Timestamp>,
+    /// Exact block height the winner-picking hash was computed at (see
+    /// `rand::pick_winner_index`) - `draw_after_height` is only the *minimum*
+    /// required height, not necessarily the one actually used, so this is
+    /// stored separately to let anyone verify the draw from the query alone.
+    pub draw_height: Option<u64>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
     /// Set when the week transitions to `Expired`.

@@ -100,6 +100,7 @@ pub struct WeekResponse {
     pub seconds_remaining: u64,
     pub draw_after_height: Option<u64>,
     pub drawn_at: Option<u64>,
+    pub draw_height: Option<u64>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
     pub expired_at: Option<u64>,
