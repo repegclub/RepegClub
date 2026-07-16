@@ -1,6 +1,6 @@
 import { MsgExecuteContract } from "@goblinhunt/cosmes/client";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
-import { WHEEL_MANAGER_ADDRESS } from "./deployment";
+import { WHEEL_MANAGER_ADDRESS, WEEKLY_ROUND_ADDRESS } from "./deployment";
 
 // Every action this app broadcasts carries a fixed memo - lets anyone
 // reading the chain attribute these transactions to Repeg Club specifically
@@ -108,8 +108,65 @@ export function sweepExpiredPrize(
 }
 
 // Same mechanism, Weekly Round's message just uses week_id instead of round_id.
-export function sweepExpiredWeekPrize(wallet: ConnectedWallet, weekId: number, contractAddress: string) {
+export function sweepExpiredWeekPrize(wallet: ConnectedWallet, weekId: number, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
   return execute(wallet, contractAddress, { sweep_expired_prize: { week_id: weekId } });
+}
+
+// Weekly Round equivalents below - same permissionless/self-service shape as
+// their Wheel Manager counterparts above, just with week_id instead of
+// round_id and a rising daily price instead of a fixed one.
+
+export function buyWeeklyTicket(
+  wallet: ConnectedWallet,
+  ticketDenom: string,
+  priceAmount: string,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  return execute(wallet, contractAddress, { buy_weekly_ticket: {} }, [
+    { denom: ticketDenom, amount: priceAmount },
+  ]);
+}
+
+export function closeWeek(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
+  return execute(wallet, contractAddress, { close_week: {} });
+}
+
+export function drawWeeklyWinner(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
+  return execute(wallet, contractAddress, { draw_weekly_winner: {} });
+}
+
+// Marks the current week Expired once min_players was never reached and
+// round_duration_days has elapsed - permissionless, opens the next week
+// automatically. See reclaimWeeklyTicket below for getting ticket money back.
+export function expireWeek(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
+  return execute(wallet, contractAddress, { expire_week: {} });
+}
+
+// Refunds exactly what this wallet paid (per that day's price) in an
+// Expired week's tickets.
+export function reclaimWeeklyTicket(wallet: ConnectedWallet, weekId: number, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
+  return execute(wallet, contractAddress, { reclaim_ticket: { week_id: weekId } });
+}
+
+// Self-service refund for a wallet's own tickets in the still-Open current
+// week, only while min_players hasn't been reached yet.
+export function withdrawWeeklyTicket(wallet: ConnectedWallet, weekId: number, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
+  return execute(wallet, contractAddress, { withdraw_ticket: { week_id: weekId } });
+}
+
+// Winner pays in USTC (redemption_denom) and receives an equal amount of the
+// ticket_denom (USDC) back, up to prize_remaining - overpayment is
+// auto-refunded by the contract.
+export function redeemWeekly(
+  wallet: ConnectedWallet,
+  weekId: number,
+  redemptionDenom: string,
+  amount: string,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  return execute(wallet, contractAddress, { redeem: { week_id: weekId } }, [
+    { denom: redemptionDenom, amount },
+  ]);
 }
 
 // Winner pays in USTC (redemption_denom) and receives an equal amount of the

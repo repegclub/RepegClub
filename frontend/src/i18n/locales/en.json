@@ -185,6 +185,12 @@
     "copyJsonCaption": "Everything above in one file: round ID, draw height/time, the full ticket list, the formula, the resulting hash, and both source links. Paste it anywhere — including to an AI — and ask it to redo the math.",
     "explanation": "This app doesn't ask our own servers who won. When you click \"Verify on-chain\", your browser fetches the actual block straight from Terra Classic's public network and recomputes the winner itself, using the exact formula the smart contract runs: hash the round ID, that block's real height and time, and every ticket bought, then pick a ticket weighted by the result. Nobody chooses the outcome — the formula does, from data that didn't exist yet while the round was still open. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
   },
+  "verifyWeekly": {
+    "title": "Verify this week",
+    "weekId": "Week ID (for your reference)",
+    "copyJsonCaption": "Everything above in one file: week ID, draw height/time, the full ticket list, the formula, the resulting hash, and both source links. Paste it anywhere — including to an AI — and ask it to redo the math.",
+    "explanation": "This app doesn't ask our own servers who won. When you click \"Verify on-chain\", your browser fetches the actual block straight from Terra Classic's public network and recomputes the winner itself, using the exact formula the smart contract runs: hash the week ID, that block's real height and time, and every ticket bought (across the whole week, price rising day by day), then pick a ticket weighted by the result. Nobody chooses the outcome — the formula does, from data that didn't exist yet while the week was still open. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
+  },
   "wallet": {
     "connect": "Connect Keplr",
     "connecting": "Connecting…",
@@ -219,5 +225,23 @@
     "sweeping": "Sweeping…",
     "sweepDone": "Swept — sent to treasury.",
     "sweepFailed": "Sweep failed."
+  },
+  "weekly": {
+    "navLinkFromWheel": "👉 This round also feeds the Weekly Jackpot — see it grow",
+    "navLinkToWheel": "🎡 Play Wheel of Repeg",
+    "heroTitle": "The Weekly Jackpot",
+    "heroSubtitle": "One grand prize, all week — fed by every Wheel of Repeg round on the platform, on top of its own rising-price ticket sales.",
+    "poolBreakdownTitle": "Where this pool comes from",
+    "poolBreakdownTicketSales": "🎟️ From today's ticket sales",
+    "poolBreakdownWheelContributions": "🎡 Contributed by every Wheel of Repeg round this week",
+    "poolBreakdownTotal": "Total pool",
+    "weekBadge": "Week #{{weekId}}",
+    "prizeLabel": "The grand prize",
+    "todayPriceCaption": "today's ticket price: {{price}} — rises daily",
+    "closeWeek": "Close week",
+    "closesIn": "Closes in {{time}} unless someone buys another ticket",
+    "viewPreviousWeek": "🏆 Check week #{{weekId}} — see if you won!",
+    "continueNextWeek": "Continue to next week",
+    "initialResult": "{{count}} tickets sold — {{amount}} pool"
   }
 }

@@ -1,4 +1,4 @@
-const BUNTING_COLORS = ["var(--blue)", "var(--crimson)", "var(--gold)"];
+const BUNTING_TEXTURES = ["/flag-blue.jpg", "/flag-red.jpg", "/flag-cream.jpg"];
 
 type BuntingRowProps = {
   count: number;
@@ -6,8 +6,9 @@ type BuntingRowProps = {
 };
 
 // Pennant flags (banderines) - purely decorative fairground dressing,
-// alternating the three brand colors. Reused under the tent-scallop and
-// atop the side lot signage.
+// alternating real fabric-swatch photos (satin blue/red ribbon, cream
+// linen) instead of flat color, cycled across the row. Reused under the
+// tent-scallop and atop the side lot signage.
 export function BuntingRow({ count, className }: BuntingRowProps) {
   return (
     <div className={`bunting${className ? ` ${className}` : ""}`}>
@@ -15,7 +16,7 @@ export function BuntingRow({ count, className }: BuntingRowProps) {
         <div
           key={i}
           className="flag"
-          style={{ background: BUNTING_COLORS[i % BUNTING_COLORS.length] }}
+          style={{ backgroundImage: `url(${BUNTING_TEXTURES[i % BUNTING_TEXTURES.length]})` }}
         />
       ))}
     </div>
