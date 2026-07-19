@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getWeekEntrants } from "../lib/queryWeeklyRound";
 import { colorForIndex, type Entrant } from "../lib/wheelData";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type WeeklyEntrantsState =
   | { status: "loading" }
@@ -31,21 +32,25 @@ export function useWeeklyEntrants(
   contractAddress?: string
 ): WeeklyEntrantsState & { refetch: () => void } {
   const [state, setState] = useState<WeeklyEntrantsState>({ status: "loading" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
     if (weekId === null) return;
+    const token = start();
     setState({ status: "loading" });
     getWeekEntrants(weekId, contractAddress)
       .then((res) => {
-        setState({ status: "loaded", entrants: aggregate(res.entrants) });
+        if (isCurrent(token)) setState({ status: "loaded", entrants: aggregate(res.entrants) });
       })
       .catch((err) => {
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Query failed.",
-        });
+        if (isCurrent(token)) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Query failed.",
+          });
+        }
       });
-  }, [weekId, contractAddress]);
+  }, [weekId, contractAddress, start, isCurrent]);
 
   useEffect(() => {
     load();

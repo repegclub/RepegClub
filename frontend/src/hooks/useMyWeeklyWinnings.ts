@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getMyWeeklyWinnings, type WeeklyWinningEntry } from "../lib/queryWeeklyRound";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type MyWeeklyWinningsState =
   | { status: "idle" }
@@ -12,22 +13,28 @@ export function useMyWeeklyWinnings(
   contractAddress?: string
 ): MyWeeklyWinningsState & { refetch: () => void } {
   const [state, setState] = useState<MyWeeklyWinningsState>({ status: "idle" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
     if (!wallet) {
       setState({ status: "idle" });
       return;
     }
+    const token = start();
     setState({ status: "loading" });
     getMyWeeklyWinnings(wallet, contractAddress)
-      .then((res) => setState({ status: "loaded", winnings: res.winnings }))
-      .catch((err) =>
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Query failed.",
-        })
-      );
-  }, [wallet, contractAddress]);
+      .then((res) => {
+        if (isCurrent(token)) setState({ status: "loaded", winnings: res.winnings });
+      })
+      .catch((err) => {
+        if (isCurrent(token)) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Query failed.",
+          });
+        }
+      });
+  }, [wallet, contractAddress, start, isCurrent]);
 
   useEffect(() => {
     load();

@@ -6,6 +6,7 @@ import {
   type WeekResponse,
   type WeeklyConfigResponse,
 } from "../lib/queryWeeklyRound";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type WeeklyRoundState =
   | { status: "loading" }
@@ -20,21 +21,25 @@ export function useWeeklyRound(
   contractAddress?: string
 ): WeeklyRoundState & { refetch: () => void } {
   const [state, setState] = useState<WeeklyRoundState>({ status: "loading" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(async () => {
+    const token = start();
     try {
       const [week, config] = await Promise.all([
         weekId !== undefined ? getWeekHistory(weekId, contractAddress) : getCurrentWeek(contractAddress),
         getWeeklyConfig(contractAddress),
       ]);
-      setState({ status: "loaded", week, config });
+      if (isCurrent(token)) setState({ status: "loaded", week, config });
     } catch (err) {
-      setState({
-        status: "error",
-        message: err instanceof Error ? err.message : "Query failed.",
-      });
+      if (isCurrent(token)) {
+        setState({
+          status: "error",
+          message: err instanceof Error ? err.message : "Query failed.",
+        });
+      }
     }
-  }, [weekId, contractAddress]);
+  }, [weekId, contractAddress, start, isCurrent]);
 
   useEffect(() => {
     setState({ status: "loading" });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getRoundEntrants } from "../lib/queryWheelManager";
 import { colorForIndex, type Entrant } from "../lib/wheelData";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type RoundEntrantsState =
   | { status: "loading" }
@@ -32,21 +33,25 @@ export function useRoundEntrants(
   contractAddress?: string
 ): RoundEntrantsState & { refetch: () => void } {
   const [state, setState] = useState<RoundEntrantsState>({ status: "loading" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
     if (roundId === null) return;
+    const token = start();
     setState({ status: "loading" });
     getRoundEntrants(roundId, contractAddress)
       .then((res) => {
-        setState({ status: "loaded", entrants: aggregate(res.entrants) });
+        if (isCurrent(token)) setState({ status: "loaded", entrants: aggregate(res.entrants) });
       })
       .catch((err) => {
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Query failed.",
-        });
+        if (isCurrent(token)) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Query failed.",
+          });
+        }
       });
-  }, [roundId, contractAddress]);
+  }, [roundId, contractAddress, start, isCurrent]);
 
   useEffect(() => {
     load();
