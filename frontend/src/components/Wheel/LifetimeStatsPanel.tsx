@@ -21,6 +21,13 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
   if (!address || stats.status !== "loaded") return null;
   if (stats.totalInvested === "0" && stats.totalRedeemed === "0") return null;
 
+  // Redeeming USTC doesn't refund the ticket price - it's a separate right
+  // won by playing, worth $1 per USTC repegged - so "played" and "repegged"
+  // are deliberately never netted against each other in place. This third
+  // tile is the one spot that does the netting explicitly, so a winning
+  // streak reads as "ahead" without making the lifetime volume stat lie.
+  const net = BigInt(stats.totalRedeemed) - BigInt(stats.totalInvested);
+
   return (
     <section className="lifetime-stats-panel">
       <div className="lifetime-stats-tile">
@@ -30,6 +37,13 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
       <div className="lifetime-stats-tile">
         <p className="lifetime-stats-label">{t("lifetimeStats.repeggedLabel")}</p>
         <p className="lifetime-stats-value">{ulunaToDisplayNumber(stats.totalRedeemed).toFixed(2)} USTC</p>
+      </div>
+      <div className="lifetime-stats-tile">
+        <p className="lifetime-stats-label">{t("lifetimeStats.netLabel")}</p>
+        <p className="lifetime-stats-value">
+          {net >= 0n ? "+" : ""}
+          {ulunaToDisplayNumber(net.toString()).toFixed(2)} USD
+        </p>
       </div>
     </section>
   );
