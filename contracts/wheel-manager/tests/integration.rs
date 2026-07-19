@@ -580,12 +580,16 @@ fn expire_round_lets_buyers_reclaim_their_own_tickets_and_opens_a_new_round() {
     // Can't reclaim a second time - the entry is already gone.
     let err = execute(
         deps.as_mut(),
-        later_env,
+        later_env.clone(),
         mock_info("player1", &[]),
         ExecuteMsg::ReclaimTicket { round_id: 1 },
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::NotAnEntrant { .. }));
+
+    // Reclaimed tickets don't count as lifetime investment either.
+    let stats = wallet_stats(&deps, &later_env, "player1");
+    assert_eq!(stats.total_invested, Uint128::zero());
 }
 
 #[test]

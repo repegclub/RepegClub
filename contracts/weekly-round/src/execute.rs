@@ -250,6 +250,7 @@ pub fn execute_reclaim_ticket(
     week.unique_players.retain(|e| *e != info.sender);
     week.ticket_sales_pool = week.ticket_sales_pool.checked_sub(refund).unwrap_or_default();
     WEEKS.save(deps.storage, week_id, &week)?;
+    subtract_invested(deps.storage, &info.sender, refund)?;
 
     Ok(Response::new()
         .add_message(BankMsg::Send {
