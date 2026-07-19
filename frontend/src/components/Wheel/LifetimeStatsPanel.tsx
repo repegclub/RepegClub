@@ -27,6 +27,10 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
   // tile is the one spot that does the netting explicitly, so a winning
   // streak reads as "ahead" without making the lifetime volume stat lie.
   const net = BigInt(stats.totalRedeemed) - BigInt(stats.totalInvested);
+  // Round before signing - a tiny negative net (under half a cent) would
+  // otherwise display as a confusing "-0.00" (sign applied pre-rounding).
+  const netRounded = ulunaToDisplayNumber(net.toString()).toFixed(2);
+  const netDisplay = netRounded === "-0.00" ? "0.00" : netRounded;
 
   return (
     <section className="lifetime-stats-panel">
@@ -42,7 +46,7 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
         <p className="lifetime-stats-label">{t("lifetimeStats.netLabel")}</p>
         <p className="lifetime-stats-value">
           {net >= 0n ? "+" : ""}
-          {ulunaToDisplayNumber(net.toString()).toFixed(2)} USD
+          {netDisplay} USD
         </p>
       </div>
     </section>
