@@ -46,7 +46,7 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
         <p className="lifetime-stats-label">{t("lifetimeStats.netLabel")}</p>
         <p className="lifetime-stats-value">
           {net >= 0n ? "+" : ""}
-          {netDisplay} USD
+          {netDisplay} USDC
         </p>
       </div>
     </section>
