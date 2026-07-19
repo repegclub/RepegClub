@@ -8,6 +8,7 @@ import { WeeklyWheelCard } from "./WeeklyWheelCard";
 import { MyWeeklyWinningsPanel } from "./MyWeeklyWinningsPanel";
 import { EntrantsPanel } from "../Wheel/EntrantsPanel";
 import { FeedbackButton } from "../Wheel/FeedbackButton";
+import { LifetimeStatsPanel } from "../Wheel/LifetimeStatsPanel";
 import { GameSwitcher } from "../Shared/GameSwitcher";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
@@ -15,6 +16,7 @@ import { AdminSweepButton } from "../Wallet/AdminSweepButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useWeeklyRound } from "../../hooks/useWeeklyRound";
 import { useWeeklyEntrants } from "../../hooks/useWeeklyEntrants";
+import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
 import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 import { formatUluna } from "../../lib/format";
@@ -31,11 +33,13 @@ export function WeeklyRoundPage() {
   const weekId = weekState.status === "loaded" ? weekState.week.week_id : null;
   const entrantsState = useWeeklyEntrants(weekId);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];
+  const lifetimeStats = useLifetimeStats(address);
 
   const [purchaseVersion, setPurchaseVersion] = useState(0);
   function handlePurchased() {
     weekState.refetch();
     entrantsState.refetch();
+    lifetimeStats.refetch();
     setPurchaseVersion((v) => v + 1);
   }
 
@@ -46,6 +50,11 @@ export function WeeklyRoundPage() {
 
   function handleRedeemed() {
     weekState.refetch();
+    lifetimeStats.refetch();
+  }
+
+  function handleWithdrawn() {
+    lifetimeStats.refetch();
   }
 
   const availableTickets =
@@ -106,6 +115,7 @@ export function WeeklyRoundPage() {
           onContinue={() => setViewWeekId(undefined)}
           onEntrantsChanged={entrantsState.refetch}
           onRedeemed={handleRedeemed}
+          onWithdrawn={handleWithdrawn}
           onRevealed={handleRevealed}
           onViewWeek={setViewWeekId}
         />
@@ -122,6 +132,7 @@ export function WeeklyRoundPage() {
               currentWeekId={weekId}
             />
           )}
+          <LifetimeStatsPanel stats={lifetimeStats} />
         </div>
       </div>
     </main>
