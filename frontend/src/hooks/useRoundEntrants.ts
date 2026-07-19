@@ -36,8 +36,8 @@ export function useRoundEntrants(
   const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
-    if (roundId === null) return;
     const token = start();
+    if (roundId === null) return;
     setState({ status: "loading" });
     getRoundEntrants(roundId, contractAddress)
       .then((res) => {

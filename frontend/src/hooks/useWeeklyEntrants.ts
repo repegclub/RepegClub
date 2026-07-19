@@ -35,8 +35,8 @@ export function useWeeklyEntrants(
   const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
-    if (weekId === null) return;
     const token = start();
+    if (weekId === null) return;
     setState({ status: "loading" });
     getWeekEntrants(weekId, contractAddress)
       .then((res) => {

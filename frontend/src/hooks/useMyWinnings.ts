@@ -19,11 +19,11 @@ export function useMyWinnings(
   const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
+    const token = start();
     if (!wallet) {
       setState({ status: "idle" });
       return;
     }
-    const token = start();
     setState({ status: "loading" });
     getMyWinnings(wallet, contractAddress)
       .then((res) => {

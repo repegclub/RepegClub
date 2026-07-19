@@ -16,11 +16,11 @@ export function useMyWeeklyWinnings(
   const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
+    const token = start();
     if (!wallet) {
       setState({ status: "idle" });
       return;
     }
-    const token = start();
     setState({ status: "loading" });
     getMyWeeklyWinnings(wallet, contractAddress)
       .then((res) => {
