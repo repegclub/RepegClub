@@ -467,12 +467,16 @@ fn expire_week_lets_buyers_reclaim_exactly_what_they_paid_at_their_own_days_pric
     // Can't reclaim a second time.
     let err = execute(
         deps.as_mut(),
-        later_env,
+        later_env.clone(),
         mock_info("player1", &[]),
         ExecuteMsg::ReclaimTicket { week_id: 1 },
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::NotAnEntrant { .. }));
+
+    // Reclaimed tickets don't count as lifetime investment either.
+    assert_eq!(wallet_stats(&deps, &later_env, "player1").total_invested, Uint128::zero());
+    assert_eq!(wallet_stats(&deps, &later_env, "player2").total_invested, Uint128::zero());
 }
 
 #[test]

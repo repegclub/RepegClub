@@ -239,6 +239,7 @@ pub fn execute_reclaim_ticket(
     round.unique_players.retain(|e| *e != info.sender);
     round.pool = round.pool.checked_sub(refund).unwrap_or_default();
     ROUNDS.save(deps.storage, round_id, &round)?;
+    subtract_invested(deps.storage, &info.sender, refund)?;
 
     Ok(Response::new()
         .add_message(BankMsg::Send {
