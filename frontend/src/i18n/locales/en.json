@@ -13,7 +13,8 @@
   },
   "lifetimeStats": {
     "investedLabel": "🎟️ You've played",
-    "repeggedLabel": "🔁 USTC you've repegged"
+    "repeggedLabel": "🔁 USTC you've repegged",
+    "netLabel": "📊 Net"
   },
   "feedback": {
     "button": "✉️ Feedback",
