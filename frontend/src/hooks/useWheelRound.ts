@@ -6,6 +6,7 @@ import {
   type WheelRoundResponse,
   type WheelConfigResponse,
 } from "../lib/queryWheelManager";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type WheelRoundState =
   | { status: "loading" }
@@ -24,21 +25,25 @@ export function useWheelRound(
   contractAddress?: string
 ): WheelRoundState & { refetch: () => void } {
   const [state, setState] = useState<WheelRoundState>({ status: "loading" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(async () => {
+    const token = start();
     try {
       const [round, config] = await Promise.all([
         roundId !== undefined ? getRoundHistory(roundId, contractAddress) : getCurrentRound(contractAddress),
         getConfig(contractAddress),
       ]);
-      setState({ status: "loaded", round, config });
+      if (isCurrent(token)) setState({ status: "loaded", round, config });
     } catch (err) {
-      setState({
-        status: "error",
-        message: err instanceof Error ? err.message : "Query failed.",
-      });
+      if (isCurrent(token)) {
+        setState({
+          status: "error",
+          message: err instanceof Error ? err.message : "Query failed.",
+        });
+      }
     }
-  }, [roundId, contractAddress]);
+  }, [roundId, contractAddress, start, isCurrent]);
 
   useEffect(() => {
     // Reset to loading immediately when what we're fetching changes (a
