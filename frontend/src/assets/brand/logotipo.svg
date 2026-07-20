@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 46" role="img" aria-label="The Repeg Club">
+  <defs>
+    <radialGradient id="rpc-gold" cx="35%" cy="15%" r="95%">
+      <stop offset="0%" stop-color="#fff4c2"/>
+      <stop offset="55%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#b8811f"/>
+    </radialGradient>
+    <filter id="rpc-emboss" x="-30%" y="-60%" width="160%" height="220%">
+      <feDropShadow dx="0.55" dy="0.55" stdDeviation="0" flood-color="#5c3d0d" flood-opacity="0.9"/>
+      <feDropShadow dx="-0.35" dy="-0.35" stdDeviation="0" flood-color="#fff8e0" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+  <line x1="20" y1="1" x2="280" y2="1" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="150" y="28" font-family="'Times New Roman', Georgia, 'Playfair Display', serif" font-size="30" letter-spacing="1.5" text-anchor="middle" fill="url(#rpc-gold)" filter="url(#rpc-emboss)">The Repeg Club</text>
+  <line x1="20" y1="35" x2="280" y2="35" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1"/>
+</svg>
