@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 151.4" role="img" aria-label="The Repeg Club">
+  <defs>
+    <mask id="ic-gap" maskUnits="userSpaceOnUse" x="-60" y="-30" width="350" height="245">
+      <rect x="-60" y="-30" width="350" height="245" fill="#ffffff"/>
+      <path d="M 104.00 150.95 L 35.00 31.44" stroke="#000000" stroke-width="15" stroke-linecap="round"/>
+      <path d="M 126.00 150.95 L 195.00 31.44" stroke="#000000" stroke-width="15" stroke-linecap="round"/>
+    </mask>
+    <radialGradient id="ic-gold" cx="35%" cy="15%" r="95%">
+      <stop offset="0%" stop-color="#fff4c2"/>
+      <stop offset="55%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#b8811f"/>
+    </radialGradient>
+    <filter id="ic-emboss" x="-30%" y="-60%" width="160%" height="220%">
+      <feDropShadow dx="0.55" dy="0.55" stdDeviation="0" flood-color="#5c3d0d" flood-opacity="0.9"/>
+      <feDropShadow dx="-0.35" dy="-0.35" stdDeviation="0" flood-color="#fff8e0" flood-opacity="0.8"/>
+    </filter>
+    <radialGradient id="wm-gold" cx="35%" cy="15%" r="95%">
+      <stop offset="0%" stop-color="#fff4c2"/>
+      <stop offset="55%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#b8811f"/>
+    </radialGradient>
+    <filter id="wm-emboss" x="-30%" y="-60%" width="160%" height="220%">
+      <feDropShadow dx="0.55" dy="0.55" stdDeviation="0" flood-color="#5c3d0d" flood-opacity="0.9"/>
+      <feDropShadow dx="-0.35" dy="-0.35" stdDeviation="0" flood-color="#fff8e0" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(51.71875,8.90625) scale(0.59375)">
+    <g mask="url(#ic-gap)">
+      <path d="M 106.00 170.00 L -19.00 170.00 Q -35.00 170.00 -34.15 154.03 A 150 150 0 0 1 40.00 40.10 L 110.50 162.21 Q 115.00 170.00 106.00 170.00 Z" fill="#1d4fa6"/>
+      <path d="M 110.50 162.21 L 40.00 40.10 A 150 150 0 0 1 190.00 40.10 L 119.50 162.21 Q 115.00 170.00 110.50 162.21 Z" fill="#e8e1cc"/>
+      <path d="M 119.50 162.21 L 190.00 40.10 A 150 150 0 0 1 264.15 154.03 Q 265.00 170.00 249.00 170.00 L 124.00 170.00 Q 115.00 170.00 119.50 162.21 Z" fill="#b81638"/>
+    </g>
+    <path d="M 100 -3.8 L 130 -3.8 L 115 30.2 Z" fill="#ff3a5e"/>
+    <path d="M 83 170 A 32 32 0 0 1 147 170 Z" fill="url(#ic-gold)" filter="url(#ic-emboss)"/>
+  </g>
+
+  <g transform="translate(0,114.5625) scale(0.8)">
+    <line x1="20" y1="1" x2="280" y2="1" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1"/>
+    <text x="150" y="28" font-family="'Times New Roman', Georgia, 'Playfair Display', serif" font-size="30" letter-spacing="1.5" text-anchor="middle" fill="url(#wm-gold)" filter="url(#wm-emboss)">The Repeg Club</text>
+    <line x1="20" y1="35" x2="280" y2="35" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1"/>
+  </g>
+</svg>
