@@ -11,7 +11,7 @@ use create_your_own_luck::state::{RaffleStatus, RaffleType};
 use create_your_own_luck::ContractError;
 
 const TICKET_DENOM: &str = "uusdc";
-const PRIZE_DENOM: &str = "unft"; // stand-in native "prize" denom for tests
+const PRIZE_DENOM: &str = "uluna"; // LUNC - one of the 3 whitelisted paid-raffle prize denoms
 const USDC_DENOM: &str = "utestusdc"; // must match the hardcoded USDC_DENOM constant in contract.rs
 const FEE_AMOUNT_USDC: u128 = 3_000_000; // "$3", charged directly - no oracle conversion anymore
 
@@ -951,4 +951,187 @@ fn airdrop_caps_at_one_ticket_per_wallet_regardless_of_max_players() {
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     let err = buy_ticket(&mut deps, &env, "player1", 0).unwrap_err();
     assert!(matches!(err, ContractError::TicketCapExceeded { max_per_wallet: 1 }));
+}
+
+fn paid_raffle_prize_msg(prize_native_denom: Option<&str>, prize_cw20_address: Option<&str>) -> InstantiateMsg {
+    InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::new(100),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 2,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: prize_native_denom.map(|s| s.to_string()),
+        prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
+        podium_shares_bps: vec![],
+    }
+}
+
+#[test]
+fn instantiate_rejects_cw20_prize_for_a_paid_raffle() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = paid_raffle_prize_msg(None, Some("cw20token"));
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::PrizeAssetNotAllowlisted {}));
+}
+
+#[test]
+fn instantiate_rejects_non_whitelisted_native_prize_for_a_paid_raffle() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = paid_raffle_prize_msg(Some("unft"), None);
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::PrizeAssetNotAllowlisted {}));
+}
+
+#[test]
+fn instantiate_allows_all_three_whitelisted_native_prizes_for_a_paid_raffle() {
+    for denom in ["uluna", "utestusdc", "uusd"] {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let msg = paid_raffle_prize_msg(Some(denom), None);
+        instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap();
+    }
+}
+
+#[test]
+fn instantiate_allows_any_prize_asset_for_a_free_raffle() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let mut msg = paid_raffle_prize_msg(None, Some("some_random_cw20"));
+    msg.ticket_price = Uint128::zero();
+    instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap();
+}
+
+#[test]
+fn buy_ticket_rejects_unexpected_funds_on_a_free_raffle() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("player1", &coins(500, "some_other_denom")),
+        ExecuteMsg::BuyTicket {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn buy_ticket_rejects_a_second_unrelated_denom_alongside_the_correct_ticket_payment() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+
+    let mut funds = coins(100, TICKET_DENOM);
+    funds.push(coin(50, "some_other_denom"));
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("player1", &funds),
+        ExecuteMsg::BuyTicket {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn close_round_rejects_unexpected_funds() {
+    // max_players=3 so 2 tickets alone don't auto-close - CloseRound below
+    // still needs to run its own course (creator's early-close path) to
+    // exercise the funds check on that call.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap();
+
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("creator", &coins(1, "some_other_denom")),
+        ExecuteMsg::CloseRound {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn draw_winner_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+    let err = execute(
+        deps.as_mut(),
+        later_env,
+        mock_info("creator", &coins(1, "some_other_denom")),
+        ExecuteMsg::DrawWinner {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn claim_airdrop_share_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+    execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+
+    let err = execute(
+        deps.as_mut(),
+        later_env,
+        mock_info("player1", &coins(1, "some_other_denom")),
+        ExecuteMsg::ClaimAirdropShare {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn reclaim_unclaimed_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+    execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+
+    let mut after_deadline_env = later_env;
+    after_deadline_env.block.time = after_deadline_env.block.time.plus_seconds(91 * 86400);
+    let err = execute(
+        deps.as_mut(),
+        after_deadline_env,
+        mock_info("creator", &coins(1, "some_other_denom")),
+        ExecuteMsg::ReclaimUnclaimed {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn cancel_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 100, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("creator", &coins(1, "some_other_denom")),
+        ExecuteMsg::CancelRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
 }

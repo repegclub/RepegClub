@@ -270,6 +270,19 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         return Err(ContractError::TicketCapExceeded { max_per_wallet: cap });
     }
 
+    // Unlike DepositPrize/PayServiceFee, this used to accept any attached
+    // funds silently: only `ticket_denom` was ever inspected, so a second,
+    // unrelated coin riding along on the same call (a cloned/phishing
+    // frontend, a raw contract call, or a stale-price frontend bug) would be
+    // absorbed with no refund and no record - the "free raffle carries no
+    // financial risk" reasoning behind skipping the prize allowlist above
+    // depends on BuyTicket genuinely costing nothing when ticket_price is 0.
+    if config.ticket_price.is_zero() {
+        reject_unexpected_funds(&info.funds, &[])?;
+    } else {
+        reject_unexpected_funds(&info.funds, &[&config.ticket_denom])?;
+    }
+
     if !config.ticket_price.is_zero() {
         let sent_amount = info
             .funds
@@ -319,6 +332,11 @@ pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
 
+    // No action here ever expects funds - anything attached would otherwise
+    // be silently absorbed with no refund and no record, same class of bug
+    // just closed on BuyTicket.
+    reject_unexpected_funds(&info.funds, &[])?;
+
     if raffle.status != RaffleStatus::Open {
         return Err(ContractError::RaffleNotOpen {});
     }
@@ -362,6 +380,8 @@ pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result
 pub fn execute_draw_winner(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
+
+    reject_unexpected_funds(&info.funds, &[])?;
 
     if raffle.status != RaffleStatus::Closed {
         return Err(ContractError::RaffleNotClosed {});
@@ -498,6 +518,12 @@ pub fn execute_claim_airdrop_share(deps: DepsMut, info: MessageInfo) -> Result<R
     let config = CONFIG.load(deps.storage)?;
     let raffle = RAFFLE.load(deps.storage)?;
 
+    // A participant claiming their share is exactly the scenario a phishing
+    // frontend could dress up as "pay a small fee to claim" - guard it the
+    // same way BuyTicket now is, so a free (or paid) Airdrop's "nobody can
+    // lose real money here" guarantee actually holds for this call too.
+    reject_unexpected_funds(&info.funds, &[])?;
+
     if config.raffle_type != RaffleType::Airdrop {
         return Err(ContractError::NotAirdrop {});
     }
@@ -526,6 +552,8 @@ pub fn execute_claim_airdrop_share(deps: DepsMut, info: MessageInfo) -> Result<R
 pub fn execute_reclaim_unclaimed(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
+
+    reject_unexpected_funds(&info.funds, &[])?;
 
     if info.sender != config.creator {
         return Err(ContractError::Unauthorized {});
@@ -570,6 +598,12 @@ pub fn execute_reclaim_unclaimed(deps: DepsMut, env: Env, info: MessageInfo) -> 
 pub fn execute_cancel_raffle(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
+
+    // Same guard as the other funds-less actions above - not one of the 4
+    // originally flagged, but the identical gap (not asked for, but included
+    // for the same reason: it's the same one-line fix closing the same bug
+    // class, not a separate decision).
+    reject_unexpected_funds(&info.funds, &[])?;
 
     if info.sender != config.creator {
         return Err(ContractError::Unauthorized {});

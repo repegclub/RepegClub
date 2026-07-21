@@ -102,6 +102,9 @@ pub enum ContractError {
     #[error("draw_window_blocks must be between {min} and {max}")]
     InvalidDrawWindowBlocks { min: u64, max: u64 },
 
+    #[error("Paid raffles (ticket_price > 0) can only offer LUNC, USDC, or USTC as the prize - no CW20 tokens and no other native denoms yet. Free raffles (ticket_price = 0) have no restriction. Contact the platform to get a new asset reviewed and allowlisted")]
+    PrizeAssetNotAllowlisted {},
+
     #[error("This raffle's prize is a CW20 token - use the CW20 token's Send instead of DepositPrize")]
     PrizeIsCw20 {},
 

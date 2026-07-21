@@ -109,6 +109,38 @@ const TREASURY_ADDRESS: &str = "terra1juzyema7r4gvrrvrkkznceyeyhfkdj6zvz20fd";
 /// worthless token dressed up as "USDC", satisfying the fee amount check
 /// without paying anything of real value.
 const USDC_DENOM: &str = "utestusdc";
+/// LUNC's denom is the same on every network - it's the chain's own
+/// staking/gas token, not an IBC asset with a network-specific hash.
+const LUNC_DENOM: &str = "uluna";
+/// Real, governance-approved denom (see
+/// scripts/testnet/src/configMainnetTest.ts, sourced from
+/// docs/terra-classic-chain-notes.md) - same value on testnet and mainnet,
+/// unlike `USDC_DENOM` above.
+const USTC_DENOM: &str = "uusd";
+
+/// Prize whitelist for paid raffles (2026-07-21): a raffle where players
+/// pay a real ticket price can only offer LUNC/USDC/USTC as the prize, and
+/// never a CW20 token. Native denom identity can't be spoofed (it's the
+/// exact chain/channel hash, not creator-controlled metadata), but CW20
+/// `name`/`symbol` fields are pure creator-chosen strings disconnected from
+/// the contract's real identity - anyone can deploy their own CW20, call it
+/// "USDC", and use it as the prize, collecting real ticket revenue while
+/// handing out a worthless clone to the winner. This chain's own history
+/// (a dozen+ real, unforged native "stablecoins" - KRT, EUT, etc. - that
+/// depegged alongside USTC) means even an unrestricted *native* choice
+/// isn't automatically safe without a token-identity display the frontend
+/// doesn't build yet, so the same 3-asset list applies to natives too for
+/// now. New assets (native or CW20) get added here only after manual
+/// review (liquidity, volume, community standing, and for CW20 specifically
+/// confirming standard, non-malicious transfer behavior) - not exposed as
+/// a creator-facing form field yet.
+///
+/// Deliberately NOT applied when `ticket_price` is zero: with no one paying
+/// to enter, the raffle is functionally a podium/single-winner-shaped
+/// airdrop - a bad prize can only shortchange participants relative to
+/// their expectations, never extract real money from them, since nobody
+/// put any in.
+const ALLOWED_PAID_NATIVE_PRIZE_DENOMS: [&str; 3] = [LUNC_DENOM, USDC_DENOM, USTC_DENOM];
 
 /// Computes the required service fee on-chain from `raffle_type` (and, for
 /// Airdrop, `max_players`) instead of trusting a creator-supplied amount -
@@ -195,6 +227,16 @@ pub fn instantiate(
             )))
         }
     };
+
+    if !msg.ticket_price.is_zero() {
+        let allowed = match &prize_asset {
+            PrizeAsset::Native { denom } => ALLOWED_PAID_NATIVE_PRIZE_DENOMS.contains(&denom.as_str()),
+            PrizeAsset::Cw20 { .. } => false,
+        };
+        if !allowed {
+            return Err(ContractError::PrizeAssetNotAllowlisted {});
+        }
+    }
 
     let fee_amount_usdc = required_fee_usdc(msg.raffle_type, msg.max_players)?;
 
