@@ -239,7 +239,39 @@
     "empty": "No raffles yet — be the first to create one.",
     "raffleListTitle": "Active raffles",
     "createdBy": "by {{creator}}",
-    "partialList": "Showing the latest {{shown}} of {{total}} raffles."
+    "partialList": "Showing the latest {{shown}} of {{total}} raffles.",
+    "cardError": "Couldn't load this raffle.",
+    "ticketPrice": "🎟️ {{price}}",
+    "players": "{{count}}/{{max}} players",
+    "raffleType": {
+      "singleWinner": "Single Winner",
+      "podium": "Podium",
+      "airdrop": "Airdrop"
+    },
+    "status": {
+      "funding": "Funding",
+      "open": "Open",
+      "closed": "Closed",
+      "drawn": "Drawn",
+      "cancelled": "Cancelled"
+    },
+    "creatorToggle": "🎪 I'm a creator",
+    "form": {
+      "raffleTypeLabel": "Raffle type",
+      "ticketPriceLabel": "Ticket price (USDC)",
+      "minPlayersLabel": "Minimum players",
+      "maxPlayersLabel": "Maximum players",
+      "podiumSharesLabel": "Podium split (1st / 2nd / 3rd, must add up to 100%)",
+      "submit": "Create raffle",
+      "submitting": "Creating…",
+      "success": "Raffle created: {{address}}",
+      "connectFirst": "Connect your wallet first.",
+      "errorPrice": "Ticket price must be greater than 0.",
+      "errorMinPlayers": "Minimum players must be at least 2.",
+      "errorMaxPlayers": "Maximum players must be at least the minimum.",
+      "errorPodiumShares": "Podium shares must be positive numbers adding up to exactly 100.",
+      "errorGeneric": "Couldn't create the raffle. Try again."
+    }
   },
   "weekly": {
     "heroTitle": "The Weekly Jackpot",

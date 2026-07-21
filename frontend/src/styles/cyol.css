@@ -1,0 +1,201 @@
+.cyol-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+.cyol-title {
+  font-family: var(--display);
+  color: var(--text);
+  text-align: center;
+  margin: 1rem 0 1.5rem;
+}
+
+.cyol-list-title {
+  font-family: var(--display);
+  color: var(--text);
+  font-size: 1.1rem;
+  margin: 2rem 0 1rem;
+}
+
+/* Creator form */
+
+.cyol-creator {
+  background: var(--bg-card);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.cyol-creator-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+
+.cyol-creator-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.cyol-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--text-dim);
+  font-family: var(--body);
+  font-size: 0.85rem;
+}
+
+.cyol-field input[type="number"] {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  font-family: var(--mono);
+}
+
+.cyol-radio-group {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.cyol-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.85rem;
+}
+
+.cyol-podium-shares {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cyol-podium-shares input {
+  width: 4.5rem;
+}
+
+.cyol-submit {
+  align-self: flex-start;
+  background: var(--blue);
+  color: var(--text);
+  border: none;
+  border-radius: 999px;
+  padding: 0.7rem 1.6rem;
+  font-family: var(--display);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.cyol-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cyol-form-error {
+  color: var(--crimson-bright);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.cyol-form-success {
+  color: var(--gold);
+  font-size: 0.85rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+/* Raffle cards */
+
+.cyol-partial-note {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.cyol-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.cyol-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cyol-card-loading,
+.cyol-card-error {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.cyol-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cyol-card-type {
+  font-family: var(--display);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.cyol-card-status {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-bright);
+  color: var(--text-dim);
+}
+
+.cyol-card-status-open {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+}
+
+.cyol-card-status-drawn {
+  color: var(--blue);
+  border-color: var(--blue-deep);
+}
+
+.cyol-card-price {
+  color: var(--text);
+  font-family: var(--mono);
+  margin: 0;
+}
+
+.cyol-card-players {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.cyol-card-address {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  word-break: break-all;
+  margin: 0;
+}
