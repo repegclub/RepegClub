@@ -378,7 +378,7 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
 
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    let res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    let res = execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     // 1 prize payout + 1 ticket-revenue-to-creator + 2 fee-split payouts (founder/treasury) = 4
     assert_eq!(res.messages.len(), 4);
@@ -405,6 +405,96 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
 }
 
 #[test]
+fn only_creator_can_draw_winner() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap();
+
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
+
+    let err = execute(deps.as_mut(), later_env.clone(), mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    execute(deps.as_mut(), later_env, mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+}
+
+#[test]
+fn non_creator_can_draw_winner_after_the_long_fallback_deadline() {
+    // default unclaimed_deadline_days from `setup` is 90. Time is advanced
+    // between opening (deposit_prize) and closing (auto-close on the 2nd
+    // ticket) so opened_at != closed_at - otherwise this test couldn't tell
+    // a correct closed_at-anchored deadline apart from a regression that
+    // accidentally anchored it to opened_at instead.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+
+    let mut close_env = env.clone();
+    close_env.block.time = close_env.block.time.plus_seconds(20 * 86400);
+    buy_ticket(&mut deps, &close_env, "player2", 100).unwrap(); // auto-closes; closed_at = opened_at + 20 days
+
+    // opened_at + 90 days == closed_at + 70 days - a deadline wrongly
+    // anchored to opened_at would already have passed here. Assert it's
+    // still rejected, proving the deadline actually tracks closed_at.
+    let mut wrong_anchor_env = env.clone();
+    wrong_anchor_env.block.height = env.block.height + 5;
+    wrong_anchor_env.block.time = env.block.time.plus_seconds(90 * 86400);
+    let err = execute(deps.as_mut(), wrong_anchor_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    // 1 second before the real (closed_at-based) deadline: still rejected.
+    let mut just_before_env = close_env.clone();
+    just_before_env.block.height = env.block.height + 5;
+    just_before_env.block.time = close_env.block.time.plus_seconds(90 * 86400 - 1);
+    let err = execute(deps.as_mut(), just_before_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    // Exactly at the real deadline: succeeds.
+    let mut after_env = close_env.clone();
+    after_env.block.height = env.block.height + 5;
+    after_env.block.time = close_env.block.time.plus_seconds(90 * 86400);
+    execute(deps.as_mut(), after_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+}
+
+#[test]
+fn creator_can_close_round_early_without_reaching_max_or_timeout() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap();
+
+    // Well below max_players (10) and no time has elapsed - only the
+    // creator's early-close path can succeed here.
+    execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
+
+    let status = raffle_status(&deps, &env);
+    assert_eq!(status.status, RaffleStatus::Closed);
+}
+
+#[test]
+fn non_creator_cannot_close_round_early() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 100).unwrap();
+
+    let err = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::CloseRound {}).unwrap_err();
+    assert!(matches!(err, ContractError::CannotCloseRound {}));
+}
+
+#[test]
+fn creator_cannot_close_round_below_min_players() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 100, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 100).unwrap();
+
+    let err = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap_err();
+    assert!(matches!(err, ContractError::CannotCloseRound {}));
+}
+
+#[test]
 fn draw_winner_past_the_window_rearms_instead_of_drawing() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 100, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
@@ -413,7 +503,7 @@ fn draw_winner_past_the_window_rearms_instead_of_drawing() {
 
     let mut too_late_env = env.clone();
     too_late_env.block.height += 15; // first height past the ceiling
-    let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
     assert!(res.messages.is_empty());
@@ -422,12 +512,12 @@ fn draw_winner_past_the_window_rearms_instead_of_drawing() {
     assert_eq!(status.status, RaffleStatus::Closed);
     assert_eq!(status.draw_after_height, Some(too_late_env.block.height + 5));
 
-    let err = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
+    let err = execute(deps.as_mut(), too_late_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
     assert!(matches!(err, ContractError::DrawTooEarly { .. }));
 
     let mut drawable_env = too_late_env.clone();
     drawable_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), drawable_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    let draw_res = execute(deps.as_mut(), drawable_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
     assert_eq!(draw_res.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
     let winners_bin = query(deps.as_ref(), drawable_env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -444,7 +534,7 @@ fn podium_picks_three_distinct_winners_with_creator_chosen_50_30_20_split() {
 
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -463,7 +553,7 @@ fn podium_supports_two_places_with_a_custom_split() {
 
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -482,7 +572,7 @@ fn podium_supports_more_than_three_places_and_rounds_dust_to_first_place() {
 
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     let winners_bin = query(deps.as_ref(), later_env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -504,7 +594,7 @@ fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
 
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    let res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    let res = execute(deps.as_mut(), later_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
     // no per-winner prize payout for Airdrop itself (that's pulled later via
     // ClaimAirdropShare); the 2 messages here are the founder/treasury fee split.
     assert_eq!(res.messages.len(), 2);
@@ -639,7 +729,7 @@ fn cw20_prize_needs_pay_service_fee_then_the_cw20_send_hook() {
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
     let mut later_env = env.clone();
     later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env, mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    let draw_res = execute(deps.as_mut(), later_env, mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     let prize_msg = draw_res.messages.iter().find_map(|m| match &m.msg {
         CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, msg, .. }) if contract_addr == "cw20token" => {
@@ -715,6 +805,37 @@ fn instantiate_rejects_degenerate_player_bounds() {
 
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(5, 2)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidPlayerBounds {}));
+}
+
+#[test]
+fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |unclaimed_deadline_days: u64| InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(9000)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    // Boundaries are inclusive.
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(1)).unwrap();
+    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(365)).unwrap();
 }
 
 #[test]

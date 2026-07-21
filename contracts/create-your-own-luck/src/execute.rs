@@ -306,7 +306,16 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         .add_attribute("auto_closed", auto_closed.to_string()))
 }
 
-pub fn execute_close_round(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+/// Permissionless for anyone once the raffle's own conditions are met
+/// (reaches max_players, or the timeout elapses with at least min_players) -
+/// same as every other close/draw action platform-wide. The creator gets one
+/// extra path on top: they can close early, on their own judgment, without
+/// waiting for either condition - they're the one paying for and running
+/// this raffle, and are best placed to decide "enough people showed up".
+/// Still can't go below min_players even as the creator: DrawWinner enforces
+/// that floor separately regardless of how the raffle got closed, so an
+/// early close under it would just strand the raffle Closed-but-undrawable.
+pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
 
@@ -318,8 +327,9 @@ pub fn execute_close_round(deps: DepsMut, env: Env) -> Result<Response, Contract
     let has_min = raffle.unique_players.len() as u32 >= config.min_players;
     let opened_at = raffle.opened_at.unwrap_or(env.block.time);
     let timeout_elapsed = env.block.time.seconds() >= opened_at.seconds() + config.round_timeout_seconds;
+    let creator_early_close = info.sender == config.creator && has_min;
 
-    if !(reached_max || (timeout_elapsed && has_min)) {
+    if !(reached_max || (timeout_elapsed && has_min) || creator_early_close) {
         return Err(ContractError::CannotCloseRound {});
     }
 
@@ -331,12 +341,45 @@ pub fn execute_close_round(deps: DepsMut, env: Env) -> Result<Response, Contract
     Ok(Response::new().add_attribute("action", "close_round"))
 }
 
-pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+/// Creator-exclusive at first, unlike CloseRound - the creator paid the
+/// service fee and put up the prize, and drawing is the moment the winner
+/// gets announced, so they get to be the one who cuts the ribbon and tells
+/// their own community first, instead of finding out secondhand that
+/// someone else already ran it. A deliberate correction (2026-07-21) from
+/// the platform's usual fully-permissionless close/draw pattern - CloseRound
+/// stays permissionless for non-creators, only DrawWinner is restricted.
+///
+/// That exclusivity isn't forever, though: once `unclaimed_deadline_days`
+/// has passed since the raffle *closed* (same field/duration already used
+/// for sweeping unclaimed Airdrop shares, reused here for a second,
+/// separate deadline - not the same clock), anyone can draw it. A raffle
+/// reaches `Closed` on its own (auto-close on the last ticket, or anyone's
+/// permissionless CloseRound at timeout) - if the creator's wallet is then
+/// lost or unresponsive, a `Closed` raffle with no fallback would strand
+/// its prize/ticket revenue/fee forever, since CancelRaffle is blocked once
+/// Closed. Found by an Opus+Fable review (2026-07-21) of the first,
+/// fallback-less version of this creator-only restriction.
+pub fn execute_draw_winner(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
 
     if raffle.status != RaffleStatus::Closed {
         return Err(ContractError::RaffleNotClosed {});
+    }
+    if info.sender != config.creator {
+        // `closed_at` is always set atomically with status becoming Closed
+        // (both the auto-close in execute_buy_ticket and the close below
+        // do this), so this is never actually reached - but propagating an
+        // error here instead of defaulting to `env.block.time` matters: a
+        // silent "now" default would make the fallback deadline recede
+        // into the future on every call, permanently defeating the one
+        // thing this fallback exists to guarantee. Same defensive pattern
+        // ReclaimUnclaimed already uses for its own timestamp field.
+        let closed_at = raffle.closed_at.ok_or(ContractError::RaffleNotClosed {})?;
+        let fallback_deadline = closed_at.seconds() + config.unclaimed_deadline_days * 86400;
+        if env.block.time.seconds() < fallback_deadline {
+            return Err(ContractError::Unauthorized {});
+        }
     }
     let required_height = raffle.draw_after_height.unwrap_or(u64::MAX);
     if env.block.height < required_height {

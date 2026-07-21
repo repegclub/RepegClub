@@ -34,6 +34,24 @@ const MAX_PODIUM_PLACES: u32 = 10;
 /// user 2026-07-15.
 const MAX_PLAYERS_SINGLE_WINNER_PODIUM: u32 = 100;
 
+/// Bounds on `unclaimed_deadline_days`, a creator-chosen field with two
+/// distinct uses: how long before an Airdrop's unclaimed shares can be
+/// swept back to the creator (`execute_reclaim_unclaimed`), and - reused,
+/// not a separate field - how long a `Closed` raffle stays creator-only
+/// before `DrawWinner` falls back to permissionless so a lost/unresponsive
+/// creator wallet can never strand it forever (`execute_draw_winner`).
+/// Unvalidated, this was a real gap on both ends: 0 would silently gut the
+/// creator's draw exclusivity down to nothing, and an astronomically large
+/// value (with `overflow-checks = true`) would panic the deadline math -
+/// re-stranding the raffle the fallback exists to rescue. Found by an
+/// Opus+Fable review (2026-07-21) of the fallback fix itself. 365 as an
+/// upper bound keeps the worst case (creator vanishes right after an
+/// absurd-but-not-overflowing value like 9000 days) to at most a year, not
+/// decades - the whole point of the fallback is a real, human-scale ceiling,
+/// not just avoiding a panic.
+const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
+const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
+
 /// Flat service fee (USDC micros) for SingleWinner and Podium raffles.
 const FLAT_FEE_USDC: u128 = 3_000_000; // "$3"
 
@@ -88,6 +106,14 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
+    }
+    if msg.unclaimed_deadline_days < MIN_UNCLAIMED_DEADLINE_DAYS
+        || msg.unclaimed_deadline_days > MAX_UNCLAIMED_DEADLINE_DAYS
+    {
+        return Err(ContractError::InvalidUnclaimedDeadlineDays {
+            min: MIN_UNCLAIMED_DEADLINE_DAYS,
+            max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
     }
     if msg.raffle_type != RaffleType::Airdrop && msg.max_players > MAX_PLAYERS_SINGLE_WINNER_PODIUM {
         return Err(ContractError::MaxPlayersTooHighForRaffleType {
@@ -193,8 +219,8 @@ pub fn execute(
         ExecuteMsg::PayServiceFee {} => execute_pay_service_fee(deps, info),
         ExecuteMsg::Receive(wrapper) => execute_receive(deps, env, info, wrapper),
         ExecuteMsg::BuyTicket {} => execute_buy_ticket(deps, env, info),
-        ExecuteMsg::CloseRound {} => execute_close_round(deps, env),
-        ExecuteMsg::DrawWinner {} => execute_draw_winner(deps, env),
+        ExecuteMsg::CloseRound {} => execute_close_round(deps, env, info),
+        ExecuteMsg::DrawWinner {} => execute_draw_winner(deps, env, info),
         ExecuteMsg::ClaimAirdropShare {} => execute_claim_airdrop_share(deps, info),
         ExecuteMsg::ReclaimUnclaimed {} => execute_reclaim_unclaimed(deps, env, info),
         ExecuteMsg::CancelRaffle {} => execute_cancel_raffle(deps, info),

@@ -90,6 +90,9 @@ pub enum ContractError {
     #[error("min_players must be at least 2, and max_players must be >= min_players")]
     InvalidPlayerBounds {},
 
+    #[error("unclaimed_deadline_days must be between {min} and {max}")]
+    InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
+
     #[error("This raffle's prize is a CW20 token - use the CW20 token's Send instead of DepositPrize")]
     PrizeIsCw20 {},
 
