@@ -17,6 +17,32 @@ const DEFAULT_PODIUM_SHARES = [50, 30, 20];
 
 type RaffleType = CreateRaffleParams["raffleType"];
 
+// Mirrors contracts/create-your-own-luck-factory's MAX_PLAYERS_SINGLE_WINNER_PODIUM
+// and AIRDROP_FEE_TIERS_USDC exactly (contracts/create-your-own-luck/src/
+// contract.rs) - SingleWinner/Podium are capped at 100 max_players, while
+// Airdrop can go up to 1000 but the service fee (paid later, via
+// DepositPrize/PayServiceFee) scales with the ceiling chosen here. The
+// contract enforces both server-side regardless, but validating client-side
+// avoids a creator paying gas for a signed tx that's guaranteed to be
+// rejected on-chain.
+const MAX_PLAYERS_SINGLE_WINNER_PODIUM = 100;
+const AIRDROP_FEE_TIERS_USDC: [number, number][] = [
+  [100, 3],
+  [300, 7],
+  [600, 12],
+  [1000, 18],
+];
+const MAX_PLAYERS_AIRDROP = AIRDROP_FEE_TIERS_USDC[AIRDROP_FEE_TIERS_USDC.length - 1][0];
+
+function maxPlayersLimit(raffleType: RaffleType): number {
+  return raffleType === "airdrop" ? MAX_PLAYERS_AIRDROP : MAX_PLAYERS_SINGLE_WINNER_PODIUM;
+}
+
+function airdropFeeForMaxPlayers(max: number): number | null {
+  const tier = AIRDROP_FEE_TIERS_USDC.find(([cap]) => max <= cap);
+  return tier ? tier[1] : null;
+}
+
 export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
@@ -42,6 +68,8 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
     const max = Number(maxPlayers);
     if (!Number.isInteger(min) || min < 2) return t("createYourOwnLuck.form.errorMinPlayers");
     if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers");
+    const limit = maxPlayersLimit(raffleType);
+    if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit });
 
     if (raffleType === "podium") {
       const shares = podiumShares.map(Number);
@@ -130,13 +158,25 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
           </label>
 
           <label className="cyol-field">
-            <span>{t("createYourOwnLuck.form.maxPlayersLabel")}</span>
+            <span>
+              {t("createYourOwnLuck.form.maxPlayersLabel", { limit: maxPlayersLimit(raffleType) })}
+            </span>
             <input
               type="number"
               min="2"
+              max={maxPlayersLimit(raffleType)}
               value={maxPlayers}
               onChange={(e) => setMaxPlayers(e.target.value)}
             />
+            {raffleType === "airdrop" &&
+              (() => {
+                const fee = airdropFeeForMaxPlayers(Number(maxPlayers));
+                return fee !== null ? (
+                  <span className="cyol-hint">
+                    {t("createYourOwnLuck.form.airdropFeeNote", { fee })}
+                  </span>
+                ) : null;
+              })()}
           </label>
 
           {raffleType === "podium" && (

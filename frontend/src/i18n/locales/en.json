@@ -260,7 +260,8 @@
       "raffleTypeLabel": "Raffle type",
       "ticketPriceLabel": "Ticket price (USDC)",
       "minPlayersLabel": "Minimum players",
-      "maxPlayersLabel": "Maximum players",
+      "maxPlayersLabel": "Maximum players (up to {{limit}})",
+      "airdropFeeNote": "Service fee for this raffle: ${{fee}} (paid later, when you fund it)",
       "podiumSharesLabel": "Podium split (1st / 2nd / 3rd, must add up to 100%)",
       "submit": "Create raffle",
       "submitting": "Creating…",
@@ -269,6 +270,7 @@
       "errorPrice": "Ticket price must be greater than 0.",
       "errorMinPlayers": "Minimum players must be at least 2.",
       "errorMaxPlayers": "Maximum players must be at least the minimum.",
+      "errorMaxPlayersLimit": "Maximum players can't be more than {{limit}} for this raffle type.",
       "errorPodiumShares": "Podium shares must be positive numbers adding up to exactly 100.",
       "errorGeneric": "Couldn't create the raffle. Try again."
     }
