@@ -229,7 +229,17 @@
   },
   "gameSwitcher": {
     "wheelOfRepeg": "🎡 Wheel of Repeg",
-    "weeklyRound": "👑 Weekly Round"
+    "weeklyRound": "👑 Weekly Round",
+    "createYourOwnLuck": "🍀 Create Your Own Luck"
+  },
+  "createYourOwnLuck": {
+    "pageTitle": "Create Your Own Luck",
+    "loading": "Loading raffles…",
+    "error": "Couldn't load raffles. Try again shortly.",
+    "empty": "No raffles yet — be the first to create one.",
+    "raffleListTitle": "Active raffles",
+    "createdBy": "by {{creator}}",
+    "partialList": "Showing the latest {{shown}} of {{total}} raffles."
   },
   "weekly": {
     "heroTitle": "The Weekly Jackpot",

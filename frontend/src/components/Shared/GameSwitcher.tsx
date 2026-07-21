@@ -5,10 +5,11 @@ import { Link } from "react-router-dom";
 // game without hunting for it in mismatched spots (previously: one link
 // buried in the wallet utility bar, the other a differently-styled banner
 // elsewhere, so neither read as "the same action"). Add an entry here when
-// a new game gets its own page (next: Create Your Own Luck).
+// a new game gets its own page.
 const GAMES: { path: string; labelKey: string }[] = [
   { path: "/", labelKey: "gameSwitcher.wheelOfRepeg" },
   { path: "/weekly-round", labelKey: "gameSwitcher.weeklyRound" },
+  { path: "/create-your-own-luck", labelKey: "gameSwitcher.createYourOwnLuck" },
 ];
 
 export function GameSwitcher({ current }: { current: string }) {
