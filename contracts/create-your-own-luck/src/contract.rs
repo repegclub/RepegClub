@@ -52,6 +52,33 @@ const MAX_PLAYERS_SINGLE_WINNER_PODIUM: u32 = 100;
 const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
 const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 
+/// Bounds on `round_timeout_seconds`, `draw_delay_blocks`, and
+/// `draw_window_blocks` - three more creator-chosen fields (like
+/// `unclaimed_deadline_days` above) that were left unvalidated at instantiate
+/// until an Opus+Fable review (2026-07-21) of *that* fix pointed out the same
+/// bug class was still open here. All three feed timestamp/height addition in
+/// `execute_close_round`/`execute_draw_winner` (`opened_at.seconds() +
+/// round_timeout_seconds`, `env.block.height + draw_delay_blocks`); with
+/// `overflow-checks = true` an astronomical value panics that addition,
+/// and unlike the DrawWinner creator-exclusivity fallback, `CloseRound` has
+/// no permissionless/deadline rescue if it can never be evaluated - a raffle
+/// that can never close can never reach `CancelRaffle`'s only escape either
+/// (blocked once `Closed`, and only reachable from `Open`/`Funding` while the
+/// creator is willing to call it), stranding every ticket buyer's money, not
+/// just the creator's own. `draw_window_blocks = 0` is its own, non-overflow
+/// way to strand a raffle: the "still within the draw window" check in
+/// `execute_draw_winner` degenerates to always-true, so the raffle rearms
+/// forever and never actually draws. Minimums of 1 rule that out; the upper
+/// bounds keep the worst case (a picked-but-not-overflowing absurd value) to
+/// low-single-digit years, not decades - same "human-scale ceiling" reasoning
+/// as `MAX_UNCLAIMED_DEADLINE_DAYS`.
+const MIN_ROUND_TIMEOUT_SECONDS: u64 = 60;
+const MAX_ROUND_TIMEOUT_SECONDS: u64 = 31_536_000; // 365 days
+const MIN_DRAW_DELAY_BLOCKS: u64 = 1;
+const MAX_DRAW_DELAY_BLOCKS: u64 = 1_000_000;
+const MIN_DRAW_WINDOW_BLOCKS: u64 = 1;
+const MAX_DRAW_WINDOW_BLOCKS: u64 = 1_000_000;
+
 /// Flat service fee (USDC micros) for SingleWinner and Podium raffles.
 const FLAT_FEE_USDC: u128 = 3_000_000; // "$3"
 
@@ -113,6 +140,26 @@ pub fn instantiate(
         return Err(ContractError::InvalidUnclaimedDeadlineDays {
             min: MIN_UNCLAIMED_DEADLINE_DAYS,
             max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
+    }
+    if msg.round_timeout_seconds < MIN_ROUND_TIMEOUT_SECONDS
+        || msg.round_timeout_seconds > MAX_ROUND_TIMEOUT_SECONDS
+    {
+        return Err(ContractError::InvalidRoundTimeoutSeconds {
+            min: MIN_ROUND_TIMEOUT_SECONDS,
+            max: MAX_ROUND_TIMEOUT_SECONDS,
+        });
+    }
+    if msg.draw_delay_blocks < MIN_DRAW_DELAY_BLOCKS || msg.draw_delay_blocks > MAX_DRAW_DELAY_BLOCKS {
+        return Err(ContractError::InvalidDrawDelayBlocks {
+            min: MIN_DRAW_DELAY_BLOCKS,
+            max: MAX_DRAW_DELAY_BLOCKS,
+        });
+    }
+    if msg.draw_window_blocks < MIN_DRAW_WINDOW_BLOCKS || msg.draw_window_blocks > MAX_DRAW_WINDOW_BLOCKS {
+        return Err(ContractError::InvalidDrawWindowBlocks {
+            min: MIN_DRAW_WINDOW_BLOCKS,
+            max: MAX_DRAW_WINDOW_BLOCKS,
         });
     }
     if msg.raffle_type != RaffleType::Airdrop && msg.max_players > MAX_PLAYERS_SINGLE_WINNER_PODIUM {

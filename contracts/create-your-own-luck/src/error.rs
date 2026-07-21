@@ -93,6 +93,15 @@ pub enum ContractError {
     #[error("unclaimed_deadline_days must be between {min} and {max}")]
     InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
 
+    #[error("round_timeout_seconds must be between {min} and {max}")]
+    InvalidRoundTimeoutSeconds { min: u64, max: u64 },
+
+    #[error("draw_delay_blocks must be between {min} and {max}")]
+    InvalidDrawDelayBlocks { min: u64, max: u64 },
+
+    #[error("draw_window_blocks must be between {min} and {max}")]
+    InvalidDrawWindowBlocks { min: u64, max: u64 },
+
     #[error("This raffle's prize is a CW20 token - use the CW20 token's Send instead of DepositPrize")]
     PrizeIsCw20 {},
 

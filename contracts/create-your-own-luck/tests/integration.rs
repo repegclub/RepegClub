@@ -839,6 +839,99 @@ fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
 }
 
 #[test]
+fn instantiate_rejects_round_timeout_seconds_out_of_range() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |round_timeout_seconds: u64| InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
+
+    // Boundaries are inclusive.
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(60)).unwrap();
+    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(31_536_000)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_draw_delay_blocks_out_of_range() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |draw_delay_blocks: u64| InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
+
+    // Boundaries are inclusive.
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(1)).unwrap();
+    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(1_000_000)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_draw_window_blocks_out_of_range() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |draw_window_blocks: u64| InstantiateMsg {
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks,
+        unclaimed_deadline_days: 90,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
+
+    // Boundaries are inclusive.
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(1)).unwrap();
+    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(1_000_000)).unwrap();
+}
+
+#[test]
 fn ticket_cap_per_wallet_is_half_of_max_players_minimum_one() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 4, 0, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
