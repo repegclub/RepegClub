@@ -238,7 +238,8 @@
     "error": "Couldn't load raffles. Try again shortly.",
     "empty": "No raffles yet — be the first to create one.",
     "raffleListTitle": "Active raffles",
-    "createdBy": "by {{creator}}"
+    "createdBy": "by {{creator}}",
+    "partialList": "Showing the latest {{shown}} of {{total}} raffles."
   },
   "weekly": {
     "heroTitle": "The Weekly Jackpot",

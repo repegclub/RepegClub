@@ -28,13 +28,23 @@ export function CreateYourOwnLuckPage() {
         <p>{t("createYourOwnLuck.empty")}</p>
       )}
       {raffles.status === "loaded" && raffles.raffles.raffles.length > 0 && (
-        <ul>
-          {raffles.raffles.raffles.map((raffle) => (
-            <li key={raffle.index}>
-              {raffle.address} — {t("createYourOwnLuck.createdBy", { creator: raffle.creator })}
-            </li>
-          ))}
-        </ul>
+        <>
+          {raffles.raffles.raffles.length < raffles.raffles.total_count && (
+            <p>
+              {t("createYourOwnLuck.partialList", {
+                shown: raffles.raffles.raffles.length,
+                total: raffles.raffles.total_count,
+              })}
+            </p>
+          )}
+          <ul>
+            {raffles.raffles.raffles.map((raffle) => (
+              <li key={raffle.index}>
+                {raffle.address} — {t("createYourOwnLuck.createdBy", { creator: raffle.creator })}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </main>
   );
