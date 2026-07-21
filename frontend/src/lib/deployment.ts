@@ -42,11 +42,13 @@ export const WEEKLY_ROUND_ADDRESS =
   "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
-// Weekly Round above). Deployed 2026-07-20, see
-// scripts/testnet/deployment-cyol-factory-frontenddev.json. Points at
-// raffle code ID 2363 - any change to the create-your-own-luck contract
-// itself needs a fresh factory deploy too, since the code ID is fixed at
-// the factory's own instantiate time (contracts/create-your-own-luck-factory/
-// src/state.rs, RAFFLE_CODE_ID).
+// Weekly Round above). Redeployed 2026-07-21, see
+// scripts/testnet/deployment-cyol-factory-frontenddev2.json. Points at
+// raffle code ID 2365 (creator-exclusive DrawWinner + the
+// round_timeout_seconds/draw_delay_blocks/draw_window_blocks bounds fix) -
+// any change to the create-your-own-luck contract itself needs a fresh
+// factory deploy too, since the code ID is fixed at the factory's own
+// instantiate time (contracts/create-your-own-luck-factory/src/state.rs,
+// RAFFLE_CODE_ID).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra1xrjxfqq99h83krjj88c5txeput82jugllqdxfxhatx0exdtknv6q5qdxc4";
+  "terra17pdq586e7qfdjdly7z8k2tu4cvxm9ffxxcmayxlg2ndtcl6ugrysl2qrv4";
