@@ -41,6 +41,7 @@ pub fn execute(
             draw_delay_blocks,
             draw_window_blocks,
             unclaimed_deadline_days,
+            max_raffle_age_seconds,
             prize_native_denom,
             prize_cw20_address,
             podium_shares_bps,
@@ -58,6 +59,7 @@ pub fn execute(
             draw_delay_blocks,
             draw_window_blocks,
             unclaimed_deadline_days,
+            max_raffle_age_seconds,
             prize_native_denom,
             prize_cw20_address,
             podium_shares_bps,
@@ -115,12 +117,15 @@ mod tests {
         coins, from_json, Addr, CosmosMsg, SubMsgResponse, SubMsgResult, Uint128, WasmMsg,
     };
 
-    use crate::msg::{ExecuteMsg, RaffleRecordResponse, RaffleType, RafflesResponse};
+    use crate::msg::{CreatorCooldownResponse, ExecuteMsg, QueryMsg, RaffleRecordResponse, RaffleType, RafflesResponse};
     use crate::state::PENDING_CREATOR;
 
     const RAFFLE_CODE_ID: u64 = 42;
 
     fn sample_create_raffle_msg() -> ExecuteMsg {
+        // Paid, SingleWinner, max_players=10 - below UNSAFE_MAX_PLAYERS_THRESHOLD
+        // (20), so this is itself an "unsafe-shaped" raffle for the cooldown
+        // tests below, same as every other test already using it.
         ExecuteMsg::CreateRaffle {
             raffle_type: RaffleType::SingleWinner,
             ticket_price: Uint128::new(1_000_000),
@@ -132,9 +137,121 @@ mod tests {
             draw_delay_blocks: 2,
             draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
+            max_raffle_age_seconds: 604800,
             prize_native_denom: Some("uustc".to_string()),
             prize_cw20_address: None,
             podium_shares_bps: vec![],
+        }
+    }
+
+    fn safe_raffle_msg() -> ExecuteMsg {
+        // >= UNSAFE_MAX_PLAYERS_THRESHOLD (20) - safe shape despite being paid.
+        match sample_create_raffle_msg() {
+            ExecuteMsg::CreateRaffle {
+                raffle_type,
+                ticket_price,
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+                ..
+            } => ExecuteMsg::CreateRaffle {
+                raffle_type,
+                ticket_price,
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                max_players: 50,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+            },
+        }
+    }
+
+    fn free_raffle_msg() -> ExecuteMsg {
+        // ticket_price=0 - never an unsafe shape, regardless of max_players.
+        match sample_create_raffle_msg() {
+            ExecuteMsg::CreateRaffle {
+                raffle_type,
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                max_players,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+                ..
+            } => ExecuteMsg::CreateRaffle {
+                raffle_type,
+                ticket_price: Uint128::zero(),
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                max_players,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+            },
+        }
+    }
+
+    fn airdrop_paid_raffle_msg() -> ExecuteMsg {
+        // Airdrop - never an unsafe shape, even paid + small max_players.
+        match sample_create_raffle_msg() {
+            ExecuteMsg::CreateRaffle {
+                ticket_price,
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                max_players,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+                ..
+            } => ExecuteMsg::CreateRaffle {
+                raffle_type: RaffleType::Airdrop,
+                ticket_price,
+                ticket_denom,
+                allowed_entrants,
+                min_players,
+                max_players,
+                round_timeout_seconds,
+                draw_delay_blocks,
+                draw_window_blocks,
+                unclaimed_deadline_days,
+                max_raffle_age_seconds,
+                prize_native_denom,
+                prize_cw20_address,
+                podium_shares_bps,
+            },
         }
     }
 
@@ -289,6 +406,133 @@ mod tests {
 
         let err = reply(deps.as_mut(), mock_env(), fake_reply(999, "terra1whatever")).unwrap_err();
         assert!(matches!(err, ContractError::UnknownReplyId { id: 999 }));
+    }
+
+    fn cooldown_of(deps: &cosmwasm_std::OwnedDeps<
+        cosmwasm_std::testing::MockStorage,
+        cosmwasm_std::testing::MockApi,
+        cosmwasm_std::testing::MockQuerier,
+    >, creator: &str) -> CreatorCooldownResponse {
+        let bin = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetCreatorCooldown {
+                creator: creator.to_string(),
+            },
+        )
+        .unwrap();
+        from_json(bin).unwrap()
+    }
+
+    #[test]
+    fn create_raffle_rejects_a_second_unsafe_shaped_raffle_within_the_cooldown() {
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+
+        let err = execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap_err();
+        assert!(matches!(err, ContractError::CreatorOnCooldown { .. }));
+
+        // A different wallet is never affected by another creator's cooldown.
+        execute(deps.as_mut(), mock_env(), mock_info("creator2", &[]), sample_create_raffle_msg()).unwrap();
+    }
+
+    #[test]
+    fn create_raffle_allows_unsafe_shaped_raffle_again_once_the_cooldown_elapses() {
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+
+        let mut later_env = mock_env();
+        later_env.block.time = later_env.block.time.plus_seconds(24 * 3600); // exactly the 1st-streak cooldown
+        execute(deps.as_mut(), later_env, mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+    }
+
+    #[test]
+    fn create_raffle_cooldown_grows_24_48_72_hours_for_consecutive_unsafe_raffles() {
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        let mut env = mock_env();
+        for expected_hours in [24u64, 48, 72] {
+            execute(deps.as_mut(), env.clone(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+
+            let cooldown = cooldown_of(&deps, "creator1");
+            let expected_available_at = env.block.time.plus_seconds(expected_hours * 3600).seconds();
+            assert_eq!(cooldown.next_unsafe_allowed_at, Some(expected_available_at));
+
+            env.block.time = env.block.time.plus_seconds(expected_hours * 3600); // jump exactly to when it's allowed again
+        }
+    }
+
+    #[test]
+    fn create_raffle_safe_shaped_raffle_resets_the_unsafe_streak() {
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap(); // streak 1, 24h cooldown
+
+        // A safe-shaped raffle is never blocked, and resets the streak entirely.
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), safe_raffle_msg()).unwrap();
+        let cooldown = cooldown_of(&deps, "creator1");
+        assert_eq!(cooldown.unsafe_streak, 0);
+        assert_eq!(cooldown.next_unsafe_allowed_at, None);
+
+        // Cooldown gone - an unsafe-shaped raffle right away (same block)
+        // succeeds and starts a fresh streak of 1, not continuing from before
+        // the reset.
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+        let cooldown = cooldown_of(&deps, "creator1");
+        assert_eq!(cooldown.unsafe_streak, 1);
+    }
+
+    #[test]
+    fn create_raffle_free_and_airdrop_raffles_are_never_unsafe_shaped() {
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        // Same tiny max_players as the "unsafe" shape, but free or Airdrop -
+        // never triggers a cooldown, no matter how many times repeated.
+        for _ in 0..5 {
+            execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), free_raffle_msg()).unwrap();
+            execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), airdrop_paid_raffle_msg()).unwrap();
+        }
+
+        let cooldown = cooldown_of(&deps, "creator1");
+        assert_eq!(cooldown.unsafe_streak, 0);
+        assert_eq!(cooldown.next_unsafe_allowed_at, None);
     }
 
     #[test]

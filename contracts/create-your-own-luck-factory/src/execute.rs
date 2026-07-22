@@ -3,9 +3,39 @@ use cosmwasm_std::{to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, 
 
 use crate::error::ContractError;
 use crate::msg::RaffleType;
-use crate::state::{PENDING_CREATOR, RAFFLE_CODE_ID, RAFFLE_COUNT};
+use crate::state::{CreatorCooldown, CREATOR_COOLDOWNS, PENDING_CREATOR, RAFFLE_CODE_ID, RAFFLE_COUNT};
 
 pub const CREATE_RAFFLE_REPLY_ID: u64 = 1;
+
+/// Below this `max_players`, a paid SingleWinner/Podium raffle's service fee
+/// (scales roughly with `max_players^2` in create-your-own-luck's own
+/// `contract.rs`) is cheap enough that a dishonest creator could profitably
+/// repeat the same small raffle many times to scale up self-dealing gains -
+/// no single repeat is worth much, but the fee barely costs anything either,
+/// so volume is the actual attack (see the project's CYOL security notes,
+/// 2026-07-22). Airdrop is excluded (no winner to "steal" the prize from,
+/// already capped at 1 ticket/wallet) and free raffles are excluded (the
+/// creator extracts nothing from third parties that way - see
+/// create-your-own-luck's own prize-whitelist reasoning for the same
+/// free-vs-paid split).
+const UNSAFE_MAX_PLAYERS_THRESHOLD: u32 = 20;
+
+/// Growing cooldown step: the Nth unsafe-shaped raffle in a row from the same
+/// creator (no safe-shaped raffle in between - that resets the streak
+/// entirely) locks out their *next* unsafe-shaped raffle for N times this
+/// many hours - 24h, 48h, 72h, ... This taxes repeating the cheap-exploit
+/// shape specifically, without touching a creator who only occasionally
+/// makes one small paid raffle, or who makes any number of safe-shaped ones.
+const UNSAFE_COOLDOWN_STEP_HOURS: u64 = 24;
+
+/// Ceiling on the streak counted toward the cooldown - not a limit on how
+/// many unsafe raffles a creator can eventually make (they can, just slower
+/// each time), but a bound on the arithmetic (`streak * step_hours * 3600`
+/// feeding `Timestamp::plus_seconds`) so a creator repeating this for a very
+/// long time can't approach an overflow. 30 -> a 30-day cooldown ceiling, a
+/// human-scale maximum, same reasoning as create-your-own-luck's own
+/// duration bounds (`MAX_UNCLAIMED_DEADLINE_DAYS` etc.).
+const MAX_UNSAFE_STREAK: u32 = 30;
 
 /// Mirrors create-your-own-luck's `InstantiateMsg` exactly (field names and
 /// shape, not the type - see `msg::RaffleType` for why it's duplicated) so
@@ -22,6 +52,7 @@ struct RaffleInstantiateMsg {
     draw_delay_blocks: u64,
     draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
+    max_raffle_age_seconds: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
     podium_shares_bps: Vec<u32>,
@@ -30,7 +61,7 @@ struct RaffleInstantiateMsg {
 #[allow(clippy::too_many_arguments)]
 pub fn execute_create_raffle(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     raffle_type: RaffleType,
     ticket_price: Uint128,
@@ -42,6 +73,7 @@ pub fn execute_create_raffle(
     draw_delay_blocks: u64,
     draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
+    max_raffle_age_seconds: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
     podium_shares_bps: Vec<u32>,
@@ -52,6 +84,40 @@ pub fn execute_create_raffle(
     // mechanism for anything but the one thing it's meant to hold (nothing).
     if !info.funds.is_empty() {
         return Err(ContractError::UnexpectedFundsAttached {});
+    }
+
+    let is_unsafe_shape =
+        raffle_type != RaffleType::Airdrop && !ticket_price.is_zero() && max_players < UNSAFE_MAX_PLAYERS_THRESHOLD;
+    let existing_cooldown = CREATOR_COOLDOWNS.may_load(deps.storage, info.sender.clone())?;
+    if is_unsafe_shape {
+        if let Some(cooldown) = &existing_cooldown {
+            if env.block.time < cooldown.next_unsafe_allowed_at {
+                return Err(ContractError::CreatorOnCooldown {
+                    available_at: cooldown.next_unsafe_allowed_at.seconds(),
+                });
+            }
+        }
+        let new_streak = existing_cooldown
+            .as_ref()
+            .map(|c| c.unsafe_streak)
+            .unwrap_or(0)
+            .saturating_add(1)
+            .min(MAX_UNSAFE_STREAK);
+        let cooldown_seconds = UNSAFE_COOLDOWN_STEP_HOURS
+            .saturating_mul(new_streak as u64)
+            .saturating_mul(3600);
+        CREATOR_COOLDOWNS.save(
+            deps.storage,
+            info.sender.clone(),
+            &CreatorCooldown {
+                unsafe_streak: new_streak,
+                next_unsafe_allowed_at: env.block.time.plus_seconds(cooldown_seconds),
+            },
+        )?;
+    } else if existing_cooldown.is_some() {
+        // A safe-shaped raffle resets the streak entirely - rewards sticking
+        // to safe shapes instead of just waiting out the cooldown timer.
+        CREATOR_COOLDOWNS.remove(deps.storage, info.sender.clone());
     }
 
     let raffle_code_id = RAFFLE_CODE_ID.load(deps.storage)?;
@@ -68,6 +134,7 @@ pub fn execute_create_raffle(
         draw_delay_blocks,
         draw_window_blocks,
         unclaimed_deadline_days,
+        max_raffle_age_seconds,
         prize_native_denom,
         prize_cw20_address,
         podium_shares_bps,

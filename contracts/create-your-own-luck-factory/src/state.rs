@@ -26,3 +26,16 @@ pub const RAFFLES: Map<u64, RaffleRecord> = Map::new("raffles");
 /// transaction as the triggering execute, so there's no cross-tx race to
 /// guard against - this is just a hand-off slot, not concurrent state.
 pub const PENDING_CREATOR: Item<Addr> = Item::new("pending_creator");
+
+/// Growing cooldown for repeating "unsafe-shaped" raffles from the same
+/// creator (2026-07-22) - see `execute::UNSAFE_MAX_PLAYERS_THRESHOLD` for
+/// what that means and why it needs a disincentive. A creator with no entry
+/// here has never created one, or their streak was reset by a safe-shaped
+/// raffle since.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub struct CreatorCooldown {
+    pub unsafe_streak: u32,
+    pub next_unsafe_allowed_at: Timestamp,
+}
+
+pub const CREATOR_COOLDOWNS: Map<Addr, CreatorCooldown> = Map::new("creator_cooldowns");

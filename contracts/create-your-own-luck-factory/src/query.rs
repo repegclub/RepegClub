@@ -1,8 +1,8 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, Order, StdResult};
 use cw_storage_plus::Bound;
 
-use crate::msg::{ConfigResponse, QueryMsg, RaffleRecordResponse, RafflesResponse};
-use crate::state::{RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT};
+use crate::msg::{ConfigResponse, CreatorCooldownResponse, QueryMsg, RaffleRecordResponse, RafflesResponse};
+use crate::state::{CREATOR_COOLDOWNS, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT};
 
 pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -10,6 +10,9 @@ pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&query_raffles(deps, start_after, limit)?)
         }
         QueryMsg::GetConfig {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::GetCreatorCooldown { creator } => {
+            to_json_binary(&query_creator_cooldown(deps, creator)?)
+        }
     }
 }
 
@@ -45,5 +48,14 @@ fn query_raffles(
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     Ok(ConfigResponse {
         raffle_code_id: RAFFLE_CODE_ID.load(deps.storage)?,
+    })
+}
+
+fn query_creator_cooldown(deps: Deps, creator: String) -> StdResult<CreatorCooldownResponse> {
+    let addr = deps.api.addr_validate(&creator)?;
+    let cooldown = CREATOR_COOLDOWNS.may_load(deps.storage, addr)?;
+    Ok(CreatorCooldownResponse {
+        unsafe_streak: cooldown.as_ref().map(|c| c.unsafe_streak).unwrap_or(0),
+        next_unsafe_allowed_at: cooldown.map(|c| c.next_unsafe_allowed_at.seconds()),
     })
 }
