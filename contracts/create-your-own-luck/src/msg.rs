@@ -20,6 +20,7 @@ pub struct InstantiateMsg {
     pub draw_delay_blocks: u64,
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
+    pub max_raffle_age_seconds: u64,
     /// Exactly one of these two must be set: a native prize (simple, single
     /// `DepositPrize` call) or a CW20 prize (needs `PayServiceFee` first, then
     /// the CW20 token's own `Send` to this contract).
@@ -41,11 +42,20 @@ pub enum ExecuteMsg {
     /// with this raffle as the recipient - the actual CW20 prize deposit path.
     Receive(Cw20ReceiveMsg),
     BuyTicket {},
+    /// Self-service refund for the caller's own tickets, only while the
+    /// raffle hasn't reached `min_players` yet.
+    WithdrawTicket {},
     CloseRound {},
     DrawWinner {},
     ClaimAirdropShare {},
     ReclaimUnclaimed {},
     CancelRaffle {},
+    /// Permissionless: if the raffle never reached `min_players` within
+    /// `max_raffle_age_seconds`, anyone can force a full refund (prize+fee to
+    /// the creator, tickets to each buyer) - the safety net for a stalled
+    /// raffle whose creator is unresponsive, mirroring `CancelRaffle`'s own
+    /// refund logic but without needing the creator to act.
+    ExpireRaffle {},
 }
 
 /// Embedded (base64-encoded) in the CW20 `Send.msg` field to tell `Receive`
@@ -81,6 +91,9 @@ pub struct RaffleStatusResponse {
     pub closed_at: Option<u64>,
     pub seconds_remaining: Option<u64>,
     pub draw_after_height: Option<u64>,
+    /// The actual block height used in the winner-selection hash, for the
+    /// public verification panel - `None` until the raffle is `Drawn`.
+    pub draw_height: Option<u64>,
 }
 
 #[cw_serde]
@@ -108,6 +121,7 @@ pub struct ConfigResponse {
     pub draw_delay_blocks: u64,
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
+    pub max_raffle_age_seconds: u64,
     pub prize_asset: PrizeAsset,
     pub fee_amount_usdc: Uint128,
     pub usdc_denom: String,
