@@ -12,9 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // register the new raffle? (The one thing the code review couldn't fully
 // confirm from source alone - whether this chain's wasmd populates the
 // legacy protobuf `data` field cw-utils' parse_reply_instantiate_data reads.)
+const [, , label = "frontenddev"] = process.argv;
+
 async function main() {
   const { contractAddress: factoryAddress } = JSON.parse(
-    readFileSync(path.resolve(__dirname, "../deployment-cyol-factory-frontenddev.json"), "utf8")
+    readFileSync(path.resolve(__dirname, `../deployment-cyol-factory-${label}.json`), "utf8")
   );
   console.log("Factory:", factoryAddress);
 
@@ -34,15 +36,20 @@ async function main() {
         msg: {
           create_raffle: {
             raffle_type: "single_winner",
-            ticket_price: "1000000",
-            ticket_denom: "uluna",
+            ticket_price: "1000000", // $1 - meets the paid-raffle minimum (2026-07-21)
+            ticket_denom: "utestusdc", // paid raffles must use the platform's USDC (2026-07-21), this script predates that
             allowed_entrants: null,
             min_players: 2,
-            max_players: 10,
+            // >= UNSAFE_MAX_PLAYERS_THRESHOLD (20) in the factory's cooldown
+            // check (2026-07-22) - keeps this "safe-shaped" so re-running
+            // this script never collides with the anti-spam cooldown for
+            // repeat unsafe-shaped raffles from the same admin wallet.
+            max_players: 25,
             round_timeout_seconds: 3600,
             draw_delay_blocks: 2,
             draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
+            max_raffle_age_seconds: 604800, // required field added 2026-07-21, this script predates it
             prize_native_denom: "uluna",
             prize_cw20_address: null,
             podium_shares_bps: [],

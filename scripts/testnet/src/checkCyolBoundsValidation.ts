@@ -18,14 +18,20 @@ const [, , label = "frontenddev2"] = process.argv;
 
 const baseFields = {
   raffle_type: "single_winner" as const,
-  ticket_price: "1000000",
-  ticket_denom: "uluna",
+  ticket_price: "1000000", // $1 - meets the paid-raffle minimum (2026-07-21)
+  ticket_denom: "utestusdc", // paid raffles must use the platform's USDC (2026-07-21), this script predates that
   allowed_entrants: null,
   min_players: 2,
-  max_players: 10,
+  // >= UNSAFE_MAX_PLAYERS_THRESHOLD (20) in the factory's cooldown check
+  // (2026-07-22) - keeps this "safe-shaped" so re-running this script never
+  // collides with the factory's anti-spam cooldown for repeat unsafe-shaped
+  // raffles from the same admin wallet. Unrelated to what this script tests
+  // (round_timeout_seconds bounds).
+  max_players: 25,
   draw_delay_blocks: 2,
   draw_window_blocks: 60,
   unclaimed_deadline_days: 90,
+  max_raffle_age_seconds: 604800, // required field added 2026-07-21, this script predates it
   prize_native_denom: "uluna",
   prize_cw20_address: null,
   podium_shares_bps: [] as number[],

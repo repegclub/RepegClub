@@ -24,14 +24,20 @@ const FAKE_CW20_ADDRESS = "terra15dv0f2rykyp6gyvuhawk8qgfd7ypm4lgkm4z39";
 
 const baseFields = {
   raffle_type: "single_winner" as const,
-  ticket_denom: "uluna",
+  ticket_denom: "utestusdc", // paid raffles must use the platform's USDC (2026-07-21), this script predates that; fine for the free case too (any denom is allowed there)
   allowed_entrants: null,
   min_players: 2,
-  max_players: 10,
+  // >= UNSAFE_MAX_PLAYERS_THRESHOLD (20) in the factory's cooldown check
+  // (2026-07-22) - keeps the paid-raffle case "safe-shaped" so re-running
+  // this script never collides with the factory's anti-spam cooldown for
+  // repeat unsafe-shaped raffles from the same admin wallet. Unrelated to
+  // what this script tests (prize whitelist).
+  max_players: 25,
   round_timeout_seconds: 3600,
   draw_delay_blocks: 2,
   draw_window_blocks: 60,
   unclaimed_deadline_days: 90,
+  max_raffle_age_seconds: 604800, // required field added 2026-07-21, this script predates it
   podium_shares_bps: [] as number[],
 };
 
