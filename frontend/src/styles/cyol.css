@@ -145,6 +145,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  text-decoration: none;
 }
 
 .cyol-card-loading,
@@ -203,4 +204,137 @@
   font-family: var(--mono);
   word-break: break-all;
   margin: 0;
+}
+
+.cyol-card-status-closed {
+  color: var(--text);
+  border-color: var(--border-bright);
+}
+
+.cyol-card-status-cancelled {
+  color: var(--crimson-bright);
+  border-color: var(--crimson-bright);
+}
+
+/* Raffle detail page */
+
+.cyol-back-link {
+  display: inline-block;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.cyol-detail {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cyol-detail-line {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+.cyol-detail-highlight {
+  color: var(--gold);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.cyol-detail-hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.cyol-detail-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.cyol-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.cyol-submit-secondary {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-bright);
+}
+
+.cyol-buy-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cyol-buy-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cyol-buy-quantity {
+  width: 4.5rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  font-family: var(--mono);
+}
+
+.cyol-inline-copy-btn {
+  background: none;
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  margin-left: 0.4rem;
+  cursor: pointer;
+}
+
+.cyol-verify-open-btn {
+  background: none;
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.7rem;
+  margin-top: 0.35rem;
+  cursor: pointer;
+}
+
+.cyol-cancel-link {
+  /* Bottom-right corner, diagonally opposite Buy Ticket/the other action
+     buttons (which sit top-left-ish in .cyol-detail-actions) - deliberately
+     far from anything else clickable so it's never an accidental click next
+     to a normal action. */
+  align-self: flex-end;
+  background: none;
+  border: none;
+  color: var(--crimson-bright);
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 1.5rem;
+  padding: 0;
+}
+
+.cyol-cancel-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

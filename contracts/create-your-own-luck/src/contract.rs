@@ -171,7 +171,15 @@ const TREASURY_ADDRESS: &str = "terra1juzyema7r4gvrrvrkkznceyeyhfkdj6zvz20fd";
 /// Hardcoded for the same reason - a creator-chosen denom could be a
 /// worthless token dressed up as "USDC", satisfying the fee amount check
 /// without paying anything of real value.
-const USDC_DENOM: &str = "utestusdc";
+///
+/// Set to LUNC's own denom for now (2026-07-23), same testnet stand-in
+/// convention Wheel Manager/Weekly Round already use for "USDC" (real USDC
+/// has no liquidity on rebel-2) - found live: the originally chosen
+/// "utestusdc" placeholder had zero total supply anywhere on this chain,
+/// so no wallet, including test scripts, could ever actually pay the
+/// service fee or buy a paid ticket. Swap for the real USDC IBC denom
+/// before mainnet, same as every other testnet placeholder in this file.
+const USDC_DENOM: &str = "uluna";
 /// LUNC's denom is the same on every network - it's the chain's own
 /// staking/gas token, not an IBC asset with a network-specific hash.
 const LUNC_DENOM: &str = "uluna";
@@ -363,8 +371,13 @@ pub fn instantiate(
         })
         .transpose()?;
 
+    let creator = match msg.creator {
+        Some(addr) => deps.api.addr_validate(&addr)?,
+        None => info.sender.clone(),
+    };
+
     let config = Config {
-        creator: info.sender.clone(),
+        creator,
         raffle_type: msg.raffle_type,
         ticket_price: msg.ticket_price,
         ticket_denom: msg.ticket_denom,
@@ -410,7 +423,7 @@ pub fn instantiate(
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
-        .add_attribute("creator", info.sender))
+        .add_attribute("creator", config.creator))
 }
 
 #[entry_point]

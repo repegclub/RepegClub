@@ -1,7 +1,8 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, Env, StdResult};
 
 use crate::msg::{
-    ConfigResponse, MyAirdropShareResponse, QueryMsg, RaffleStatusResponse, WinnersResponse,
+    ConfigResponse, EntrantsResponse, MyAirdropShareResponse, QueryMsg, RaffleStatusResponse,
+    WinnersResponse,
 };
 use crate::state::{RaffleStatus, AIRDROP_CLAIMS, CONFIG, RAFFLE};
 
@@ -11,6 +12,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetWinners {} => to_json_binary(&query_winners(deps)?),
         QueryMsg::GetMyAirdropShare { wallet } => to_json_binary(&query_my_airdrop_share(deps, wallet)?),
         QueryMsg::GetConfig {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::GetEntrants {} => to_json_binary(&query_entrants(deps)?),
     }
 }
 
@@ -60,6 +62,13 @@ fn query_my_airdrop_share(deps: Deps, wallet: String) -> StdResult<MyAirdropShar
         cosmwasm_std::Uint128::zero()
     };
     Ok(MyAirdropShareResponse { share, claimed })
+}
+
+fn query_entrants(deps: Deps) -> StdResult<EntrantsResponse> {
+    let raffle = RAFFLE.load(deps.storage)?;
+    Ok(EntrantsResponse {
+        entrants: raffle.entrants,
+    })
 }
 
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {

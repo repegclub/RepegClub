@@ -3,19 +3,28 @@ import { useTranslation } from "react-i18next";
 import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
+import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 
-// Testnet stand-in for USDC everywhere else in this app (see lib/format.ts) -
-// same convention here: ticket price and prize are both denominated in this,
-// always labeled USDC/USTC in the UI, never shown as "uluna"/"LUNC".
+// The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
+// contract.rs) as the only denom it accepts for any paid raffle's
+// ticket_price and service fee. Set to "uluna" for now (2026-07-23) - same
+// testnet stand-in convention Wheel Manager/Weekly Round already use for
+// "USDC" (real USDC has no liquidity on rebel-2; an earlier "utestusdc"
+// placeholder turned out to have zero supply anywhere on chain, so nobody
+// could ever actually pay it) - swap for the real USDC IBC denom before
+// mainnet, same as every other testnet placeholder in this app. The prize
+// denom below happens to be "uluna" too here (both mean actual LUNC/USDC
+// respectively, they're just the same underlying testnet token for now).
 const TICKET_DENOM = "uluna";
 const PRIZE_DENOM = "uluna";
 
-// Fixed at 3 places for now - the contract supports up to 10, but a
-// dynamic add/remove UI isn't needed until a creator actually asks for
-// more than 3 podium places.
-const DEFAULT_PODIUM_SHARES = [50, 30, 20];
+// Podium is deliberately not offered here yet (2026-07-23): a creator with
+// 3+ wallets can sweep multiple podium places, a known-open finding (#4 in
+// the security catalog) with no reputation/transparency mitigation built in
+// the UI yet. Re-add once that exists - the contract itself already
+// supports it fully, this is a UI-only exclusion.
 
-type RaffleType = CreateRaffleParams["raffleType"];
+type RaffleType = Exclude<CreateRaffleParams["raffleType"], "podium">;
 
 // Mirrors contracts/create-your-own-luck-factory's MAX_PLAYERS_SINGLE_WINNER_PODIUM
 // and AIRDROP_FEE_TIERS_USDC exactly (contracts/create-your-own-luck/src/
@@ -52,9 +61,6 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const [ticketPrice, setTicketPrice] = useState("1");
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
-  const [podiumShares, setPodiumShares] = useState<string[]>(
-    DEFAULT_PODIUM_SHARES.map(String)
-  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +69,13 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   function validate(): string | null {
     const price = Number(ticketPrice);
     if (!Number.isFinite(price) || price <= 0) return t("createYourOwnLuck.form.errorPrice");
+    // Mirrors the contract's own TicketPriceBelowMinimum/TicketPriceNotWholeCents
+    // checks exactly (same rounding displayNumberToUluna will actually send),
+    // so a bad price gets caught here instead of wasting gas on a signed,
+    // guaranteed-to-be-rejected transaction.
+    const priceMicros = Number(displayNumberToUluna(price));
+    if (priceMicros < 1_000_000) return t("createYourOwnLuck.form.errorPriceMinimum");
+    if (priceMicros % 10_000 !== 0) return t("createYourOwnLuck.form.errorPriceCents");
 
     const min = Number(minPlayers);
     const max = Number(maxPlayers);
@@ -70,13 +83,6 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
     if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers");
     const limit = maxPlayersLimit(raffleType);
     if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit });
-
-    if (raffleType === "podium") {
-      const shares = podiumShares.map(Number);
-      const allValid = shares.every((s) => Number.isInteger(s) && s > 0);
-      const sum = shares.reduce((total, s) => total + s, 0);
-      if (!allValid || sum !== 100) return t("createYourOwnLuck.form.errorPodiumShares");
-    }
 
     return null;
   }
@@ -100,12 +106,12 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
         minPlayers: Number(minPlayers),
         maxPlayers: Number(maxPlayers),
         prizeNativeDenom: PRIZE_DENOM,
-        podiumSharesBps: raffleType === "podium" ? podiumShares.map((s) => Number(s) * 100) : [],
+        podiumSharesBps: [],
       });
       setCreatedAddress(raffleAddress ?? null);
       onCreated?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("createYourOwnLuck.form.errorGeneric"));
+      setError(err instanceof Error ? friendlyCyolError(err.message) : t("createYourOwnLuck.form.errorGeneric"));
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +128,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
           <label className="cyol-field">
             <span>{t("createYourOwnLuck.form.raffleTypeLabel")}</span>
             <div className="cyol-radio-group">
-              {(["single_winner", "podium", "airdrop"] as RaffleType[]).map((type) => (
+              {(["single_winner", "airdrop"] as RaffleType[]).map((type) => (
                 <label key={type} className="cyol-radio">
                   <input
                     type="radio"
@@ -178,28 +184,6 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                 ) : null;
               })()}
           </label>
-
-          {raffleType === "podium" && (
-            <label className="cyol-field">
-              <span>{t("createYourOwnLuck.form.podiumSharesLabel")}</span>
-              <div className="cyol-podium-shares">
-                {podiumShares.map((share, i) => (
-                  <input
-                    key={i}
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={share}
-                    onChange={(e) => {
-                      const next = [...podiumShares];
-                      next[i] = e.target.value;
-                      setPodiumShares(next);
-                    }}
-                  />
-                ))}
-              </div>
-            </label>
-          )}
 
           {error && <p className="cyol-form-error">{error}</p>}
           {createdAddress && (

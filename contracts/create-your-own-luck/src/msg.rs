@@ -10,6 +10,19 @@ use crate::state::{PrizeAsset, RaffleStatus, RaffleType};
 /// creator can never redirect the fee or pay it in a fake token.
 #[cw_serde]
 pub struct InstantiateMsg {
+    /// Who this raffle belongs to for every creator-gated action (DepositPrize,
+    /// DrawWinner, CancelRaffle, ReclaimUnclaimed). Defaults to `info.sender`
+    /// when omitted - the right default for a direct instantiate - but MUST be
+    /// set explicitly by anything that instantiates this contract on someone
+    /// else's behalf via a submessage (the factory): `info.sender` at that
+    /// point is the calling contract itself (CosmWasm submessage semantics),
+    /// not the human wallet that asked for the raffle, and a contract address
+    /// can never sign a transaction - every creator-gated action would be
+    /// permanently unreachable otherwise. Found live (2026-07-23): every
+    /// raffle created through create-your-own-luck-factory had its `creator`
+    /// silently set to the factory's own address, so DepositPrize could never
+    /// succeed for anyone.
+    pub creator: Option<String>,
     pub raffle_type: RaffleType,
     pub ticket_price: Uint128,
     pub ticket_denom: String,
@@ -76,6 +89,12 @@ pub enum QueryMsg {
     GetMyAirdropShare { wallet: String },
     #[returns(ConfigResponse)]
     GetConfig {},
+    /// Full ticket list, one entry per ticket (duplicates for a wallet
+    /// holding more than one) - same shape as wheel-manager's
+    /// GetRoundEntrants, lets the frontend compute a wallet's own ticket
+    /// count (no dedicated per-wallet query exists, mirroring that contract).
+    #[returns(EntrantsResponse)]
+    GetEntrants {},
 }
 
 #[cw_serde]
@@ -100,6 +119,11 @@ pub struct RaffleStatusResponse {
 pub struct WinnersResponse {
     pub winners: Vec<Addr>,
     pub prize_shares: Vec<Uint128>,
+}
+
+#[cw_serde]
+pub struct EntrantsResponse {
+    pub entrants: Vec<Addr>,
 }
 
 #[cw_serde]

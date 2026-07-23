@@ -42,22 +42,28 @@ export const WEEKLY_ROUND_ADDRESS =
   "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
-// Weekly Round above). Redeployed 2026-07-22, see
-// scripts/testnet/deployment-cyol-factory-frontenddev5.json. Points at
-// raffle code ID 2371: WithdrawTicket/ExpireRaffle, the revenue-scaled paid
-// fee formula, the $1-minimum/whole-cent ticket price floor, the DrawWinner
-// grinding fix (atomic sellout draw + capped rearms before falling
-// permissionless), and draw_height for a future verification panel. The
-// factory itself (code ID 2372) also gained a growing cooldown on repeated
-// "unsafe-shaped" (paid, non-Airdrop, max_players < 20) raffles from the
-// same wallet - see UNSAFE_MAX_PLAYERS_THRESHOLD in the factory's execute.rs.
-// This is the 2nd factory redeploy of the day: a CodeRabbit review of the
-// first one (code ID 2370) found that a safe-shaped raffle reset the
-// cooldown for free (no funds/players needed to create one), fully
-// defeating it - fixed to be purely time-based, never reset by any action a
-// creator can take for free. Any change to either contract needs a fresh
-// factory deploy too, since the raffle code ID is fixed at the factory's
-// own instantiate time (contracts/create-your-own-luck-factory/src/state.rs,
-// RAFFLE_CODE_ID).
+// Weekly Round above). Redeployed 2026-07-23 (raffle code ID 2377, factory
+// 2378), see scripts/testnet/deployment-cyol-factory-frontenddev8.json.
+// Also added `GetEntrants` (mirrors wheel-manager's GetRoundEntrants
+// exactly) - a player buying tickets had no way to see their own ticket
+// count, only the raffle-wide totals, found live by a real user testing the
+// buy flow. Three real fixes since the previous (2026-07-22) deploy:
+// (1) Every raffle created through the factory had its own config.creator
+// silently set to the FACTORY's address instead of the real human wallet -
+// CosmWasm submessage semantics make info.sender the calling contract at
+// instantiate time, and a contract address can never sign DepositPrize/
+// DrawWinner/etc, so every raffle was permanently unfundable. Found live by
+// a real user hitting it. Fixed with a new `creator: Option<String>` field
+// on the raffle's InstantiateMsg, explicitly passed through by the factory.
+// (2) USDC_DENOM (contracts/create-your-own-luck/src/contract.rs) was
+// "utestusdc", a placeholder with zero total supply anywhere on this chain
+// - nobody could ever pay the service fee required by every raffle, free or
+// paid. Set to "uluna" instead, same testnet stand-in convention already
+// used for Wheel Manager/Weekly Round's "USDC". Both validated live end-to-
+// end (scripts/testnet/src/checkCreatorFix.ts): create -> real creator ->
+// pay fee -> deposit prize -> buy ticket, all succeeding on real chain.
+// Any change to either contract needs a fresh factory deploy too, since the
+// raffle code ID is fixed at the factory's own instantiate time
+// (contracts/create-your-own-luck-factory/src/state.rs, RAFFLE_CODE_ID).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra14q9s3dljfc9z8j0lwy5pkm2uen9edhdk6h3dhm2pfm44dat5w4rqfk0e44";
+  "terra106g4cys3elv7um7d9rz6xlp7dderyg3shw0fu9hz5dlatymhuy4sg0es07";

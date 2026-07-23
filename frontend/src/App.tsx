@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WheelOfRepeg } from "./components/Wheel/WheelOfRepeg";
 import { WeeklyRoundPage } from "./components/Weekly/WeeklyRoundPage";
 import { CreateYourOwnLuckPage } from "./components/CreateYourOwnLuck/CreateYourOwnLuckPage";
+import { RaffleDetailPage } from "./components/CreateYourOwnLuck/RaffleDetailPage";
 import { WalletProvider } from "./contexts/WalletContext";
 
 // Wheel of Repeg keeps living at "/" (unchanged) rather than moving to its
@@ -15,6 +16,7 @@ function App() {
           <Route path="/" element={<WheelOfRepeg />} />
           <Route path="/weekly-round" element={<WeeklyRoundPage />} />
           <Route path="/create-your-own-luck" element={<CreateYourOwnLuckPage />} />
+          <Route path="/create-your-own-luck/:address" element={<RaffleDetailPage />} />
         </Routes>
       </BrowserRouter>
     </WalletProvider>

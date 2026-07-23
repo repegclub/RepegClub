@@ -306,12 +306,26 @@ mod tests {
                 code_id,
                 funds,
                 label,
-                ..
+                msg,
             }) => {
                 assert_eq!(*admin, None);
                 assert_eq!(*code_id, RAFFLE_CODE_ID);
                 assert!(funds.is_empty());
                 assert_eq!(label, "repeg-club-raffle-0");
+                // Regression check (2026-07-23): the raffle's own info.sender
+                // at instantiate time would be this factory's address, not
+                // "creator1" - without an explicit creator field carrying the
+                // real caller through, DepositPrize/DrawWinner/etc. would be
+                // permanently unreachable for every raffle this factory
+                // creates. See create-your-own-luck's own
+                // explicit_creator_field_overrides_info_sender test for the
+                // other half of this fix.
+                #[derive(serde::Deserialize)]
+                struct DecodedRaffleInstantiateMsg {
+                    creator: Option<String>,
+                }
+                let decoded: DecodedRaffleInstantiateMsg = from_json(msg).unwrap();
+                assert_eq!(decoded.creator.as_deref(), Some("creator1"));
             }
             other => panic!("expected WasmMsg::Instantiate, got {other:?}"),
         }

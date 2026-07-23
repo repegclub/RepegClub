@@ -10,11 +10,15 @@ const MEMO = "REPEG CLUB";
 // already used platform-wide (Wheel Manager/Weekly Round's own redeploys):
 // draw_window_blocks comfortably covers a keeper crash/restart before the
 // draw window would need to auto-rearm; unclaimed_deadline_days matches the
-// platform's standard unclaimed-prize sweep window everywhere else.
+// platform's standard unclaimed-prize sweep window everywhere else;
+// max_raffle_age_seconds matches Wheel Manager's max_round_age_seconds
+// (48h) - same "pure housekeeping" backstop for a raffle stuck below
+// min_players with an unresponsive creator, see ExpireRaffle.
 const ROUND_TIMEOUT_SECONDS = 3600;
 const DRAW_DELAY_BLOCKS = 2;
 const DRAW_WINDOW_BLOCKS = 60;
 const UNCLAIMED_DEADLINE_DAYS = 90;
+const MAX_RAFFLE_AGE_SECONDS = 172800;
 
 export type CreateRaffleParams = {
   raffleType: "single_winner" | "podium" | "airdrop";
@@ -46,6 +50,7 @@ export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffle
             draw_delay_blocks: DRAW_DELAY_BLOCKS,
             draw_window_blocks: DRAW_WINDOW_BLOCKS,
             unclaimed_deadline_days: UNCLAIMED_DEADLINE_DAYS,
+            max_raffle_age_seconds: MAX_RAFFLE_AGE_SECONDS,
             prize_native_denom: params.prizeNativeDenom,
             prize_cw20_address: null,
             podium_shares_bps: params.podiumSharesBps,
