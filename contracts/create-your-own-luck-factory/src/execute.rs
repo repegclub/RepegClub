@@ -21,11 +21,10 @@ pub const CREATE_RAFFLE_REPLY_ID: u64 = 1;
 const UNSAFE_MAX_PLAYERS_THRESHOLD: u32 = 20;
 
 /// Growing cooldown step: the Nth unsafe-shaped raffle in a row from the same
-/// creator (no safe-shaped raffle in between - that resets the streak
-/// entirely) locks out their *next* unsafe-shaped raffle for N times this
-/// many hours - 24h, 48h, 72h, ... This taxes repeating the cheap-exploit
-/// shape specifically, without touching a creator who only occasionally
-/// makes one small paid raffle, or who makes any number of safe-shaped ones.
+/// creator locks out their *next* unsafe-shaped raffle for N times this many
+/// hours - 24h, 48h, 72h, ... This taxes repeating the cheap-exploit shape
+/// specifically, without touching a creator who only occasionally makes one
+/// small paid raffle, or who makes any number of safe-shaped ones.
 const UNSAFE_COOLDOWN_STEP_HOURS: u64 = 24;
 
 /// Ceiling on the streak counted toward the cooldown - not a limit on how
@@ -36,6 +35,13 @@ const UNSAFE_COOLDOWN_STEP_HOURS: u64 = 24;
 /// human-scale maximum, same reasoning as create-your-own-luck's own
 /// duration bounds (`MAX_UNCLAIMED_DEADLINE_DAYS` etc.).
 const MAX_UNSAFE_STREAK: u32 = 30;
+
+/// If a creator's last cooldown ended this many days ago (or longer) without
+/// them attempting another unsafe-shaped raffle since, their streak starts
+/// over at the next attempt instead of continuing to climb - an ungameable,
+/// purely time-based "cooled off" forgiveness, since it only depends on real
+/// wall-clock time passing, not on any action a creator can take for free.
+const UNSAFE_STREAK_STALE_AFTER_DAYS: u64 = 30;
 
 /// Mirrors create-your-own-luck's `InstantiateMsg` exactly (field names and
 /// shape, not the type - see `msg::RaffleType` for why it's duplicated) so
@@ -88,8 +94,8 @@ pub fn execute_create_raffle(
 
     let is_unsafe_shape =
         raffle_type != RaffleType::Airdrop && !ticket_price.is_zero() && max_players < UNSAFE_MAX_PLAYERS_THRESHOLD;
-    let existing_cooldown = CREATOR_COOLDOWNS.may_load(deps.storage, info.sender.clone())?;
     if is_unsafe_shape {
+        let existing_cooldown = CREATOR_COOLDOWNS.may_load(deps.storage, info.sender.clone())?;
         if let Some(cooldown) = &existing_cooldown {
             if env.block.time < cooldown.next_unsafe_allowed_at {
                 return Err(ContractError::CreatorOnCooldown {
@@ -97,12 +103,23 @@ pub fn execute_create_raffle(
                 });
             }
         }
-        let new_streak = existing_cooldown
-            .as_ref()
-            .map(|c| c.unsafe_streak)
-            .unwrap_or(0)
-            .saturating_add(1)
-            .min(MAX_UNSAFE_STREAK);
+        // Time-based decay only, never triggerable by any action a creator
+        // can take for free (found by a CodeRabbit review, 2026-07-22: an
+        // earlier version reset the streak on any safe-shaped raffle, which
+        // costs nothing and needs no funding/players - a creator could wipe
+        // an active cooldown outright with a single throwaway safe raffle,
+        // fully defeating this cooldown). A stale streak (no unsafe attempt
+        // in a long time) starts over; otherwise it keeps climbing from
+        // wherever it left off, regardless of what else was created since.
+        let stale = existing_cooldown.as_ref().is_none_or(|c| {
+            env.block.time.seconds() > c.next_unsafe_allowed_at.seconds() + UNSAFE_STREAK_STALE_AFTER_DAYS * 86400
+        });
+        let base_streak = if stale {
+            0
+        } else {
+            existing_cooldown.as_ref().map(|c| c.unsafe_streak).unwrap_or(0)
+        };
+        let new_streak = base_streak.saturating_add(1).min(MAX_UNSAFE_STREAK);
         let cooldown_seconds = UNSAFE_COOLDOWN_STEP_HOURS
             .saturating_mul(new_streak as u64)
             .saturating_mul(3600);
@@ -114,11 +131,10 @@ pub fn execute_create_raffle(
                 next_unsafe_allowed_at: env.block.time.plus_seconds(cooldown_seconds),
             },
         )?;
-    } else if existing_cooldown.is_some() {
-        // A safe-shaped raffle resets the streak entirely - rewards sticking
-        // to safe shapes instead of just waiting out the cooldown timer.
-        CREATOR_COOLDOWNS.remove(deps.storage, info.sender.clone());
     }
+    // A safe-shaped raffle (free, or max_players >= threshold) never touches
+    // CREATOR_COOLDOWNS at all - it's always allowed, and deliberately has no
+    // side effect on an existing cooldown, active or not (see above).
 
     let raffle_code_id = RAFFLE_CODE_ID.load(deps.storage)?;
     let index = RAFFLE_COUNT.load(deps.storage)?;

@@ -65,8 +65,9 @@ pub enum QueryMsg {
     GetConfig {},
     /// Whether `creator` is currently locked out of creating another
     /// "unsafe-shaped" raffle, and until when - `None` for a wallet that has
-    /// never created one, or whose streak was already reset by a safe-shaped
-    /// raffle.
+    /// never created one, or whose streak has gone stale (no unsafe-shaped
+    /// attempt in a long time - see `UNSAFE_STREAK_STALE_AFTER_DAYS` in the
+    /// factory's execute.rs). A safe-shaped raffle never affects this.
     #[returns(CreatorCooldownResponse)]
     GetCreatorCooldown { creator: String },
 }
@@ -94,6 +95,6 @@ pub struct ConfigResponse {
 pub struct CreatorCooldownResponse {
     pub unsafe_streak: u32,
     /// `None` if this wallet has never created an unsafe-shaped raffle, or
-    /// its streak was reset by a safe-shaped one since.
+    /// its streak has gone stale from a long enough dormant period since.
     pub next_unsafe_allowed_at: Option<u64>,
 }

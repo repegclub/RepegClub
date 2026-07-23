@@ -486,7 +486,14 @@ mod tests {
     }
 
     #[test]
-    fn create_raffle_safe_shaped_raffle_resets_the_unsafe_streak() {
+    fn create_raffle_safe_shaped_raffle_never_resets_an_active_cooldown() {
+        // Regression test for a real bug found by CodeRabbit (2026-07-22): an
+        // earlier version reset the streak/cooldown entirely on any
+        // safe-shaped raffle - since CreateRaffle needs no funds and the
+        // raffle never needs to be funded/opened, a creator could wipe an
+        // active cooldown for free with a single throwaway safe-shaped
+        // raffle, fully defeating the cooldown. A safe-shaped raffle must
+        // never clear or shorten an active cooldown.
         let mut deps = mock_dependencies();
         instantiate(
             deps.as_mut(),
@@ -498,18 +505,50 @@ mod tests {
 
         execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap(); // streak 1, 24h cooldown
 
-        // A safe-shaped raffle is never blocked, and resets the streak entirely.
+        // A safe-shaped raffle is never blocked, but must not touch the
+        // active cooldown at all.
         execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), safe_raffle_msg()).unwrap();
         let cooldown = cooldown_of(&deps, "creator1");
-        assert_eq!(cooldown.unsafe_streak, 0);
-        assert_eq!(cooldown.next_unsafe_allowed_at, None);
-
-        // Cooldown gone - an unsafe-shaped raffle right away (same block)
-        // succeeds and starts a fresh streak of 1, not continuing from before
-        // the reset.
-        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
-        let cooldown = cooldown_of(&deps, "creator1");
         assert_eq!(cooldown.unsafe_streak, 1);
+        assert!(cooldown.next_unsafe_allowed_at.is_some());
+
+        // The cooldown is still active - a 2nd unsafe-shaped raffle right
+        // after the "reset attempt" must still be rejected.
+        let err = execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap_err();
+        assert!(matches!(err, ContractError::CreatorOnCooldown { .. }));
+    }
+
+    #[test]
+    fn create_raffle_unsafe_streak_starts_over_after_a_long_dormant_period() {
+        // Ungameable forgiveness: only real elapsed time resets the streak,
+        // not any action the creator can take for free.
+        let mut deps = mock_dependencies();
+        instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+
+        let env = mock_env();
+        execute(deps.as_mut(), env.clone(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap(); // streak 1, cooldown ends at +24h
+
+        // Just under 30 days after that cooldown ended - still climbing from
+        // where it left off (streak 2, not reset).
+        let mut still_recent_env = env.clone();
+        still_recent_env.block.time = env.block.time.plus_seconds(24 * 3600 + 29 * 86400);
+        execute(deps.as_mut(), still_recent_env, mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+        assert_eq!(cooldown_of(&deps, "creator1").unsafe_streak, 2);
+
+        // More than 30 days after THAT cooldown ended (streak 2 -> 48h) with
+        // no unsafe attempt in between - starts over at streak 1.
+        let cooldown = cooldown_of(&deps, "creator1");
+        let mut dormant_env = env.clone();
+        dormant_env.block.time =
+            cosmwasm_std::Timestamp::from_seconds(cooldown.next_unsafe_allowed_at.unwrap()).plus_seconds(31 * 86400);
+        execute(deps.as_mut(), dormant_env, mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+        assert_eq!(cooldown_of(&deps, "creator1").unsafe_streak, 1);
     }
 
     #[test]

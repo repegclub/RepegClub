@@ -11,8 +11,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // One-off validation against the live chain: does the factory's growing
 // cooldown for repeated "unsafe-shaped" raffles (paid, non-Airdrop,
 // max_players below UNSAFE_MAX_PLAYERS_THRESHOLD=20) actually reject a
-// second one from the same wallet, and does a safe-shaped raffle reset it?
-const [, , label = "frontenddev4"] = process.argv;
+// second one from the same wallet - and, crucially (this is what a
+// CodeRabbit review caught as broken in an earlier version), does a
+// safe-shaped raffle in between leave that cooldown untouched instead of
+// wiping it for free?
+const [, , label = "frontenddev5"] = process.argv;
 
 const unsafeFields = {
   raffle_type: "single_winner" as const,
@@ -88,7 +91,9 @@ async function main() {
     console.log("OK: rejected with a cooldown message.");
   }
 
-  console.log("\n3. A safe-shaped raffle right away - expecting success, and it should reset the streak...");
+  console.log(
+    "\n3. A safe-shaped raffle right away - expecting success, and the active cooldown must NOT be touched..."
+  );
   const safe = await wallet.broadcastTxSync({
     msgs: [
       new MsgExecuteContract({
@@ -107,8 +112,34 @@ async function main() {
     { address: factoryAddress, query: { get_creator_cooldown: { creator: wallet.address } } }
   );
   console.log("Cooldown after the safe-shaped raffle:", cooldownAfterSafe);
-  if (cooldownAfterSafe.unsafe_streak !== 0 || cooldownAfterSafe.next_unsafe_allowed_at !== null) {
-    throw new Error("Expected the streak to be fully reset (unsafe_streak=0, next_unsafe_allowed_at=null)");
+  if (cooldownAfterSafe.unsafe_streak !== 1 || cooldownAfterSafe.next_unsafe_allowed_at === null) {
+    throw new Error(
+      "Expected the cooldown to be untouched by the safe-shaped raffle (unsafe_streak=1, timestamp still set) - " +
+        "if this fails, the free-reset bug is back"
+    );
+  }
+
+  console.log("\n4. A second unsafe-shaped raffle right after the safe one - must STILL be rejected...");
+  try {
+    await wallet.broadcastTxSync({
+      msgs: [
+        new MsgExecuteContract({
+          sender: wallet.address,
+          contract: factoryAddress,
+          msg: { create_raffle: unsafeFields },
+          funds: [],
+        }),
+      ],
+    });
+    throw new Error(
+      "Expected this unsafe-shaped raffle to still be rejected (the safe-shaped raffle must not have reset the cooldown), but it succeeded"
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("cooldown")) {
+      throw new Error(`Failed, but not with the expected error: ${message}`);
+    }
+    console.log("OK: still rejected with a cooldown message - the safe-shaped raffle did not reset it.");
   }
 
   console.log("\nAll checks passed.");
