@@ -112,7 +112,7 @@ pub fn execute_create_raffle(
         // in a long time) starts over; otherwise it keeps climbing from
         // wherever it left off, regardless of what else was created since.
         let stale = existing_cooldown.as_ref().is_none_or(|c| {
-            env.block.time.seconds() > c.next_unsafe_allowed_at.seconds() + UNSAFE_STREAK_STALE_AFTER_DAYS * 86400
+            env.block.time.seconds() >= c.next_unsafe_allowed_at.seconds() + UNSAFE_STREAK_STALE_AFTER_DAYS * 86400
         });
         let base_streak = if stale {
             0

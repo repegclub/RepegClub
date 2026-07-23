@@ -72,7 +72,7 @@ async function main() {
 
   console.log("\n2. Second unsafe-shaped raffle right away - expecting rejection (cooldown)...");
   try {
-    await wallet.broadcastTxSync({
+    const second = await wallet.broadcastTxSync({
       msgs: [
         new MsgExecuteContract({
           sender: wallet.address,
@@ -82,7 +82,13 @@ async function main() {
         }),
       ],
     });
-    throw new Error("Expected the second unsafe-shaped raffle to fail, but it succeeded");
+    if (second.txResponse.code === 0) {
+      throw new Error("Expected the second unsafe-shaped raffle to fail, but it succeeded");
+    }
+    if (!second.txResponse.rawLog.includes("cooldown")) {
+      throw new Error(`Failed, but not with the expected error: ${second.txResponse.rawLog}`);
+    }
+    console.log("OK: rejected with a cooldown message.");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!message.includes("cooldown")) {
@@ -112,16 +118,19 @@ async function main() {
     { address: factoryAddress, query: { get_creator_cooldown: { creator: wallet.address } } }
   );
   console.log("Cooldown after the safe-shaped raffle:", cooldownAfterSafe);
-  if (cooldownAfterSafe.unsafe_streak !== 1 || cooldownAfterSafe.next_unsafe_allowed_at === null) {
+  if (
+    cooldownAfterSafe.unsafe_streak !== cooldownAfterFirst.unsafe_streak ||
+    cooldownAfterSafe.next_unsafe_allowed_at !== cooldownAfterFirst.next_unsafe_allowed_at
+  ) {
     throw new Error(
-      "Expected the cooldown to be untouched by the safe-shaped raffle (unsafe_streak=1, timestamp still set) - " +
+      "Expected the cooldown to be unchanged by the safe-shaped raffle - " +
         "if this fails, the free-reset bug is back"
     );
   }
 
   console.log("\n4. A second unsafe-shaped raffle right after the safe one - must STILL be rejected...");
   try {
-    await wallet.broadcastTxSync({
+    const fourth = await wallet.broadcastTxSync({
       msgs: [
         new MsgExecuteContract({
           sender: wallet.address,
@@ -131,9 +140,15 @@ async function main() {
         }),
       ],
     });
-    throw new Error(
-      "Expected this unsafe-shaped raffle to still be rejected (the safe-shaped raffle must not have reset the cooldown), but it succeeded"
-    );
+    if (fourth.txResponse.code === 0) {
+      throw new Error(
+        "Expected this unsafe-shaped raffle to still be rejected (the safe-shaped raffle must not have reset the cooldown), but it succeeded"
+      );
+    }
+    if (!fourth.txResponse.rawLog.includes("cooldown")) {
+      throw new Error(`Failed, but not with the expected error: ${fourth.txResponse.rawLog}`);
+    }
+    console.log("OK: still rejected with a cooldown message - the safe-shaped raffle did not reset it.");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!message.includes("cooldown")) {
