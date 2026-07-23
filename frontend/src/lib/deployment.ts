@@ -42,11 +42,22 @@ export const WEEKLY_ROUND_ADDRESS =
   "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
-// Weekly Round above). Deployed 2026-07-20, see
-// scripts/testnet/deployment-cyol-factory-frontenddev.json. Points at
-// raffle code ID 2363 - any change to the create-your-own-luck contract
-// itself needs a fresh factory deploy too, since the code ID is fixed at
-// the factory's own instantiate time (contracts/create-your-own-luck-factory/
-// src/state.rs, RAFFLE_CODE_ID).
+// Weekly Round above). Redeployed 2026-07-22, see
+// scripts/testnet/deployment-cyol-factory-frontenddev5.json. Points at
+// raffle code ID 2371: WithdrawTicket/ExpireRaffle, the revenue-scaled paid
+// fee formula, the $1-minimum/whole-cent ticket price floor, the DrawWinner
+// grinding fix (atomic sellout draw + capped rearms before falling
+// permissionless), and draw_height for a future verification panel. The
+// factory itself (code ID 2372) also gained a growing cooldown on repeated
+// "unsafe-shaped" (paid, non-Airdrop, max_players < 20) raffles from the
+// same wallet - see UNSAFE_MAX_PLAYERS_THRESHOLD in the factory's execute.rs.
+// This is the 2nd factory redeploy of the day: a CodeRabbit review of the
+// first one (code ID 2370) found that a safe-shaped raffle reset the
+// cooldown for free (no funds/players needed to create one), fully
+// defeating it - fixed to be purely time-based, never reset by any action a
+// creator can take for free. Any change to either contract needs a fresh
+// factory deploy too, since the raffle code ID is fixed at the factory's
+// own instantiate time (contracts/create-your-own-luck-factory/src/state.rs,
+// RAFFLE_CODE_ID).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra1xrjxfqq99h83krjj88c5txeput82jugllqdxfxhatx0exdtknv6q5qdxc4";
+  "terra14q9s3dljfc9z8j0lwy5pkm2uen9edhdk6h3dhm2pfm44dat5w4rqfk0e44";

@@ -51,6 +51,11 @@ pub struct Config {
     /// rationale.
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
+    /// How long a raffle can sit `Open` without reaching `min_players` before
+    /// anyone (not just the creator) can call `ExpireRaffle` to force a full
+    /// refund. A separate clock from `round_timeout_seconds`, which only
+    /// governs closing *after* `min_players` is already met.
+    pub max_raffle_age_seconds: u64,
     pub prize_asset: PrizeAsset,
     /// Fixed service fee, in USDC micros - charged directly in USDC (no
     /// price-oracle conversion needed, since USDC is already dollar-pegged).
@@ -79,7 +84,18 @@ pub struct RaffleState {
     pub opened_at: Option<Timestamp>,
     pub closed_at: Option<Timestamp>,
     pub draw_after_height: Option<u64>,
+    /// Counts `DrawWinner` calls that landed past `draw_window_blocks` and
+    /// silently rearmed instead of drawing. Bounds how many free re-rolls a
+    /// creator gets before drawing opens up to anyone - see
+    /// `MAX_REARMS_BEFORE_PERMISSIONLESS` in execute.rs for why an unbounded
+    /// count is a real grinding risk, not just a UX inconvenience.
+    pub rearm_count: u32,
     pub drawn_at: Option<Timestamp>,
+    /// The actual block height used in the winner-selection hash (as opposed
+    /// to `draw_after_height`, which is only the *minimum* allowed height) -
+    /// needed for the public "verify this raffle" recomputation, same reason
+    /// wheel-manager/weekly-round persist their own `draw_height`.
+    pub draw_height: Option<u64>,
     /// 1 entry for SingleWinner, `podium_shares_bps.len()` for Podium (in
     /// place order), empty for Airdrop (uses `airdrop_share` +
     /// `AIRDROP_CLAIMS` instead).

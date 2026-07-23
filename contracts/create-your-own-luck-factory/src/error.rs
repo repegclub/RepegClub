@@ -14,4 +14,7 @@ pub enum ContractError {
 
     #[error("Failed to parse the raffle's instantiate reply: {0}")]
     ReplyParse(String),
+
+    #[error("This wallet is on cooldown for creating another small paid raffle - try again after {available_at} (unix seconds). Creating a safe-shaped raffle (free, or max_players large enough) in the meantime is fine, but does not shorten this cooldown")]
+    CreatorOnCooldown { available_at: u64 },
 }

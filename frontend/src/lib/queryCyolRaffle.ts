@@ -18,6 +18,7 @@ export type CyolRaffleStatusResponse = {
   closed_at: number | null;
   seconds_remaining: number | null;
   draw_after_height: number | null;
+  draw_height: number | null;
 };
 
 export type CyolConfigResponse = {

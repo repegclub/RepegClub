@@ -21,8 +21,8 @@ pub enum ContractError {
     #[error("podium_shares_bps must be empty for non-Podium raffle types")]
     PodiumSharesNotApplicable {},
 
-    #[error("Airdrop raffles support at most 1000 max_players (see the fee tier schedule)")]
-    MaxPlayersExceedsAirdropFeeTiers {},
+    #[error("This raffle type supports at most 1000 max_players (see the free-raffle fee tier schedule)")]
+    MaxPlayersExceedsFreeRaffleFeeTiers {},
 
     #[error("SingleWinner and Podium raffles support at most {max} max_players")]
     MaxPlayersTooHighForRaffleType { max: u32 },
@@ -90,6 +90,21 @@ pub enum ContractError {
     #[error("min_players must be at least 2, and max_players must be >= min_players")]
     InvalidPlayerBounds {},
 
+    #[error("unclaimed_deadline_days must be between {min} and {max}")]
+    InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
+
+    #[error("round_timeout_seconds must be between {min} and {max}")]
+    InvalidRoundTimeoutSeconds { min: u64, max: u64 },
+
+    #[error("draw_delay_blocks must be between {min} and {max}")]
+    InvalidDrawDelayBlocks { min: u64, max: u64 },
+
+    #[error("draw_window_blocks must be between {min} and {max}")]
+    InvalidDrawWindowBlocks { min: u64, max: u64 },
+
+    #[error("Paid raffles (ticket_price > 0) can only offer LUNC, USDC, or USTC as the prize - no CW20 tokens and no other native denoms yet. Free raffles (ticket_price = 0) have no restriction. Contact the platform to get a new asset reviewed and allowlisted")]
+    PrizeAssetNotAllowlisted {},
+
     #[error("This raffle's prize is a CW20 token - use the CW20 token's Send instead of DepositPrize")]
     PrizeIsCw20 {},
 
@@ -104,4 +119,28 @@ pub enum ContractError {
 
     #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd be stuck in the contract with no way to recover them")]
     UnexpectedFundsAttached { denom: String },
+
+    #[error("max_raffle_age_seconds must be between {min} and {max}")]
+    InvalidMaxRaffleAgeSeconds { min: u64, max: u64 },
+
+    #[error("Paid raffles (ticket_price > 0) must set ticket_denom to the platform's USDC - otherwise the ticket price can't be compared in real dollar terms (needed for the fee calculation, and to avoid a cheap-looking ticket priced in a near-worthless denom)")]
+    PaidTicketMustBeUsdc {},
+
+    #[error("ticket_price is too high to compute the service fee (potential revenue overflows)")]
+    FeeCalculationOverflow {},
+
+    #[error("This wallet has no tickets to withdraw in this raffle")]
+    NoTicketsToWithdraw {},
+
+    #[error("Tickets can only be withdrawn before min_players is reached")]
+    RaffleAlreadyLocked {},
+
+    #[error("Raffle cannot be expired yet: either min_players was already reached, or max_raffle_age_seconds hasn't elapsed")]
+    CannotExpireRaffle {},
+
+    #[error("ticket_price must be either exactly 0 (free) or at least {min} USDC micros ($1) - no dust pricing in between")]
+    TicketPriceBelowMinimum { min: u128 },
+
+    #[error("ticket_price must be a whole number of USDC cents ({cent} micros) - fractional-cent pricing isn't a real price point")]
+    TicketPriceNotWholeCents { cent: u128 },
 }
