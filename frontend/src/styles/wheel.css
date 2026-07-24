@@ -1220,6 +1220,7 @@
     padding: 0.3rem 0.6rem;
     border-bottom: 1px solid var(--border);
     overflow-wrap: anywhere;
+    color: var(--text);
   }
   .verify-entrants-list li:last-child { border-bottom: none; }
   .verify-winner-row {

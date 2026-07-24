@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
@@ -67,11 +67,29 @@ export function CyolVerifyPanel({ contractAddress, winnerAddress }: Props) {
     }
   }
 
+  // Both callers can render this inside a clickable <Link> card, and
+  // nothing in here should trigger navigating to the detail page.
+  // stopPropagation alone stops react-router's own onClick from firing
+  // (avoiding a client-side navigate), but doesn't stop the browser's
+  // native <a href> navigation: plain text/buttons have no default action
+  // of their own, so a click on them falls back to the nearest ancestor
+  // that does, which is the <a>. Blocking that needs preventDefault too -
+  // except for the raw block/entrants links (.verify-raw-link specifically
+  // - NOT a generic "a" selector, since that would also match the
+  // surrounding card's own <a> and defeat this whole check) and the "show
+  // everything" summary toggle, which each have their own legitimate
+  // default action that must be allowed to run (preventDefault is a single
+  // flag on the whole event, so calling it unconditionally here would
+  // cancel those too).
+  function guardClick(e: MouseEvent) {
+    if (!(e.target as HTMLElement).closest("a.verify-raw-link, summary")) {
+      e.preventDefault();
+    }
+    e.stopPropagation();
+  }
+
   return (
-    // stopPropagation - both callers can render this inside a clickable
-    // <Link> card, and none of this (copy buttons, opening the modal)
-    // should trigger navigating to the detail page.
-    <div onClick={(e) => e.stopPropagation()}>
+    <div onClick={guardClick}>
       <p className="cyol-detail-hint">
         {t("createYourOwnLuck.detail.payoutTxLabel")}{" "}
         {txHashLoading
@@ -97,8 +115,14 @@ export function CyolVerifyPanel({ contractAddress, winnerAddress }: Props) {
       </button>
 
       {isOpen && (
-        <div className="history-overlay" onClick={() => setIsOpen(false)}>
-          <div className="history-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="history-overlay"
+          onClick={(e) => {
+            e.preventDefault();
+            setIsOpen(false);
+          }}
+        >
+          <div className="history-modal" onClick={guardClick}>
             <div className="history-modal-header">
               <h2 className="history-modal-title">{t("verifyCyol.title")}</h2>
               <button type="button" className="history-close-btn" onClick={() => setIsOpen(false)}>
