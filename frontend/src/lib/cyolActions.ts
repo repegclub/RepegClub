@@ -44,7 +44,7 @@ export function depositPrize(
       : [
           { denom: prizeDenom, amount: prizeAmount },
           { denom: usdcDenom, amount: feeAmountUsdc },
-        ];
+        ].sort((a, b) => a.denom.localeCompare(b.denom));
   return execute(wallet, contractAddress, { deposit_prize: {} }, funds);
 }
 

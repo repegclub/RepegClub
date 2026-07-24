@@ -59,7 +59,7 @@ async function main() {
     address: raffleAddress,
     query: { get_config: {} },
   });
-  await creator.broadcastTxSync({
+  const feeRes = await creator.broadcastTxSync({
     msgs: [
       new MsgExecuteContract({
         sender: creator.address,
@@ -69,6 +69,7 @@ async function main() {
       }),
     ],
   });
+  if (feeRes.txResponse.code !== 0) throw new Error(`PayServiceFee failed: ${feeRes.txResponse.rawLog}`);
   const depositRes = await creator.broadcastTxSync({
     msgs: [
       new MsgExecuteContract({

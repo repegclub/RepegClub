@@ -47,7 +47,9 @@ export function useCyolRaffleDetail(
       const [config, raffleStatus, entrants] = await Promise.all([
         getRaffleConfig(contractAddress),
         getRaffleStatus(contractAddress),
-        getEntrants(contractAddress),
+        // Raffles from before GetEntrants existed reject this query - don't
+        // let that take down the rest of the page.
+        getEntrants(contractAddress).catch(() => ({ entrants: [] as string[] })),
       ]);
 
       const winners = raffleStatus.status === "drawn" ? await getWinners(contractAddress) : null;

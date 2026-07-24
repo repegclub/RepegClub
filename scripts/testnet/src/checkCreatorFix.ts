@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // created through the factory end up with its OWN config.creator set to the
 // real caller (not the factory's address), and can that real caller
 // actually call DepositPrize successfully?
-const [, , label = "frontenddev6"] = process.argv;
+const [, , label = "frontenddev8"] = process.argv;
 
 async function main() {
   const { contractAddress: factoryAddress } = JSON.parse(
