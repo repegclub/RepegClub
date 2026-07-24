@@ -4,8 +4,8 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 use create_your_own_luck::contract::{execute, instantiate, query};
 use create_your_own_luck::msg::{
-    ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MyAirdropShareResponse, QueryMsg,
-    RaffleStatusResponse, WinnersResponse,
+    ConfigResponse, Cw20HookMsg, EntrantsResponse, ExecuteMsg, InstantiateMsg,
+    MyAirdropShareResponse, QueryMsg, RaffleStatusResponse, WinnersResponse,
 };
 use create_your_own_luck::state::{RaffleStatus, RaffleType};
 use create_your_own_luck::ContractError;
@@ -13,8 +13,14 @@ use create_your_own_luck::ContractError;
 /// Paid raffles must denominate the ticket in USDC (2026-07-21) - same
 /// constant as the fee denom below, not a coincidence.
 const TICKET_DENOM: &str = USDC_DENOM;
-const PRIZE_DENOM: &str = "uluna"; // LUNC - one of the 3 whitelisted paid-raffle prize denoms
-const USDC_DENOM: &str = "utestusdc"; // must match the hardcoded USDC_DENOM constant in contract.rs
+// USTC (uusd), deliberately distinct from USDC_DENOM below - most tests use
+// the "combined single DepositPrize call" convenience path, which only works
+// when the prize denom differs from the fee denom. Was "uluna" (LUNC) until
+// 2026-07-23, when USDC_DENOM itself became "uluna" too (see that constant's
+// comment in contract.rs) - kept distinct here on purpose so this suite still
+// exercises both funding paths, not just the same-denom one.
+const PRIZE_DENOM: &str = "uusd";
+const USDC_DENOM: &str = "uluna"; // must match the hardcoded USDC_DENOM constant in contract.rs
 const FEE_AMOUNT_USDC: u128 = 3_000_000; // "$3", charged directly - no oracle conversion anymore
 
 type Deps = cosmwasm_std::OwnedDeps<
@@ -33,6 +39,7 @@ fn setup(
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type,
         ticket_price: Uint128::new(ticket_price),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -78,6 +85,7 @@ fn podium_needs_min_players_covering_all_places() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -102,6 +110,7 @@ fn podium_shares_must_sum_to_10000() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -126,6 +135,7 @@ fn podium_shares_reject_a_zero_percent_place() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -154,6 +164,7 @@ fn podium_shares_reject_too_many_places() {
     let mut too_many = vec![910u32; 10];
     too_many.push(900);
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -178,6 +189,7 @@ fn podium_shares_rejected_for_non_podium_raffle() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -222,6 +234,7 @@ fn airdrop_rejects_max_players_over_1000_for_free_raffles() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Airdrop,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -251,6 +264,7 @@ fn single_winner_and_podium_reject_max_players_over_100() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -272,6 +286,7 @@ fn single_winner_and_podium_reject_max_players_over_100() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::Podium,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -370,6 +385,7 @@ fn allowlist_rejects_wallets_not_on_the_list() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -728,6 +744,25 @@ fn cancel_raffle_refunds_prize_fee_and_tickets() {
 }
 
 #[test]
+fn get_entrants_lists_every_ticket_including_duplicates_for_repeat_buyers() {
+    // Found missing live (2026-07-23): there was no way for a wallet to know
+    // its own ticket count in a raffle, unlike wheel-manager's
+    // GetRoundEntrants - a player buying tickets had no confirmation each
+    // purchase actually registered. Mirrors that same query shape exactly.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 6, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+
+    let bin = query(deps.as_ref(), env, QueryMsg::GetEntrants {}).unwrap();
+    let entrants: EntrantsResponse = from_json(bin).unwrap();
+    let addrs: Vec<&str> = entrants.entrants.iter().map(|a| a.as_str()).collect();
+    assert_eq!(addrs, vec!["player1", "player1", "player2"]);
+}
+
+#[test]
 fn get_config_returns_the_instantiate_settings() {
     let (deps, env) = setup(RaffleType::SingleWinner, 2, 6, 0, vec![]);
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
@@ -738,6 +773,42 @@ fn get_config_returns_the_instantiate_settings() {
     assert_eq!(config.fee_amount_usdc, Uint128::new(FEE_AMOUNT_USDC));
 }
 
+#[test]
+fn explicit_creator_field_overrides_info_sender() {
+    // Regression test for a real bug found live (2026-07-23): when
+    // create-your-own-luck-factory instantiates a raffle via a submessage,
+    // info.sender here is the factory's own address, not the human wallet
+    // that actually asked for the raffle - without this field, every raffle
+    // created through the factory would end up with an unreachable creator
+    // (a contract address can never sign DepositPrize/DrawWinner/etc.).
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        creator: Some("real_human_wallet".to_string()),
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 2,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        max_raffle_age_seconds: 604800,
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    // Simulates the factory calling Instantiate as a submessage: info.sender
+    // is the factory's own address, distinct from the creator field.
+    instantiate(deps.as_mut(), env.clone(), mock_info("factory_contract_address", &[]), msg).unwrap();
+
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.creator.as_str(), "real_human_wallet");
+}
+
 fn instantiate_with_prize(
     prize_native_denom: Option<&str>,
     prize_cw20_address: Option<&str>,
@@ -745,6 +816,7 @@ fn instantiate_with_prize(
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -877,6 +949,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |min_players: u32, max_players: u32| InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -905,6 +978,7 @@ fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |unclaimed_deadline_days: u64| InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -937,6 +1011,7 @@ fn instantiate_rejects_round_timeout_seconds_out_of_range() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |round_timeout_seconds: u64| InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -969,6 +1044,7 @@ fn instantiate_rejects_draw_delay_blocks_out_of_range() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |draw_delay_blocks: u64| InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -1001,6 +1077,7 @@ fn instantiate_rejects_draw_window_blocks_out_of_range() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |draw_window_blocks: u64| InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::zero(),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -1066,6 +1143,7 @@ fn airdrop_caps_at_one_ticket_per_wallet_regardless_of_max_players() {
 
 fn paid_raffle_prize_msg(prize_native_denom: Option<&str>, prize_cw20_address: Option<&str>) -> InstantiateMsg {
     InstantiateMsg {
+        creator: None,
         raffle_type: RaffleType::SingleWinner,
         ticket_price: Uint128::new(1_000_000),
         ticket_denom: TICKET_DENOM.to_string(),
@@ -1103,7 +1181,11 @@ fn instantiate_rejects_non_whitelisted_native_prize_for_a_paid_raffle() {
 
 #[test]
 fn instantiate_allows_all_three_whitelisted_native_prizes_for_a_paid_raffle() {
-    for denom in ["uluna", "utestusdc", "uusd"] {
+    // "LUNC" and USDC_DENOM are both "uluna" on this testnet (2026-07-23,
+    // see USDC_DENOM's comment in contract.rs) - this loop deliberately still
+    // lists both symbolically rather than hardcoding literals, so it stays
+    // correct if that ever changes back to a distinct value.
+    for denom in ["uluna", USDC_DENOM, "uusd"] {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let msg = paid_raffle_prize_msg(Some(denom), None);
@@ -1249,6 +1331,7 @@ fn instantiate_rejects_non_usdc_ticket_denom_for_a_paid_raffle() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         ticket_denom: "unft".to_string(),
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
@@ -1271,6 +1354,7 @@ fn instantiate_rejects_ticket_price_below_the_one_dollar_minimum() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         ticket_price: Uint128::new(999_999),
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
@@ -1283,6 +1367,7 @@ fn instantiate_rejects_ticket_price_with_sub_cent_dust() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let msg = InstantiateMsg {
+        creator: None,
         ticket_price: Uint128::new(1_000_001), // $1.0001 - not a whole cent
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
@@ -1296,6 +1381,7 @@ fn instantiate_allows_ticket_price_at_the_minimum_and_in_whole_cent_increments()
         let mut deps = mock_dependencies();
         let env = mock_env();
         let msg = InstantiateMsg {
+            creator: None,
             ticket_price: Uint128::new(ticket_price),
             ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
         };
@@ -1308,6 +1394,7 @@ fn instantiate_rejects_max_raffle_age_seconds_out_of_range() {
     let mut deps = mock_dependencies();
     let env = mock_env();
     let base_msg = |max_raffle_age_seconds: u64| InstantiateMsg {
+        creator: None,
         max_raffle_age_seconds,
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
@@ -1329,6 +1416,7 @@ fn paid_raffle_fee_floors_at_one_dollar_for_small_potential_revenue() {
     // max_entrants=2, potential=2,000,000 micro, 1% = 20,000 - floored to the
     // $1 minimum.
     let msg = InstantiateMsg {
+        creator: None,
         ticket_price: Uint128::new(1_000_000),
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
@@ -1349,6 +1437,7 @@ fn paid_raffle_fee_scales_as_one_percent_of_max_potential_revenue() {
     // comfortably above the $1 floor so this exercises the real formula, not
     // just the floor.
     let msg = InstantiateMsg {
+        creator: None,
         max_players: 100,
         min_players: 2,
         ticket_price: Uint128::new(10_000_000),

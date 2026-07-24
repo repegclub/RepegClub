@@ -48,6 +48,13 @@ const UNSAFE_STREAK_STALE_AFTER_DAYS: u64 = 30;
 /// this serializes to the JSON that contract's own `instantiate` expects.
 #[cw_serde]
 struct RaffleInstantiateMsg {
+    // Without this, the raffle's own `info.sender` at instantiate time would
+    // be this factory contract's address (CosmWasm submessage semantics),
+    // not the wallet that called CreateRaffle - a contract address can never
+    // sign DepositPrize/DrawWinner/etc., so every raffle created through
+    // this factory would end up permanently unfundable. Found live
+    // (2026-07-23) after the first version shipped without this field.
+    creator: Option<String>,
     raffle_type: RaffleType,
     ticket_price: Uint128,
     ticket_denom: String,
@@ -140,6 +147,7 @@ pub fn execute_create_raffle(
     let index = RAFFLE_COUNT.load(deps.storage)?;
 
     let instantiate_msg = RaffleInstantiateMsg {
+        creator: Some(info.sender.to_string()),
         raffle_type,
         ticket_price,
         ticket_denom,

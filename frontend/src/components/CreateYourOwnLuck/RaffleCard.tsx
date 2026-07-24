@@ -1,6 +1,9 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { useCyolRaffleSummary } from "../../hooks/useCyolRaffleSummary";
 import { formatUluna } from "../../lib/format";
+import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
+import { CyolVerifyPanel } from "./CyolVerifyPanel";
 
 const RAFFLE_TYPE_LABEL_KEYS: Record<string, string> = {
   single_winner: "createYourOwnLuck.raffleType.singleWinner",
@@ -19,10 +22,11 @@ export function RaffleCard({ address }: { address: string }) {
     return <div className="cyol-card cyol-card-error">{t("createYourOwnLuck.cardError")}</div>;
   }
 
-  const { config, raffleStatus } = summary;
+  const { config, raffleStatus, winners } = summary;
+  const singleWinner = winners && winners.winners.length === 1 ? winners.winners[0] : null;
 
   return (
-    <div className="cyol-card">
+    <Link to={`/create-your-own-luck/${address}`} className="cyol-card">
       <div className="cyol-card-top">
         <span className="cyol-card-type">{t(RAFFLE_TYPE_LABEL_KEYS[config.raffle_type])}</span>
         <span className={`cyol-card-status cyol-card-status-${raffleStatus.status}`}>
@@ -39,6 +43,20 @@ export function RaffleCard({ address }: { address: string }) {
         })}
       </p>
       <p className="cyol-card-address">{address}</p>
-    </div>
+      {singleWinner && (
+        <>
+          <p className="cyol-detail-line cyol-detail-highlight">
+            {t("createYourOwnLuck.detail.winnerLine", {
+              winner: singleWinner,
+              prize: formatAmount(
+                winners!.prize_shares[0] ?? "0",
+                prizeCurrencyLabel("native" in config.prize_asset ? config.prize_asset.native.denom : config.usdc_denom)
+              ),
+            })}
+          </p>
+          <CyolVerifyPanel contractAddress={address} winnerAddress={singleWinner} />
+        </>
+      )}
+    </Link>
   );
 }
