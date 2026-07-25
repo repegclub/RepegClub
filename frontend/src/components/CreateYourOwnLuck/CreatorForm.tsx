@@ -60,27 +60,34 @@ function airdropFeeForMaxPlayers(max: number): number | null {
 const ADDRESS_PATTERN = /^terra1[ac-hj-np-z02-9]{38}$/;
 
 // Returns null for "no whitelist" (empty input - anyone can enter), or the
-// list of addresses. Throws with the offending line if any entry doesn't
-// look like a valid address.
+// deduplicated list of addresses (a repeated address is still only one
+// wallet that can ever buy a ticket - counting it twice would let a
+// duplicate satisfy min_players without a second real entrant). Throws with
+// the 1-based physical line number if any entry doesn't look like a valid
+// address.
 function parseAllowedEntrants(text: string): string[] | null {
+  const rawLines = text.split("\n");
+  const entries: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const trimmed = rawLines[i].trim();
+    if (trimmed.length === 0) continue;
+    if (!ADDRESS_PATTERN.test(trimmed)) throw new Error(String(i + 1));
+    entries.push(trimmed);
+  }
+  if (entries.length === 0) return null;
+  return [...new Set(entries)];
+}
+
+// Non-throwing unique-line count for the live hints below, shown while
+// typing (before every line necessarily looks like a valid address yet) -
+// format validation only happens on submit, via parseAllowedEntrants above.
+// Deduplicated for the same reason as parseAllowedEntrants.
+function countEntrantLines(text: string): number {
   const lines = text
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  if (lines.length === 0) return null;
-  const badLine = lines.find((line) => !ADDRESS_PATTERN.test(line));
-  if (badLine) throw new Error(badLine);
-  return lines;
-}
-
-// Non-throwing line count for the live hints below, shown while typing
-// (before every line necessarily looks like a valid address yet) - format
-// validation only happens on submit, via parseAllowedEntrants above.
-function countEntrantLines(text: string): number {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0).length;
+  return new Set(lines).size;
 }
 
 export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
