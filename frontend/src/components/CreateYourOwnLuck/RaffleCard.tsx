@@ -11,7 +11,7 @@ const RAFFLE_TYPE_LABEL_KEYS: Record<string, string> = {
   airdrop: "createYourOwnLuck.raffleType.airdrop",
 };
 
-export function RaffleCard({ address }: { address: string }) {
+export function RaffleCard({ address, index }: { address: string; index: number }) {
   const { t } = useTranslation();
   const summary = useCyolRaffleSummary(address);
 
@@ -28,7 +28,9 @@ export function RaffleCard({ address }: { address: string }) {
   return (
     <Link to={`/create-your-own-luck/${address}`} className="cyol-card">
       <div className="cyol-card-top">
-        <span className="cyol-card-type">{t(RAFFLE_TYPE_LABEL_KEYS[config.raffle_type])}</span>
+        <span className="cyol-card-type">
+          {t("createYourOwnLuck.raffleIdLabel", { id: index })} · {t(RAFFLE_TYPE_LABEL_KEYS[config.raffle_type])}
+        </span>
         <span className={`cyol-card-status cyol-card-status-${raffleStatus.status}`}>
           {t(`createYourOwnLuck.status.${raffleStatus.status}`)}
         </span>

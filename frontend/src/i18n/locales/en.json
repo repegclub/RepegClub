@@ -246,6 +246,7 @@
     "createdBy": "by {{creator}}",
     "partialList": "Showing the latest {{shown}} of {{total}} raffles.",
     "cardError": "Couldn't load this raffle.",
+    "raffleIdLabel": "#{{id}}",
     "ticketPrice": "🎟️ {{price}}",
     "players": "{{count}}/{{max}} players",
     "raffleType": {

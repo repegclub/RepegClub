@@ -7,6 +7,7 @@ import { GameSwitcher } from "../Shared/GameSwitcher";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffleDetail } from "../../hooks/useCyolRaffleDetail";
+import { useCyolRaffleIndex } from "../../hooks/useCyolRaffleIndex";
 import { displayNumberToUluna } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
 import {
@@ -50,6 +51,7 @@ export function RaffleDetailPage() {
   const { state: walletState } = useWallet();
   const walletAddress = walletState.status === "connected" ? walletState.wallet.address : null;
   const detail = useCyolRaffleDetail(address, walletAddress);
+  const raffleIndex = useCyolRaffleIndex(address);
 
   const [prizeAmount, setPrizeAmount] = useState("100");
   const [ticketQuantity, setTicketQuantity] = useState("1");
@@ -185,6 +187,7 @@ export function RaffleDetailPage() {
     <div className="cyol-detail">
       <div className="cyol-card-top">
         <span className="cyol-card-type">
+          {raffleIndex !== null && `${t("createYourOwnLuck.raffleIdLabel", { id: raffleIndex })} · `}
           {t(`createYourOwnLuck.raffleType.${config.raffle_type === "single_winner" ? "singleWinner" : config.raffle_type}`)}
         </span>
         <span className={`cyol-card-status cyol-card-status-${raffleStatus.status}`}>
