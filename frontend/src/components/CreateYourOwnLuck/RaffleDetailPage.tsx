@@ -24,6 +24,8 @@ import {
 } from "../../lib/cyolActions";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
+import { CyolRevealWheel } from "./CyolRevealWheel";
+import { CyolRevealChest } from "./CyolRevealChest";
 
 // Mirrors max_tickets_per_wallet exactly (contracts/create-your-own-luck/
 // src/execute.rs) - lets the UI cap a batch purchase client-side instead of
@@ -42,9 +44,11 @@ type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "rec
 // own validation is the source of truth for the fine-grained eligibility
 // (draw window height, unclaimed deadline, rearm cap) - its rejection
 // message surfaces as-is instead of this page trying to precompute exact
-// countdowns for all of them. No wheel-spin reveal yet either - plain text,
-// same reasoning: prove the loop works end-to-end before investing in the
-// anti-spoiler choreography Wheel of Repeg/Weekly Round already have.
+// countdowns for all of them. SingleWinner's result is revealed via the same
+// wheel/physics Wheel of Repeg uses (see CyolRevealWheel) - Airdrop has no
+// winner to reveal, so it gets its own reveal moment instead, a chest that
+// only a participating wallet can open, revealing its own per-wallet split
+// (see CyolRevealChest).
 export function RaffleDetailPage() {
   const { t } = useTranslation();
   const { address = "" } = useParams<{ address: string }>();
@@ -80,7 +84,7 @@ export function RaffleDetailPage() {
   if (detail.status === "loading") return shell(<p>{t("createYourOwnLuck.loading")}</p>);
   if (detail.status === "error") return shell(<p className="cyol-form-error">{t("createYourOwnLuck.cardError")}</p>);
 
-  const { config, raffleStatus, winners, myAirdropShare, myTicketCount } = detail;
+  const { config, raffleStatus, winners, myAirdropShare, myTicketCount, entrants } = detail;
 
   if (config.raffle_type === "podium") {
     return shell(<p className="cyol-form-error">{t("createYourOwnLuck.detail.podiumUnsupported")}</p>);
@@ -183,6 +187,37 @@ export function RaffleDetailPage() {
 
   const prizeCurrency = prizeCurrencyLabel(prizeDenom ?? config.usdc_denom);
 
+  const winnerDetail =
+    !isAirdrop && winners && winners.winners.length > 0 ? (
+      <div>
+        <p className="cyol-detail-line cyol-detail-highlight">
+          {winners.winners.length > 1 ? t("createYourOwnLuck.detail.winnersTitle") : t("createYourOwnLuck.detail.winnerTitle")}
+        </p>
+        {winners.winners.map((winner, i) =>
+          winner === walletAddress ? (
+            <div key={winner}>
+              <p className="cyol-detail-line cyol-detail-highlight">
+                {t("createYourOwnLuck.detail.youWonLine", {
+                  prize: formatAmount(winners.prize_shares[i] ?? "0", prizeCurrency),
+                })}
+              </p>
+              <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.prizeSentTo", { winner })}</p>
+            </div>
+          ) : (
+            <p key={winner} className="cyol-detail-line">
+              {t("createYourOwnLuck.detail.winnerLine", {
+                winner,
+                prize: formatAmount(winners.prize_shares[i] ?? "0", prizeCurrency),
+              })}
+            </p>
+          )
+        )}
+        {winners.winners.length === 1 && (
+          <CyolVerifyPanel contractAddress={address} winnerAddress={winners.winners[0]} />
+        )}
+      </div>
+    ) : null;
+
   return shell(
     <div className="cyol-detail">
       <div className="cyol-card-top">
@@ -204,7 +239,10 @@ export function RaffleDetailPage() {
         {t("createYourOwnLuck.players", { count: raffleStatus.unique_player_count, max: config.max_players })}
       </p>
       <p className="cyol-detail-line">
-        {t("createYourOwnLuck.detail.totalTickets", { count: raffleStatus.ticket_count })}
+        {t(
+          isAirdrop ? "createYourOwnLuck.detail.totalTicketsOnePerWallet" : "createYourOwnLuck.detail.totalTickets",
+          { count: raffleStatus.ticket_count }
+        )}
       </p>
       {connected && myTicketCount !== null && myTicketCount > 0 && (
         <p className="cyol-detail-line cyol-detail-highlight">{t("createYourOwnLuck.detail.myTickets", { count: myTicketCount })}</p>
@@ -305,47 +343,37 @@ export function RaffleDetailPage() {
 
       {raffleStatus.status === "drawn" && (
         <div className="cyol-detail-actions">
-          {!isAirdrop && winners && winners.winners.length > 0 && (
-            <div>
-              <p className="cyol-detail-line cyol-detail-highlight">
-                {winners.winners.length > 1 ? t("createYourOwnLuck.detail.winnersTitle") : t("createYourOwnLuck.detail.winnerTitle")}
-              </p>
-              {winners.winners.map((winner, i) =>
-                winner === walletAddress ? (
-                  <div key={winner}>
-                    <p className="cyol-detail-line cyol-detail-highlight">
-                      {t("createYourOwnLuck.detail.youWonLine", {
-                        prize: formatAmount(winners.prize_shares[i] ?? "0", prizeCurrency),
-                      })}
-                    </p>
-                    <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.prizeSentTo", { winner })}</p>
-                  </div>
-                ) : (
-                  <p key={winner} className="cyol-detail-line">
-                    {t("createYourOwnLuck.detail.winnerLine", {
-                      winner,
-                      prize: formatAmount(winners.prize_shares[i] ?? "0", prizeCurrency),
-                    })}
-                  </p>
-                )
+          {winnerDetail &&
+            (winners && entrants.length > 0 ? (
+              <CyolRevealWheel key={address} contractAddress={address} entrants={entrants} winnerAddress={winners.winners[0]}>
+                {winnerDetail}
+              </CyolRevealWheel>
+            ) : (
+              // Raffles from before GetEntrants existed (see
+              // useCyolRaffleDetail) have no ticket list to build wheel
+              // segments from - fall back to the plain-text reveal rather
+              // than showing a wheel that can never spin.
+              winnerDetail
+            ))}
+          {isAirdrop && (
+            <CyolRevealChest
+              key={address}
+              contractAddress={address}
+              connected={connected}
+              myAirdropShare={myAirdropShare}
+              prizeCurrency={prizeCurrency}
+            >
+              {myAirdropShare?.claimed && <p className="cyol-detail-line">{t("createYourOwnLuck.detail.airdropClaimed")}</p>}
+              {canClaimAirdrop && (
+                <button className="cyol-submit" onClick={handleClaimAirdrop} disabled={busy || !connected}>
+                  {actionBusy === "claim" ? t("createYourOwnLuck.detail.claiming") : t("createYourOwnLuck.detail.claimAirdrop")}
+                </button>
               )}
-              {winners.winners.length === 1 && (
-                <CyolVerifyPanel contractAddress={address} winnerAddress={winners.winners[0]} />
-              )}
-            </div>
+            </CyolRevealChest>
           )}
-          {isAirdrop && myAirdropShare && (
-            <p className="cyol-detail-line">
-              {myAirdropShare.claimed
-                ? t("createYourOwnLuck.detail.airdropClaimed")
-                : t("createYourOwnLuck.detail.airdropShare", { share: formatAmount(myAirdropShare.share, prizeCurrency) })}
-            </p>
-          )}
-          {canClaimAirdrop && (
-            <button className="cyol-submit" onClick={handleClaimAirdrop} disabled={busy || !connected}>
-              {actionBusy === "claim" ? t("createYourOwnLuck.detail.claiming") : t("createYourOwnLuck.detail.claimAirdrop")}
-            </button>
-          )}
+          {/* Creator-only, independent of whether this wallet is itself a
+              participant (the creator may not have bought a ticket) - stays
+              outside the chest's participant gate. */}
           {canReclaimUnclaimed && (
             <button className="cyol-submit cyol-submit-secondary" onClick={handleReclaimUnclaimed} disabled={busy || !connected}>
               {actionBusy === "reclaim" ? t("createYourOwnLuck.detail.reclaiming") : t("createYourOwnLuck.detail.reclaimUnclaimed")}

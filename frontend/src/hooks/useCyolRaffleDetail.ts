@@ -25,6 +25,10 @@ export type CyolRaffleDetailState =
       // entrants list (no dedicated per-wallet query exists) - null when no
       // wallet is connected.
       myTicketCount: number | null;
+      // Raw one-entry-per-ticket address list (see getEntrants) - exposed so
+      // the drawn-state UI can build the reveal wheel's segments without a
+      // second, duplicate query.
+      entrants: string[];
     };
 
 // Everything one raffle's own page needs, in one hook - winners and "my
@@ -62,7 +66,15 @@ export function useCyolRaffleDetail(
         : null;
 
       if (isCurrent(token)) {
-        setState({ status: "loaded", config, raffleStatus, winners, myAirdropShare, myTicketCount });
+        setState({
+          status: "loaded",
+          config,
+          raffleStatus,
+          winners,
+          myAirdropShare,
+          myTicketCount,
+          entrants: entrants.entrants,
+        });
       }
     } catch (err) {
       if (isCurrent(token)) {
