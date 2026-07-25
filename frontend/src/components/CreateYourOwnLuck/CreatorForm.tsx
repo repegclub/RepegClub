@@ -52,6 +52,37 @@ function airdropFeeForMaxPlayers(max: number): number | null {
   return tier ? tier[1] : null;
 }
 
+// Light client-side shape check only - the contract re-validates every
+// address for real via addr_validate at instantiate time. This just avoids
+// wasting gas on a signed tx that's guaranteed to be rejected for a typo.
+// Bech32's data alphabet excludes 1/b/i/o (visually ambiguous with l/1,
+// 8/b, l/1, 0/o) - accepting them here would let an obvious typo through.
+const ADDRESS_PATTERN = /^terra1[ac-hj-np-z02-9]{38}$/;
+
+// Returns null for "no whitelist" (empty input - anyone can enter), or the
+// list of addresses. Throws with the offending line if any entry doesn't
+// look like a valid address.
+function parseAllowedEntrants(text: string): string[] | null {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) return null;
+  const badLine = lines.find((line) => !ADDRESS_PATTERN.test(line));
+  if (badLine) throw new Error(badLine);
+  return lines;
+}
+
+// Non-throwing line count for the live hints below, shown while typing
+// (before every line necessarily looks like a valid address yet) - format
+// validation only happens on submit, via parseAllowedEntrants above.
+function countEntrantLines(text: string): number {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0).length;
+}
+
 export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
@@ -61,6 +92,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const [ticketPrice, setTicketPrice] = useState("1");
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
+  const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +115,26 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
     if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers");
     const limit = maxPlayersLimit(raffleType);
     if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit });
+
+    let allowedEntrants: string[] | null;
+    try {
+      allowedEntrants = parseAllowedEntrants(allowedEntrantsText);
+    } catch (err) {
+      return t("createYourOwnLuck.form.errorAllowedEntrants", {
+        line: err instanceof Error ? err.message : allowedEntrantsText,
+      });
+    }
+    // A shorter whitelist than min_players means the raffle can never reach
+    // it - only the listed wallets can ever buy a ticket, so unique player
+    // count is capped at the list's length no matter how long it's open.
+    // The contract doesn't reject this itself (it'd just sit until
+    // ExpireRaffle refunds everyone), so this is worth catching up front.
+    if (allowedEntrants !== null && allowedEntrants.length < min) {
+      return t("createYourOwnLuck.form.errorAllowedEntrantsBelowMinimum", {
+        count: allowedEntrants.length,
+        min,
+      });
+    }
 
     return null;
   }
@@ -107,6 +159,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
         maxPlayers: Number(maxPlayers),
         prizeNativeDenom: PRIZE_DENOM,
         podiumSharesBps: [],
+        allowedEntrants: parseAllowedEntrants(allowedEntrantsText),
       });
       setCreatedAddress(raffleAddress ?? null);
       onCreated?.();
@@ -183,6 +236,39 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                   </span>
                 ) : null;
               })()}
+          </label>
+
+          <label className="cyol-field">
+            <span>{t("createYourOwnLuck.form.allowedEntrantsLabel")}</span>
+            <textarea
+              className="cyol-textarea"
+              rows={4}
+              placeholder="terra1..."
+              value={allowedEntrantsText}
+              onChange={(e) => setAllowedEntrantsText(e.target.value)}
+            />
+            <span className="cyol-hint">{t("createYourOwnLuck.form.allowedEntrantsHint")}</span>
+            {(() => {
+              const count = countEntrantLines(allowedEntrantsText);
+              if (count === 0) return null;
+              const min = Number(minPlayers);
+              const max = Number(maxPlayers);
+              if (count < min) {
+                return (
+                  <span className="cyol-hint">
+                    {t("createYourOwnLuck.form.allowedEntrantsBelowMinimumHint", { count, min })}
+                  </span>
+                );
+              }
+              if (count > max) {
+                return (
+                  <span className="cyol-hint">
+                    {t("createYourOwnLuck.form.allowedEntrantsExceedsMaxHint", { count, max })}
+                  </span>
+                );
+              }
+              return null;
+            })()}
           </label>
 
           {error && <p className="cyol-form-error">{error}</p>}

@@ -30,6 +30,9 @@ export type CreateRaffleParams = {
   // Required (summing to 10000) for Podium, empty otherwise - see
   // contracts/create-your-own-luck/src/msg.rs.
   podiumSharesBps: number[];
+  // Gates BuyTicket to these addresses only when set (any raffle type, not
+  // just Airdrop) - contracts/create-your-own-luck/src/execute.rs.
+  allowedEntrants: string[] | null;
 };
 
 export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffleParams) {
@@ -43,7 +46,7 @@ export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffle
             raffle_type: params.raffleType,
             ticket_price: params.ticketPriceAmount,
             ticket_denom: params.ticketDenom,
-            allowed_entrants: null,
+            allowed_entrants: params.allowedEntrants,
             min_players: params.minPlayers,
             max_players: params.maxPlayers,
             round_timeout_seconds: ROUND_TIMEOUT_SECONDS,

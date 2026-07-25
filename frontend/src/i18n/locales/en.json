@@ -268,6 +268,10 @@
       "maxPlayersLabel": "Maximum players (up to {{limit}})",
       "airdropFeeNote": "Service fee for this raffle: ${{fee}} (paid later, when you fund it)",
       "podiumSharesLabel": "Podium split (1st / 2nd / 3rd, must add up to 100%)",
+      "allowedEntrantsLabel": "Whitelist (optional)",
+      "allowedEntrantsHint": "One wallet address per line. Leave empty to let anyone participate.",
+      "allowedEntrantsBelowMinimumHint": "Only {{count}} wallet(s) listed — you need at least {{min}} for this raffle to ever open.",
+      "allowedEntrantsExceedsMaxHint": "{{count}} wallets listed, but only {{max}} can get in — first come, first served among them.",
       "submit": "Create raffle",
       "submitting": "Creating…",
       "success": "Raffle created: {{address}}",
@@ -279,6 +283,8 @@
       "errorMaxPlayers": "Maximum players must be at least the minimum.",
       "errorMaxPlayersLimit": "Maximum players can't be more than {{limit}} for this raffle type.",
       "errorPodiumShares": "Podium shares must be positive numbers adding up to exactly 100.",
+      "errorAllowedEntrants": "Line {{line}} doesn't look like a valid wallet address.",
+      "errorAllowedEntrantsBelowMinimum": "The whitelist only has {{count}} wallet(s), but minimum players is {{min}} — this raffle could never open. Add more addresses or lower the minimum.",
       "errorGeneric": "Couldn't create the raffle. Try again."
     },
     "detail": {
