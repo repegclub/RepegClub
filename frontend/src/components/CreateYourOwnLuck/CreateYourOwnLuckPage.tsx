@@ -43,7 +43,7 @@ export function CreateYourOwnLuckPage() {
           )}
           <div className="cyol-card-grid">
             {raffles.raffles.raffles.map((raffle) => (
-              <RaffleCard key={raffle.index} address={raffle.address} />
+              <RaffleCard key={raffle.index} address={raffle.address} index={raffle.index} />
             ))}
           </div>
         </>
