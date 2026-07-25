@@ -1,14 +1,15 @@
 import { ulunaToDisplayNumber } from "./format";
 
-// Labeled by ROLE, not by denom string - ticket/fee amounts are always
-// "USDC" conceptually (same convention as the rest of this app, see
-// lib/format.ts's formatUluna), while the prize is a real, distinct choice
-// from the whitelist (LUNC/USDC/USTC natives). On this testnet (2026-07-23)
-// USDC_DENOM itself is "uluna" too (see contracts/create-your-own-luck/src/
-// contract.rs), so the same underlying token can mean either role depending
-// on context - denom-string lookup alone can't tell them apart anymore.
+// Same site-wide rule as lib/format.ts's formatUluna: ticket/pool/prize
+// amounts always display as USDC, never LUNC (confirmed 2026-07-13 across
+// Wheel of Repeg/Weekly Round) - USTC is the one exception, reserved for
+// the actual redemption-target currency. CreatorForm's own prize field is
+// explicitly labeled "(USDC)" for the same reason. On this testnet,
+// USDC_DENOM is "uluna" too (see contracts/create-your-own-luck/src/
+// contract.rs) - denom-string lookup alone can't distinguish real LUNC from
+// real USDC until mainnet uses their actual distinct denoms.
 export function prizeCurrencyLabel(denom: string): string {
-  return denom === "uusd" ? "USTC" : "LUNC"; // this UI's CreatorForm only ever creates LUNC prizes; USTC covers older/external raffles
+  return denom === "uusd" ? "USTC" : "USDC";
 }
 
 export function formatAmount(amount: string, currency: string): string {

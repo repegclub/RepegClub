@@ -8,8 +8,9 @@ import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffleDetail } from "../../hooks/useCyolRaffleDetail";
 import { useCyolRaffleIndex } from "../../hooks/useCyolRaffleIndex";
-import { displayNumberToUluna } from "../../lib/format";
+import { displayNumberToUluna, ulunaToDisplayNumber } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
+import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
 import {
   depositPrize,
   payServiceFee,
@@ -290,6 +291,25 @@ export function RaffleDetailPage() {
             <label className="cyol-field">
               <span>{t("createYourOwnLuck.detail.prizeAmountLabel", { currency: prizeCurrency })}</span>
               <input type="number" min="0" step="0.01" value={prizeAmount} onChange={(e) => setPrizeAmount(e.target.value)} />
+              {(config.raffle_type === "single_winner" || config.raffle_type === "airdrop") &&
+                (() => {
+                  const prize = Number(prizeAmount);
+                  if (!Number.isFinite(prize)) return null;
+                  const ticketPriceDisplay = ulunaToDisplayNumber(config.ticket_price);
+                  const profit = worstCaseTicketRevenueProfit(
+                    config.raffle_type,
+                    config.max_players,
+                    ticketPriceDisplay,
+                    prize
+                  );
+                  return (
+                    <span className="cyol-hint">
+                      {profit > 0
+                        ? t("createYourOwnLuck.detail.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
+                        : t("createYourOwnLuck.detail.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
+                    </span>
+                  );
+                })()}
             </label>
             <button className="cyol-submit" onClick={handleFund} disabled={busy || !connected}>
               {actionBusy === "fund" ? t("createYourOwnLuck.detail.funding") : t("createYourOwnLuck.detail.fund")}
