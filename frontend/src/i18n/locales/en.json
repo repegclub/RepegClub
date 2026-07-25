@@ -275,7 +275,6 @@
       "allowedEntrantsExceedsMaxHint": "{{count}} wallets listed, but only {{max}} can get in — first come, first served among them.",
       "submit": "Create raffle",
       "submitting": "Creating…",
-      "success": "Raffle created: {{address}}",
       "connectFirst": "Connect your wallet first.",
       "errorPrice": "Ticket price must be greater than 0.",
       "errorPriceMinimum": "Ticket price must be at least $1.",

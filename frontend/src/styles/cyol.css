@@ -122,13 +122,6 @@
   margin: 0;
 }
 
-.cyol-form-success {
-  color: var(--gold);
-  font-size: 0.85rem;
-  margin: 0;
-  word-break: break-all;
-}
-
 /* Raffle cards */
 
 .cyol-partial-note {
