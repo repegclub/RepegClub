@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useCyolRaffleSummary } from "../../hooks/useCyolRaffleSummary";
+import { useWallet } from "../../contexts/WalletContext";
+import type { CyolRaffleSummaryState } from "../../hooks/useCyolRaffleSummaries";
 import { formatUluna } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
@@ -11,9 +12,17 @@ const RAFFLE_TYPE_LABEL_KEYS: Record<string, string> = {
   airdrop: "createYourOwnLuck.raffleType.airdrop",
 };
 
-export function RaffleCard({ address, index }: { address: string; index: number }) {
+export function RaffleCard({
+  address,
+  index,
+  summary,
+}: {
+  address: string;
+  index: number;
+  summary: CyolRaffleSummaryState;
+}) {
   const { t } = useTranslation();
-  const summary = useCyolRaffleSummary(address);
+  const { state: walletState } = useWallet();
 
   if (summary.status === "loading") {
     return <div className="cyol-card cyol-card-loading">{t("createYourOwnLuck.loading")}</div>;
@@ -24,6 +33,7 @@ export function RaffleCard({ address, index }: { address: string; index: number 
 
   const { config, raffleStatus, winners } = summary;
   const singleWinner = winners && winners.winners.length === 1 ? winners.winners[0] : null;
+  const isMine = walletState.status === "connected" && walletState.wallet.address === config.creator;
 
   return (
     <Link to={`/create-your-own-luck/${address}`} className="cyol-card">
@@ -35,6 +45,7 @@ export function RaffleCard({ address, index }: { address: string; index: number 
           {t(`createYourOwnLuck.status.${raffleStatus.status}`)}
         </span>
       </div>
+      {isMine && <span className="cyol-card-mine">{t("createYourOwnLuck.createdByYou")}</span>}
       <p className="cyol-card-price">
         {t("createYourOwnLuck.ticketPrice", { price: formatUluna(config.ticket_price, "USDC") })}
       </p>

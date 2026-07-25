@@ -247,8 +247,14 @@
     "partialList": "Showing the latest {{shown}} of {{total}} raffles.",
     "cardError": "Couldn't load this raffle.",
     "raffleIdLabel": "#{{id}}",
+    "createdByYou": "✦ Created by you",
     "ticketPrice": "🎟️ {{price}}",
     "players": "{{count}}/{{max}} players",
+    "filter": {
+      "all": "All",
+      "mine": "Created by me",
+      "empty": "No raffles match this filter."
+    },
     "raffleType": {
       "singleWinner": "Single Winner",
       "podium": "Podium",
