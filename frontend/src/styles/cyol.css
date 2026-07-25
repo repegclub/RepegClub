@@ -129,6 +129,47 @@
   font-size: 0.8rem;
 }
 
+.cyol-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.cyol-filter-chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--body);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cyol-filter-chip:hover:not(:disabled) {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
+
+.cyol-filter-chip.active {
+  background: rgba(255, 209, 102, 0.12);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.cyol-filter-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cyol-card-mine {
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .cyol-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
