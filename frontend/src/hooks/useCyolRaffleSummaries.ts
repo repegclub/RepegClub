@@ -25,7 +25,18 @@ export type CyolRaffleListEntry = RaffleRecordResponse & { summary: CyolRaffleSu
 async function loadOneSummary(address: string): Promise<CyolRaffleSummaryState> {
   try {
     const [config, raffleStatus] = await Promise.all([getRaffleConfig(address), getRaffleStatus(address)]);
-    const winners = raffleStatus.status === "drawn" ? await getWinners(address) : null;
+    // Isolated on purpose: config/raffleStatus already succeeded and are
+    // enough to render and filter this raffle - a getWinners hiccup
+    // shouldn't blank the whole card out or drop it from the Drawn filter.
+    let winners: CyolWinnersResponse | null = null;
+    if (raffleStatus.status === "drawn") {
+      try {
+        winners = await getWinners(address);
+      } catch {
+        // Card still renders with winners null - just can't show the
+        // winner line until this succeeds on a later refetch.
+      }
+    }
     return { status: "loaded", config, raffleStatus, winners };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "Query failed." };
@@ -38,19 +49,30 @@ async function loadOneSummary(address: string): Promise<CyolRaffleSummaryState> 
 // own config/status resolved first. One raffle's own query failing doesn't
 // blank out the rest (loadOneSummary catches its own errors), same as the
 // old per-card hook this replaces.
-export function useCyolRaffleSummaries(records: RaffleRecordResponse[]): CyolRaffleListEntry[] {
+export function useCyolRaffleSummaries(
+  records: RaffleRecordResponse[]
+): { entries: CyolRaffleListEntry[]; loaded: boolean } {
   const [entries, setEntries] = useState<CyolRaffleListEntry[]>([]);
+  // Distinct from each entry's own "loading" summary status - this is
+  // "has the batch resolved at all yet", so callers filtering by status
+  // can tell "still fetching everything" apart from "fetched, and none
+  // of them actually match" (an empty records list resolves immediately).
+  const [loaded, setLoaded] = useState(false);
   const { start, isCurrent } = useLatestRequest();
 
   useEffect(() => {
     const token = start();
+    setLoaded(false);
     setEntries(records.map((r) => ({ ...r, summary: { status: "loading" } })));
     Promise.all(records.map(async (r) => ({ ...r, summary: await loadOneSummary(r.address) }))).then(
       (resolved) => {
-        if (isCurrent(token)) setEntries(resolved);
+        if (isCurrent(token)) {
+          setEntries(resolved);
+          setLoaded(true);
+        }
       }
     );
   }, [records, start, isCurrent]);
 
-  return entries;
+  return { entries, loaded };
 }

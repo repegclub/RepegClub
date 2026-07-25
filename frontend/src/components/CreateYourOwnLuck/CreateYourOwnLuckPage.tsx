@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
@@ -32,8 +32,17 @@ export function CreateYourOwnLuckPage() {
   const { state: walletState } = useWallet();
   const walletAddress = walletState.status === "connected" ? walletState.wallet.address : null;
   const raffles = useCyolRaffles();
-  const entries = useCyolRaffleSummaries(raffles.status === "loaded" ? raffles.raffles.raffles : NO_RECORDS);
+  const { entries, loaded } = useCyolRaffleSummaries(
+    raffles.status === "loaded" ? raffles.raffles.raffles : NO_RECORDS
+  );
   const [filter, setFilter] = useState<StatusFilter>("all");
+
+  // "Created by me" only means anything with a wallet connected - if it
+  // disconnects mid-filter, every entry would compare against null (never
+  // matching) and silently show an empty list with no explanation.
+  useEffect(() => {
+    if (!walletAddress && filter === "mine") setFilter("all");
+  }, [walletAddress, filter]);
 
   const visibleEntries = entries.filter((entry) => matchesFilter(entry, filter, walletAddress));
 
@@ -83,7 +92,9 @@ export function CreateYourOwnLuckPage() {
               </button>
             ))}
           </div>
-          {visibleEntries.length === 0 ? (
+          {!loaded ? (
+            <p>{t("createYourOwnLuck.loading")}</p>
+          ) : visibleEntries.length === 0 ? (
             <p>{t("createYourOwnLuck.filter.empty")}</p>
           ) : (
             <div className="cyol-card-grid">
