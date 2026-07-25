@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
@@ -52,16 +52,23 @@ type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "rec
 export function RaffleDetailPage() {
   const { t } = useTranslation();
   const { address = "" } = useParams<{ address: string }>();
+  const location = useLocation();
   const { state: walletState } = useWallet();
   const walletAddress = walletState.status === "connected" ? walletState.wallet.address : null;
   const detail = useCyolRaffleDetail(address, walletAddress);
   const raffleIndex = useCyolRaffleIndex(address);
 
-  const [prizeAmount, setPrizeAmount] = useState("100");
+  // Prefilled from CreatorForm's own planning field when navigated here
+  // straight after creating this raffle (see CreatorForm.tsx) - falls back
+  // to the old flat default on a direct visit/reload, where that router
+  // state doesn't exist.
+  const plannedPrizeAmount = (location.state as { plannedPrizeAmount?: string } | null)?.plannedPrizeAmount;
+  const [prizeAmount, setPrizeAmount] = useState(plannedPrizeAmount ?? "100");
   const [ticketQuantity, setTicketQuantity] = useState("1");
   const [actionBusy, setActionBusy] = useState<ActionKey | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
+  const [showSelfBuyWarning, setShowSelfBuyWarning] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNowSec(Date.now() / 1000), 5000);
@@ -149,12 +156,31 @@ export function RaffleDetailPage() {
       );
     });
   }
-  function handleBuyTicket() {
+  function runBuyTicket() {
     if (walletState.status !== "connected") return;
     const quantity = Math.min(Math.max(1, Math.floor(Number(ticketQuantity)) || 1), maxMoreTickets);
     run("buy", () =>
       buyTickets(walletState.wallet, address, config.ticket_denom, config.ticket_price, quantity)
     );
+  }
+  // The creator buying into their own raffle costs them nothing (their own
+  // ticket_revenue contribution always comes back to them at draw time) and
+  // gives them an extra shot at winning back the prize they funded - a real
+  // self-dealing signal (see "Repeg Club - Create Your Own Luck (seguridad,
+  // hallazgos y exploits)", hallazgo #1). Purely a deterrent, not a real
+  // block - a determined creator can always use an undeclared second wallet
+  // - so this warns and lets them confirm, it never disables the button.
+  function handleBuyTicket() {
+    if (walletState.status !== "connected") return;
+    if (isCreator) {
+      setShowSelfBuyWarning(true);
+      return;
+    }
+    runBuyTicket();
+  }
+  function confirmSelfBuy() {
+    setShowSelfBuyWarning(false);
+    runBuyTicket();
   }
   function handleWithdrawTicket() {
     if (walletState.status !== "connected") return;
@@ -219,6 +245,7 @@ export function RaffleDetailPage() {
     ) : null;
 
   return shell(
+    <>
     <div className="cyol-detail">
       <div className="cyol-card-top">
         <span className="cyol-card-type">
@@ -357,9 +384,9 @@ export function RaffleDetailPage() {
             ))}
           {isAirdrop && (
             <CyolRevealChest
-              key={address}
+              key={`${address}:${walletAddress ?? ""}`}
               contractAddress={address}
-              connected={connected}
+              walletAddress={walletAddress}
               myAirdropShare={myAirdropShare}
               prizeCurrency={prizeCurrency}
             >
@@ -390,5 +417,28 @@ export function RaffleDetailPage() {
         </button>
       )}
     </div>
+
+    {showSelfBuyWarning && (
+      <div className="history-overlay" onClick={() => setShowSelfBuyWarning(false)}>
+        <div className="history-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="history-modal-header">
+            <h2 className="history-modal-title">{t("createYourOwnLuck.detail.selfBuyWarningTitle")}</h2>
+            <button type="button" className="history-close-btn" onClick={() => setShowSelfBuyWarning(false)}>
+              ✕
+            </button>
+          </div>
+          <p className="cyol-detail-line">{t("createYourOwnLuck.detail.selfBuyWarningBody")}</p>
+          <div className="cyol-detail-actions">
+            <button className="cyol-submit cyol-submit-secondary" onClick={() => setShowSelfBuyWarning(false)}>
+              {t("createYourOwnLuck.detail.selfBuyWarningCancel")}
+            </button>
+            <button className="cyol-submit" onClick={confirmSelfBuy}>
+              {t("createYourOwnLuck.detail.selfBuyWarningConfirm")}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

@@ -102,6 +102,11 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
   const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
+  // Purely a planning aid, carried forward to the Fund screen (see
+  // RaffleDetailPage) - the prize amount isn't part of Instantiate at all
+  // (DepositPrize, a separate later tx, is what actually commits real
+  // funds), so this never gets sent in CreateRaffle's own message.
+  const [plannedPrizeAmount, setPlannedPrizeAmount] = useState("100");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +179,11 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
       // isolate onCreated in its own try/catch - if it throws, that must
       // not be mistaken for the transaction itself failing after it
       // already succeeded (only the raffle address is proof of that).
-      if (raffleAddress) navigate(`/create-your-own-luck/${raffleAddress}`);
+      if (raffleAddress) {
+        navigate(`/create-your-own-luck/${raffleAddress}`, {
+          state: { plannedPrizeAmount },
+        });
+      }
       try {
         onCreated?.();
       } catch {
@@ -287,6 +296,18 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               }
               return null;
             })()}
+          </label>
+
+          <label className="cyol-field">
+            <span>{t("createYourOwnLuck.form.plannedPrizeLabel")}</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={plannedPrizeAmount}
+              onChange={(e) => setPlannedPrizeAmount(e.target.value)}
+            />
+            <span className="cyol-hint">{t("createYourOwnLuck.form.plannedPrizeHint")}</span>
           </label>
 
           {error && <p className="cyol-form-error">{error}</p>}

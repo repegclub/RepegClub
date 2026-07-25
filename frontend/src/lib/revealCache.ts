@@ -25,27 +25,37 @@ export function markRevealed(contractAddress: string, roundId: number, wallet: s
   }
 }
 
-// Create Your Own Luck has no rounds (one raffle per contract address) and
-// the reveal wheel here isn't gating a spoiler-sensitive personal win - it's
-// just "has this browser already watched this raffle's reveal", so it's
-// tracked per contract address only, not per wallet: watching without a
-// wallet connected is allowed, and a revisit shouldn't re-offer the "Reveal
-// winner" button for something already seen (see CyolRevealWheel).
-function cyolKey(contractAddress: string): string {
-  return `repegclub:cyol-revealed:${contractAddress}`;
+// Create Your Own Luck has no rounds (one raffle per contract address). The
+// SingleWinner wheel (CyolRevealWheel) is a genuinely public spectacle -
+// anyone can watch it, wallet connected or not - so it's tracked per
+// contract address only: a revisit shouldn't re-offer "Reveal winner" for
+// something already seen, regardless of which wallet (if any) is looking.
+//
+// The Airdrop chest (CyolRevealChest) started the same way, but became
+// wallet-gated later the same session (2026-07-25) - only a participating
+// wallet can open it at all, revealing that wallet's own share. Without a
+// wallet in the key, one wallet opening the chest would incorrectly mark it
+// "already revealed" for every other wallet that ever visits this raffle
+// too, skipping their own reveal moment entirely (the exact spoiler this
+// whole cache exists to prevent). `wallet` is optional so CyolRevealWheel's
+// calls (no wallet) keep behaving exactly as before.
+function cyolKey(contractAddress: string, wallet?: string | null): string {
+  return wallet
+    ? `repegclub:cyol-revealed:${contractAddress}:${wallet}`
+    : `repegclub:cyol-revealed:${contractAddress}`;
 }
 
-export function isCyolRevealed(contractAddress: string): boolean {
+export function isCyolRevealed(contractAddress: string, wallet?: string | null): boolean {
   try {
-    return localStorage.getItem(cyolKey(contractAddress)) === "1";
+    return localStorage.getItem(cyolKey(contractAddress, wallet)) === "1";
   } catch {
     return false;
   }
 }
 
-export function markCyolRevealed(contractAddress: string): void {
+export function markCyolRevealed(contractAddress: string, wallet?: string | null): void {
   try {
-    localStorage.setItem(cyolKey(contractAddress), "1");
+    localStorage.setItem(cyolKey(contractAddress, wallet), "1");
   } catch {
     // Best-effort only - localStorage can be unavailable (private browsing).
   }

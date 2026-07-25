@@ -29,6 +29,17 @@ export function useWheelSpin(arcs: Arc[]) {
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<WheelSpinResult>({ kind: "idle" });
   const pegBoundaryOffsets = useMemo(() => buildPegBoundaryOffsets(arcs), [arcs]);
+  // Guards the rAF loop below against a caller unmounting mid-spin (e.g.
+  // navigating away from a raffle page while the wheel is still turning) -
+  // without this, `frame` keeps drawing into a detached canvas, ticking
+  // sound/haptics, and would eventually fire onLanded/confetti/chime for a
+  // component that's no longer there.
+  const activeRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -48,6 +59,7 @@ export function useWheelSpin(arcs: Arc[]) {
 
   function reset() {
     setResult({ kind: "idle" });
+    setSpinning(false);
     currentRotationRef.current = 0;
   }
 
@@ -97,6 +109,7 @@ export function useWheelSpin(arcs: Arc[]) {
     let lastTickIndex = -1;
 
     function frame(now: number) {
+      if (!activeRef.current) return;
       const t = Math.min(1, (now - startTime) / duration);
       const progress = wheelProgress(t, CRUISE_FRACTION);
       const rot = startRotation + totalRotation * progress;
