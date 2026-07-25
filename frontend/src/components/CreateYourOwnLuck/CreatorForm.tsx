@@ -168,11 +168,19 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
         podiumSharesBps: [],
         allowedEntrants: parseAllowedEntrants(allowedEntrantsText),
       });
-      onCreated?.();
       // Straight to funding this specific raffle - landing back on the full
       // listing left the creator guessing which "Funding" card was theirs,
-      // especially once several raffles exist at once.
+      // especially once several raffles exist at once. Navigate first, and
+      // isolate onCreated in its own try/catch - if it throws, that must
+      // not be mistaken for the transaction itself failing after it
+      // already succeeded (only the raffle address is proof of that).
       if (raffleAddress) navigate(`/create-your-own-luck/${raffleAddress}`);
+      try {
+        onCreated?.();
+      } catch {
+        // Best-effort list refresh - a failure here doesn't affect the
+        // raffle that was just created.
+      }
     } catch (err) {
       setError(err instanceof Error ? friendlyCyolError(err.message) : t("createYourOwnLuck.form.errorGeneric"));
     } finally {
