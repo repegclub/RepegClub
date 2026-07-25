@@ -56,13 +56,18 @@
   font-size: 0.85rem;
 }
 
-.cyol-field input[type="number"] {
+.cyol-field input[type="number"],
+.cyol-field textarea {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   padding: 0.5rem 0.6rem;
   font-family: var(--mono);
+}
+
+.cyol-field textarea {
+  resize: vertical;
 }
 
 .cyol-hint {
