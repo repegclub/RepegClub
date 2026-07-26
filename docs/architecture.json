@@ -1,0 +1,165 @@
+{
+  "generated": "2026-07-26",
+  "platform": "Repeg Club",
+  "description": "Architecture map of the Repeg Club platform on Terra Classic: 3 minigames (Wheel of Repeg, Weekly Round, Create Your Own Luck), their contracts, the React frontend, the keeper bot, and the deploy/verification pipeline. Nodes are components; edges are real relationships (signs, calls, automates, hosts, deploys); flows are ordered, named sequences through the graph for common real-world paths.",
+  "nodes": [
+    { "id": "actor_player", "label": "Player / Creator", "category": "actor", "description": "Anyone with a Keplr wallet - buys tickets, creates raffles, or just verifies a result. No account, no signup." },
+    { "id": "keplr", "label": "Keplr Wallet", "category": "external", "description": "Browser extension holding the private key. Every transaction is signed here - the frontend never sees a key." },
+    { "id": "frontend_app", "label": "Frontend (React + Vite SPA)", "category": "frontend", "description": "Single static single-page app, 4 routes, built with @goblinhunt/cosmes for chain access. 100% static - no backend of its own." },
+    { "id": "page_wheel", "label": "Wheel of Repeg  (/)", "category": "frontend", "description": "Flagship game: buy a ticket, win the right to repeg your own USTC to USDC 1:1." },
+    { "id": "page_weekly", "label": "Weekly Round  (/weekly-round)", "category": "frontend", "description": "Platform-wide jackpot fed by every Wheel of Repeg round plus its own daily-rising ticket price." },
+    { "id": "page_cyol_list", "label": "Create Your Own Luck  (/create-your-own-luck)", "category": "frontend", "description": "Discovery feed of every raffle (read from the factory) plus the creator form." },
+    { "id": "page_cyol_detail", "label": "Raffle detail  (/create-your-own-luck/:address)", "category": "frontend", "description": "One page per raffle: fund, buy tickets, close, draw/execute, reveal, verify, claim." },
+    { "id": "lib_token_prices", "label": "tokenPrices.ts", "category": "frontend", "description": "Fetches real LUNC/USTC market prices so the safety checklist can price a non-USDC prize correctly instead of assuming 1:1." },
+    { "id": "lib_verify", "label": "Verification panels", "category": "frontend", "description": "Recomputes a draw's SHA-256 client-side from public chain data (block hash, entrant list) - anyone can check a result wasn't rigged, without trusting the site." },
+    { "id": "coingecko", "label": "CoinGecko API", "category": "external", "description": "Public, keyless price API - informational only, never gates a transaction." },
+    { "id": "chain_rpc", "label": "Terra Classic RPC / LCD", "category": "external", "description": "rebel-2 testnet today; the same code targets columbus-5 mainnet by swapping one config value." },
+    { "id": "contract_wheel", "label": "Wheel Manager contract", "category": "contract", "description": "CosmWasm/Rust. Ticket pool -> block-hash draw -> winner gets the right to redeem their own USTC for USDC 1:1." },
+    { "id": "contract_weekly", "label": "Weekly Round contract", "category": "contract", "description": "One grand prize per week, topped up by every Wheel Manager round plus its own rising-price ticket sales." },
+    { "id": "contract_cyol_factory", "label": "CYOL Factory contract", "category": "contract", "description": "Instantiates a fresh, independent raffle contract per creator (CosmWasm submessage + reply) and keeps the public on-chain registry - also owns the creator cooldown anti-abuse mechanism." },
+    { "id": "contract_cyol_raffle", "label": "CYOL Raffle instance", "category": "contract", "description": "One immutable contract per raffle. SingleWinner, Podium, or Airdrop - prize in LUNC, USDC, or USTC." },
+    { "id": "keeper_bot", "label": "Keeper bot (Node.js)", "category": "infra", "description": "Polls chain state and calls CloseRound/DrawWinner (or CloseWeek/DrawWeeklyWinner) the instant either is eligible - deliberately dumb/immediate, which is what actually defeats block-grinding. Does NOT watch Create Your Own Luck: its creator decides when to reveal to their own community." },
+    { "id": "oracle_vm", "label": "Oracle Cloud VM", "category": "infra", "description": "Always-Free tier VM. Runs the keeper as a systemd service with auto-restart, confirmed to recover in seconds after a crash or reboot." },
+    { "id": "github_repo", "label": "GitHub (private repo)", "category": "infra", "description": "Source of truth. Work happens on branches + PRs, never direct pushes to main, while CodeRabbit's free tier lasts." },
+    { "id": "coderabbit", "label": "CodeRabbit", "category": "infra", "description": "Automated PR review - catches real bugs before merge (denom mismatches, stale-state races, missing bounds checks) across dozens of PRs so far." },
+    { "id": "cloudflare", "label": "Cloudflare Pages", "category": "infra", "description": "Builds and deploys the frontend automatically on every push to main. No server to maintain, HTTPS by default." }
+  ],
+  "edges": [
+    { "id": "e1", "from": "actor_player", "to": "keplr", "relation": "signs with" },
+    { "id": "e2", "from": "keplr", "to": "frontend_app", "relation": "connects to" },
+    { "id": "e3", "from": "frontend_app", "to": "page_wheel", "relation": "renders" },
+    { "id": "e4", "from": "frontend_app", "to": "page_weekly", "relation": "renders" },
+    { "id": "e5", "from": "frontend_app", "to": "page_cyol_list", "relation": "renders" },
+    { "id": "e6", "from": "frontend_app", "to": "page_cyol_detail", "relation": "renders" },
+    { "id": "e7", "from": "page_wheel", "to": "contract_wheel", "relation": "queries & signs txs" },
+    { "id": "e8", "from": "page_weekly", "to": "contract_weekly", "relation": "queries & signs txs" },
+    { "id": "e9", "from": "page_cyol_list", "to": "contract_cyol_factory", "relation": "queries & signs txs" },
+    { "id": "e10", "from": "page_cyol_detail", "to": "contract_cyol_raffle", "relation": "queries & signs txs" },
+    { "id": "e11", "from": "contract_cyol_factory", "to": "contract_cyol_raffle", "relation": "instantiates (submsg + reply)" },
+    { "id": "e12", "from": "page_cyol_detail", "to": "lib_token_prices", "relation": "reads real prize value from" },
+    { "id": "e13", "from": "lib_token_prices", "to": "coingecko", "relation": "fetches prices from" },
+    { "id": "e14", "from": "contract_wheel", "to": "chain_rpc", "relation": "lives on" },
+    { "id": "e15", "from": "contract_weekly", "to": "chain_rpc", "relation": "lives on" },
+    { "id": "e16", "from": "contract_cyol_factory", "to": "chain_rpc", "relation": "lives on" },
+    { "id": "e17", "from": "contract_cyol_raffle", "to": "chain_rpc", "relation": "lives on" },
+    { "id": "e18", "from": "lib_verify", "to": "chain_rpc", "relation": "independently recomputes from" },
+    { "id": "e19", "from": "page_wheel", "to": "lib_verify", "relation": "embeds" },
+    { "id": "e20", "from": "page_cyol_detail", "to": "lib_verify", "relation": "embeds" },
+    { "id": "e21", "from": "keeper_bot", "to": "contract_wheel", "relation": "automates close/draw" },
+    { "id": "e22", "from": "keeper_bot", "to": "contract_weekly", "relation": "automates close/draw" },
+    { "id": "e23", "from": "keeper_bot", "to": "chain_rpc", "relation": "polls" },
+    { "id": "e24", "from": "oracle_vm", "to": "keeper_bot", "relation": "hosts (systemd)" },
+    { "id": "e25", "from": "github_repo", "to": "coderabbit", "relation": "triggers review on every PR" },
+    { "id": "e26", "from": "github_repo", "to": "cloudflare", "relation": "triggers build on push to main" },
+    { "id": "e27", "from": "cloudflare", "to": "frontend_app", "relation": "builds & serves" }
+  ],
+  "flows": [
+    {
+      "id": "buy_wheel_ticket",
+      "label": "Buy a Wheel of Repeg ticket",
+      "summary": "The core, most-repeated action on the platform.",
+      "steps": [
+        { "node": "actor_player", "description": "Opens repegclub.com and connects Keplr." },
+        { "node": "keplr", "description": "Approves the BuyTicket transaction (amount + memo \"REPEG CLUB\")." },
+        { "edge": "e7", "description": "The ticket booth submits the signed transaction to the contract." },
+        { "node": "contract_wheel", "description": "BuyTicket executes: pool grows, ticket recorded, rolling deadline resets." },
+        { "node": "chain_rpc", "description": "Transaction confirms; the frontend refetches and the pool/ticket count update live." }
+      ]
+    },
+    {
+      "id": "wheel_round_auto_close",
+      "label": "A round closes and draws itself",
+      "summary": "No human needs to be present for a round to resolve.",
+      "steps": [
+        { "node": "oracle_vm", "description": "The always-on VM keeps the keeper process alive." },
+        { "node": "keeper_bot", "description": "Wakes on its poll interval, checks every watched round's eligibility." },
+        { "edge": "e21", "description": "Once max players or the rolling deadline is reached, it fires CloseRound then DrawWinner." },
+        { "node": "contract_wheel", "description": "The winner is derived from a future block's hash - unknown to anyone when the round closed." },
+        { "node": "page_wheel", "description": "Any player can now hit \"Reveal winner\" and watch the wheel land - no spoilers beforehand." }
+      ]
+    },
+    {
+      "id": "redeem_prize",
+      "label": "Winner redeems USTC for USDC",
+      "summary": "The entire point of the game: a personal repeg, funded by the pool.",
+      "steps": [
+        { "node": "actor_player", "description": "The winning wallet opens the redeem box, sees the exact USTC amount before signing." },
+        { "edge": "e7", "description": "Redeem is submitted with the chosen USTC amount attached." },
+        { "node": "contract_wheel", "description": "Redeem swaps the attached USTC for USDC 1:1 from the round's escrow, tax-free (funds attached to a contract call aren't taxed)." },
+        { "node": "chain_rpc", "description": "Confirmed on-chain; lifetime stats and the platform-wide \"USTC repegged\" counter update." }
+      ]
+    },
+    {
+      "id": "create_cyol_raffle",
+      "label": "Create a raffle (Create Your Own Luck)",
+      "summary": "Anyone can become a creator - no admin approval, no separate account.",
+      "steps": [
+        { "node": "actor_player", "description": "Opens the \"I'm a creator\" form: raffle type, ticket price, min/max players, prize asset." },
+        { "node": "keplr", "description": "Signs CreateRaffle - this signature *is* the creation, there's no draft to save." },
+        { "edge": "e9", "description": "The factory receives CreateRaffle." },
+        { "node": "contract_cyol_factory", "description": "Runs the creator-cooldown check, then instantiates a brand-new raffle contract via submessage." },
+        { "edge": "e11", "description": "The reply captures the new contract's real address." },
+        { "node": "contract_cyol_raffle", "description": "A fresh, immutable contract now exists - status Funding, waiting for its creator." }
+      ]
+    },
+    {
+      "id": "fund_and_open_raffle",
+      "label": "Fund and open a raffle",
+      "summary": "Where the safety checklist matters most - real money is about to commit.",
+      "steps": [
+        { "node": "actor_player", "description": "The creator returns to their raffle's page to fund it." },
+        { "edge": "e12", "description": "The page checks the planned prize's real market value." },
+        { "node": "lib_token_prices", "description": "Converts the prize (LUNC/USDC/USTC) to a real USD-equivalent, not a naive 1:1 assumption." },
+        { "node": "page_cyol_detail", "description": "If the prize is worth less than a single ticket, a checkbox-gated warning blocks funding until confirmed." },
+        { "node": "contract_cyol_raffle", "description": "PayServiceFee + DepositPrize execute; status flips to Open." }
+      ]
+    },
+    {
+      "id": "buy_raffle_ticket_and_reveal",
+      "label": "Buy a raffle ticket and reveal the result",
+      "summary": "Same anti-grinding spirit as Wheel of Repeg, but the creator - not a bot - decides when to draw.",
+      "steps": [
+        { "node": "actor_player", "description": "Buys one or more tickets in a single signed transaction." },
+        { "node": "contract_cyol_raffle", "description": "BuyTicket records the entry; hitting max_players closes and draws atomically in the same call." },
+        { "node": "actor_player", "description": "For SingleWinner, the creator alone calls DrawWinner - their moment to announce to their own community." },
+        { "node": "page_cyol_detail", "description": "SingleWinner reveals via the wheel; Airdrop reveals via a wallet-gated treasure chest showing that wallet's own share." }
+      ]
+    },
+    {
+      "id": "public_verification",
+      "label": "Publicly verify any draw",
+      "summary": "The trust mechanism: nobody has to take the site's word for a result.",
+      "steps": [
+        { "node": "actor_player", "description": "Opens \"Verify this round\" on any drawn round or raffle - works for a stranger's browser too." },
+        { "node": "lib_verify", "description": "Independently queries the real block (by height) and the real entrant list from chain." },
+        { "edge": "e18", "description": "Recomputes SHA-256(round id, block height, block time, entrants) from scratch, client-side." },
+        { "node": "chain_rpc", "description": "The recomputed hash is compared against the on-chain winner - match or mismatch, shown plainly." }
+      ]
+    },
+    {
+      "id": "cyol_safety_checklist",
+      "label": "Real-time safety checklist (Create Your Own Luck)",
+      "summary": "5 independent signals, never averaged into one score, so one bad signal can't hide behind good ones.",
+      "steps": [
+        { "node": "page_cyol_detail", "description": "Any visitor sees the checklist before deciding to buy in - not creator-only." },
+        { "edge": "e12", "description": "Fundraiser-vs-giveaway and prize-vs-ticket value both route through real prices." },
+        { "node": "lib_token_prices", "description": "Prices the prize in its real asset, not an assumed 1:1 with USDC." },
+        { "node": "contract_cyol_factory", "description": "GetCreatorCooldown is polled to flag a creator repeating small, paid raffles." },
+        { "node": "contract_cyol_raffle", "description": "Wallet concentration and self-buy are computed live from the entrant list, polled every 12s." }
+      ]
+    },
+    {
+      "id": "ci_cd_pipeline",
+      "label": "Ship a change to production",
+      "summary": "Every push to main is live within minutes, with an automated reviewer in between.",
+      "steps": [
+        { "node": "github_repo", "description": "A branch is pushed and a PR opened - direct pushes to main are avoided by convention." },
+        { "edge": "e25", "description": "CodeRabbit reviews automatically, usually within a minute." },
+        { "node": "coderabbit", "description": "Real findings get fixed before merge, not rubber-stamped." },
+        { "edge": "e26", "description": "On merge, Cloudflare picks up the push to main." },
+        { "node": "cloudflare", "description": "Builds the Vite app and deploys - no manual step, no server to touch." },
+        { "node": "frontend_app", "description": "repegclub.com serves the new build within minutes." }
+      ]
+    }
+  ]
+}
