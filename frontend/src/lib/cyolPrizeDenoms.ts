@@ -17,8 +17,13 @@ export type PrizeAssetChoice = "usdc" | "lunc" | "ustc";
 // cyolFormat.ts's prizeCurrencyLabel and tokenPrices.ts's priceForDenom for
 // the same limitation elsewhere): once a raffle is created there's no way
 // to recover which of the two the creator meant from the denom string
-// alone. This resolves itself once mainnet uses USDC's real distinct IBC
-// denom.
+// alone.
+//
+// MAINNET TODO: only `usdc` changes here, to the real USDC IBC denom
+// (contract.rs's USDC_DENOM comment already flags this swap) - `lunc` stays
+// "uluna" (LUNC's real denom on every network) and `ustc` stays "uusd"
+// (also real everywhere). Do this at the same time as tokenPrices.ts's
+// priceForDenom MAINNET TODO - both assume today's testnet collision.
 export const PRIZE_ASSET_DENOMS: Record<PrizeAssetChoice, string> = {
   usdc: "uluna",
   lunc: "uluna",
