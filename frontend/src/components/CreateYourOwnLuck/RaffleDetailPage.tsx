@@ -318,6 +318,10 @@ export function RaffleDetailPage() {
   }
   function runBuyTicket() {
     if (walletState.status !== "connected") return;
+    if (maxMoreTickets < 1) {
+      setActionError(t("createYourOwnLuck.detail.ticketCapReached", { cap: ticketCap }));
+      return;
+    }
     const quantity = Math.min(Math.max(1, Math.floor(Number(ticketQuantity)) || 1), maxMoreTickets);
     run("buy", () =>
       buyTickets(walletState.wallet, address, config.ticket_denom, config.ticket_price, quantity)
