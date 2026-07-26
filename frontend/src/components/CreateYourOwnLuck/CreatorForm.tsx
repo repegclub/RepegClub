@@ -5,10 +5,12 @@ import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
-import { worstCaseTicketRevenueProfit, requiredFeeUsdc, maxEntrants } from "../../lib/cyolFundingDisclosure";
+import { worstCaseTicketRevenueProfit, requiredFeeUsdc, maxEntrants, maxTicketsPerWallet } from "../../lib/cyolFundingDisclosure";
 import { PRIZE_ASSET_CHOICES, PRIZE_ASSET_DENOMS, PRIZE_ASSET_LABELS, type PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
 import { priceForAsset } from "../../lib/tokenPrices";
+import { participantsWord } from "../../lib/cyolTerminology";
+import { setCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
 
 // The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
 // contract.rs) as the only denom it accepts for any paid raffle's
@@ -147,10 +149,11 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
 
     const min = Number(minPlayers);
     const max = Number(maxPlayers);
-    if (!Number.isInteger(min) || min < 2) return t("createYourOwnLuck.form.errorMinPlayers");
-    if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers");
+    const unit = participantsWord(raffleType);
+    if (!Number.isInteger(min) || min < 2) return t("createYourOwnLuck.form.errorMinPlayers", { unit });
+    if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers", { unit });
     const limit = maxPlayersLimit(raffleType);
-    if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit });
+    if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit, unit });
 
     let allowedEntrants: string[] | null;
     try {
@@ -169,6 +172,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
       return t("createYourOwnLuck.form.errorAllowedEntrantsBelowMinimum", {
         count: allowedEntrants.length,
         min,
+        unit,
       });
     }
 
@@ -203,6 +207,14 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
       // not be mistaken for the transaction itself failing after it
       // already succeeded (only the raffle address is proof of that).
       if (raffleAddress) {
+        // Cached (not just passed via router state) so the funding screen's
+        // value-mismatch warnings and safety checklist price this raffle's
+        // prize correctly even on a reload or a later revisit, not just
+        // immediately after creating it - real gap found live-testing
+        // 2026-07-26 (a LUNC-chosen prize silently priced as USDC on
+        // revisit, defeating the safety warning meant to catch exactly
+        // that). Still testnet-only - see cyolPrizeAssetCache.ts.
+        setCachedPrizeAssetChoice(raffleAddress, prizeAssetChoice);
         navigate(`/create-your-own-luck/${raffleAddress}`, {
           state: raffleType === "single_winner" ? { plannedPrizeAmount } : undefined,
         });
@@ -263,7 +275,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
           </label>
 
           <label className="cyol-field">
-            <span>{t("createYourOwnLuck.form.minPlayersLabel")}</span>
+            <span>{t("createYourOwnLuck.form.minPlayersLabel", { unit: participantsWord(raffleType) })}</span>
             <input
               type="number"
               min="2"
@@ -274,7 +286,10 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
 
           <label className="cyol-field">
             <span>
-              {t("createYourOwnLuck.form.maxPlayersLabel", { limit: maxPlayersLimit(raffleType) })}
+              {t("createYourOwnLuck.form.maxPlayersLabel", {
+                limit: maxPlayersLimit(raffleType),
+                unit: participantsWord(raffleType),
+              })}
             </span>
             <input
               type="number"
@@ -338,7 +353,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               if (count < min) {
                 return (
                   <span className="cyol-hint">
-                    {t("createYourOwnLuck.form.allowedEntrantsBelowMinimumHint", { count, min })}
+                    {t("createYourOwnLuck.form.allowedEntrantsBelowMinimumHint", { count, min, unit: participantsWord(raffleType) })}
                   </span>
                 );
               }
@@ -459,7 +474,18 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               // can never break even at these settings, no matter what
               // min_players is set to, so suggesting one was misleading.
               const breakEvenReachable = breakEvenTickets <= maxTickets;
-              const suggestedMinPlayers = breakEvenReachable ? Math.min(max, Math.max(2, breakEvenTickets)) : null;
+              // Real bug found live-testing (2026-07-26): this used to cap
+              // breakEvenTickets (a TICKET count) directly against max (a
+              // WALLET count) as if they were the same unit - they aren't, a
+              // wallet can buy up to capPerWallet tickets. That's exactly
+              // why max_players=100 always suggested "100" regardless of how
+              // few tickets were actually needed (e.g. a near-worthless LUNC
+              // prize needing only ~50 tickets still suggested 50 *wallets*,
+              // when ~1 wallet buying its full cap could realistically cover
+              // that many tickets alone).
+              const capPerWallet = maxTicketsPerWallet(raffleType, max);
+              const neededWallets = Math.ceil(breakEvenTickets / capPerWallet);
+              const suggestedMinPlayers = breakEvenReachable ? Math.min(max, Math.max(2, neededWallets)) : null;
 
               return (
                 <div className="cyol-creator-calculator">
@@ -477,7 +503,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                             : "createYourOwnLuck.form.calcBreakEvenFeeOnly",
                           { tickets: breakEvenTickets }
                         )
-                      : t("createYourOwnLuck.form.calcBreakEvenUnreachable", { maxTickets })}
+                      : t("createYourOwnLuck.form.calcBreakEvenUnreachable", { maxTickets, unit: participantsWord(raffleType) })}
                   </p>
                   {breakEvenReachable && suggestedMinPlayers !== null && (
                     <button
@@ -485,7 +511,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                       className="cyol-submit cyol-submit-secondary"
                       onClick={() => setMinPlayers(String(suggestedMinPlayers))}
                     >
-                      {t("createYourOwnLuck.form.calcSuggestMinPlayers", { min: suggestedMinPlayers })}
+                      {t("createYourOwnLuck.form.calcSuggestMinPlayers", { min: suggestedMinPlayers, unit: participantsWord(raffleType) })}
                     </button>
                   )}
                 </div>

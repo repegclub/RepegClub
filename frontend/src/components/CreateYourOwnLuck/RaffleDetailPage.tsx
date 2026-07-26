@@ -13,7 +13,10 @@ import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
 import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
 import { walletConcentration, concentrationBand } from "../../lib/cyolChecklist";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
-import { priceForDenom } from "../../lib/tokenPrices";
+import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
+import { participantsWord, statusLabelKey } from "../../lib/cyolTerminology";
+import { PRIZE_ASSET_LABELS } from "../../lib/cyolPrizeDenoms";
+import { getCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
 import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
   depositPrize,
@@ -40,6 +43,16 @@ function maxTicketsPerWallet(raffleType: string, maxPlayers: number, ticketPrice
   if (ticketPrice === "0") return 1;
   if (raffleType === "airdrop") return 1;
   return Math.max(1, Math.floor(maxPlayers / 2));
+}
+
+// Hours/minutes is plenty for a window on the order of an hour - unlike
+// Wheel of Repeg's own countdown (WheelCard.tsx's formatCountdown), this
+// doesn't need second-precision live ticking, so it's fine that it only
+// refreshes with the rest of raffleStatus (every 12s while Open).
+function formatDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "reclaim" | "cancel" | "expire";
@@ -111,7 +124,13 @@ export function RaffleDetailPage() {
   // straight after creating this raffle (see CreatorForm.tsx) - falls back
   // to the old flat default on a direct visit/reload, where that router
   // state doesn't exist.
-  const plannedPrizeAmount = (location.state as { plannedPrizeAmount?: string } | null)?.plannedPrizeAmount;
+  const routerState = location.state as { plannedPrizeAmount?: string } | null;
+  const plannedPrizeAmount = routerState?.plannedPrizeAmount;
+  // Cached at creation time (see cyolPrizeAssetCache.ts), unlike
+  // plannedPrizeAmount above - this feeds real safety calculations (the
+  // value-mismatch warnings, the safety checklist), so it needs to survive
+  // a reload/revisit, not just the initial redirect after creating.
+  const cachedPrizeAssetChoice = getCachedPrizeAssetChoice(address);
   const [prizeAmount, setPrizeAmount] = useState(plannedPrizeAmount ?? "100");
   const [ticketQuantity, setTicketQuantity] = useState("1");
   const [actionBusy, setActionBusy] = useState<ActionKey | null>(null);
@@ -120,6 +139,7 @@ export function RaffleDetailPage() {
   const [showSelfBuyWarning, setShowSelfBuyWarning] = useState(false);
   const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
   const [showFundValueWarning, setShowFundValueWarning] = useState(false);
+  const [showSingleWinnerPrizeWarning, setShowSingleWinnerPrizeWarning] = useState(false);
   const tokenPrices = useTokenPrices();
 
   useEffect(() => {
@@ -172,17 +192,23 @@ export function RaffleDetailPage() {
   const connected = walletState.status === "connected";
   const busy = actionBusy !== null;
 
-  // Airdrop-specific value-mismatch check (security catalog's hallazgo #6):
-  // a paid raffle's ticket is always USDC (~$1), but the prize can be any
-  // of LUNC/USDC/USTC - if each wallet's guaranteed share is worth less
-  // than the ticket at real market prices, someone's paying more than
-  // they'll get back, even in the best case. Only meaningful for a paid
-  // Airdrop (a free raffle risks nothing, and SingleWinner/Podium's
-  // prize-vs-ticket mismatch is normal lottery variance, not this).
+  // Value-mismatch checks (security catalog's hallazgo #6): a paid raffle's
+  // ticket is always USDC (~$1), but the prize can be any of LUNC/USDC/USTC.
+  // Only meaningful for a paid raffle (a free one risks nothing).
   const isPaid = config.ticket_price !== "0";
   const ticketPriceUsd = ulunaToDisplayNumber(config.ticket_price);
+  // Real gap found live-testing (2026-07-26): the label fix above only
+  // covered the display text - this is the actual VALUE used by the
+  // value-mismatch gates below, which is what actually matters. Without
+  // preferring the cached real choice here too, a LUNC-prized raffle would
+  // silently price itself as USDC ($1/unit), defeating the exact warning
+  // this is meant to trigger.
   const prizeAssetPrice =
-    prizeDenom && tokenPrices.status === "loaded" ? priceForDenom(prizeDenom, tokenPrices.prices) : null;
+    cachedPrizeAssetChoice && tokenPrices.status === "loaded"
+      ? priceForAsset(cachedPrizeAssetChoice, tokenPrices.prices)
+      : prizeDenom && tokenPrices.status === "loaded"
+        ? priceForDenom(prizeDenom, tokenPrices.prices)
+        : null;
   const fundedPrizeUsd =
     isAirdrop && prizeAssetPrice !== null ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice : null;
   const buyWorstCaseShareUsd = fundedPrizeUsd !== null ? fundedPrizeUsd / config.max_players : null;
@@ -190,11 +216,26 @@ export function RaffleDetailPage() {
 
   const plannedPrizeNum = Number(prizeAmount);
   const plannedPrizeUsd =
-    isAirdrop && prizeAssetPrice !== null && Number.isFinite(plannedPrizeNum)
-      ? plannedPrizeNum * prizeAssetPrice
-      : null;
+    prizeAssetPrice !== null && Number.isFinite(plannedPrizeNum) ? plannedPrizeNum * prizeAssetPrice : null;
+
+  // Airdrop: each wallet's guaranteed share vs the ticket - if it's worth
+  // less, someone's paying more than they'll get back, even in the best
+  // case (SingleWinner/Podium's prize-vs-TOTAL-ticket-revenue mismatch is
+  // normal lottery variance, already covered by the fundraiser disclosure -
+  // this is a different, guaranteed-payout question).
   const fundWorstCaseShareUsd = plannedPrizeUsd !== null ? plannedPrizeUsd / config.max_players : null;
   const fundValueMismatch = isAirdrop && isPaid && fundWorstCaseShareUsd !== null && fundWorstCaseShareUsd < ticketPriceUsd;
+
+  // SingleWinner: the ENTIRE prize vs a single ticket - categorically
+  // different from "normal lottery variance" (which is about total ticket
+  // revenue vs the prize, not this): no winner could ever receive less than
+  // what they paid for one ticket, regardless of odds, while the creator's
+  // own ticket revenue always refunds to them regardless of who wins. Real
+  // case found live-testing 2026-07-26: a 100 LUNC prize (worth ~$0.005)
+  // against a $1 ticket - the creator can only gain, the buyer has already
+  // lost before the raffle even starts.
+  const singleWinnerPrizeBelowTicket =
+    !isAirdrop && isPaid && plannedPrizeUsd !== null && plannedPrizeUsd < ticketPriceUsd;
 
   const hasMin = raffleStatus.unique_player_count >= config.min_players;
   const reachedMax = raffleStatus.unique_player_count >= config.max_players;
@@ -255,10 +296,18 @@ export function RaffleDetailPage() {
       setShowFundValueWarning(true);
       return;
     }
+    if (singleWinnerPrizeBelowTicket) {
+      setShowSingleWinnerPrizeWarning(true);
+      return;
+    }
     runFund();
   }
   function confirmFundValueWarning() {
     setShowFundValueWarning(false);
+    runFund();
+  }
+  function confirmSingleWinnerPrizeWarning() {
+    setShowSingleWinnerPrizeWarning(false);
     runFund();
   }
   function runBuyTicket() {
@@ -328,7 +377,19 @@ export function RaffleDetailPage() {
     run("expire", () => expireRaffle(walletState.wallet, address));
   }
 
-  const prizeCurrency = prizeCurrencyLabel(prizeDenom ?? config.usdc_denom);
+  // Real bug found live-testing (2026-07-26, raffle #17): a LUNC-chosen
+  // prize always showed "Prize amount (USDC)" here, because uluna alone
+  // can't distinguish LUNC from USDC on this testnet (see
+  // cyolFormat.ts's prizeCurrencyLabel) - the fund transfer itself was
+  // correct (confirmed on-chain: prize_asset.native.denom stored "uluna",
+  // matching the LUNC choice), only the label was wrong. cachedPrizeAssetChoice
+  // resolves the ambiguity whenever this browser created the raffle; falls
+  // back to the denom-based guess otherwise, which is still correct for
+  // USTC and will be correct for USDC/LUNC too once mainnet uses their real
+  // distinct denoms.
+  const prizeCurrency = cachedPrizeAssetChoice
+    ? PRIZE_ASSET_LABELS[cachedPrizeAssetChoice]
+    : prizeCurrencyLabel(prizeDenom ?? config.usdc_denom);
 
   const winnerDetail =
     !isAirdrop && winners && winners.winners.length > 0 ? (
@@ -370,7 +431,7 @@ export function RaffleDetailPage() {
           {t(`createYourOwnLuck.raffleType.${config.raffle_type === "single_winner" ? "singleWinner" : config.raffle_type}`)}
         </span>
         <span className={`cyol-card-status cyol-card-status-${raffleStatus.status}`}>
-          {t(`createYourOwnLuck.status.${raffleStatus.status}`)}
+          {t(statusLabelKey(raffleStatus.status, config.raffle_type))}
         </span>
       </div>
       <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.contractAddressLabel")}</p>
@@ -380,8 +441,26 @@ export function RaffleDetailPage() {
         {t("createYourOwnLuck.ticketPrice", { price: formatAmount(config.ticket_price, "USDC") })}
       </p>
       <p className="cyol-detail-line">
-        {t("createYourOwnLuck.players", { count: raffleStatus.unique_player_count, max: config.max_players })}
+        {t("createYourOwnLuck.players", {
+          count: raffleStatus.unique_player_count,
+          max: config.max_players,
+          unit: participantsWord(config.raffle_type),
+        })}
       </p>
+      {/* The creator asked how much time they have to market this raffle
+          before anyone (not just them) can close it once the minimum is
+          reached - round_timeout_seconds is a fixed window from opened_at,
+          already queried as seconds_remaining but never actually shown
+          anywhere (2026-07-26). */}
+      {raffleStatus.status === "open" && raffleStatus.seconds_remaining !== null && (
+        <p className="cyol-detail-hint">
+          {raffleStatus.seconds_remaining > 0
+            ? t("createYourOwnLuck.detail.marketingWindowRemaining", {
+                time: formatDuration(raffleStatus.seconds_remaining),
+              })
+            : t("createYourOwnLuck.detail.marketingWindowElapsed")}
+        </p>
+      )}
       <p className="cyol-detail-line">
         {t(
           isAirdrop ? "createYourOwnLuck.detail.totalTicketsOnePerWallet" : "createYourOwnLuck.detail.totalTickets",
@@ -409,7 +488,12 @@ export function RaffleDetailPage() {
       )}
       {!prizeDenom && <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.cw20NotSupported")}</p>}
 
-      <CyolSafetyChecklist config={config} raffleStatus={raffleStatus} entrants={entrants} />
+      <CyolSafetyChecklist
+        config={config}
+        raffleStatus={raffleStatus}
+        entrants={entrants}
+        prizeAssetChoiceOverride={cachedPrizeAssetChoice ?? undefined}
+      />
 
       {actionError && <p className="cyol-form-error">{actionError}</p>}
 
@@ -529,7 +613,9 @@ export function RaffleDetailPage() {
 
       {raffleStatus.status === "closed" && canDrawWinner && (
         <button className="cyol-submit" onClick={handleDrawWinner} disabled={busy || !connected}>
-          {actionBusy === "draw" ? t("createYourOwnLuck.detail.drawing") : t("createYourOwnLuck.detail.drawWinner")}
+          {actionBusy === "draw"
+            ? t(isAirdrop ? "createYourOwnLuck.detail.executingAirdrop" : "createYourOwnLuck.detail.drawing")
+            : t(isAirdrop ? "createYourOwnLuck.detail.executeAirdrop" : "createYourOwnLuck.detail.drawWinner")}
         </button>
       )}
 
@@ -624,6 +710,17 @@ export function RaffleDetailPage() {
         })}
         onCancel={() => setShowFundValueWarning(false)}
         onConfirm={confirmFundValueWarning}
+      />
+    )}
+
+    {showSingleWinnerPrizeWarning && plannedPrizeUsd !== null && (
+      <ValueMismatchWarningModal
+        bodyText={t("createYourOwnLuck.detail.valueMismatchSingleWinnerBody", {
+          prizeUsd: plannedPrizeUsd.toFixed(2),
+          ticketUsd: ticketPriceUsd.toFixed(2),
+        })}
+        onCancel={() => setShowSingleWinnerPrizeWarning(false)}
+        onConfirm={confirmSingleWinnerPrizeWarning}
       />
     )}
     </>
