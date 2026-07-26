@@ -6,6 +6,9 @@ import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 import { worstCaseTicketRevenueProfit, requiredFeeUsdc } from "../../lib/cyolFundingDisclosure";
+import { PRIZE_ASSET_CHOICES, PRIZE_ASSET_DENOMS, PRIZE_ASSET_LABELS, type PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
+import { useTokenPrices } from "../../hooks/useTokenPrices";
+import { priceForDenom } from "../../lib/tokenPrices";
 
 // The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
 // contract.rs) as the only denom it accepts for any paid raffle's
@@ -14,11 +17,8 @@ import { worstCaseTicketRevenueProfit, requiredFeeUsdc } from "../../lib/cyolFun
 // "USDC" (real USDC has no liquidity on rebel-2; an earlier "utestusdc"
 // placeholder turned out to have zero supply anywhere on chain, so nobody
 // could ever actually pay it) - swap for the real USDC IBC denom before
-// mainnet, same as every other testnet placeholder in this app. The prize
-// denom below happens to be "uluna" too here (both mean actual LUNC/USDC
-// respectively, they're just the same underlying testnet token for now).
+// mainnet, same as every other testnet placeholder in this app.
 const TICKET_DENOM = "uluna";
-const PRIZE_DENOM = "uluna";
 
 // Podium is deliberately not offered here yet (2026-07-23): a creator with
 // 3+ wallets can sweep multiple podium places, a known-open finding (#4 in
@@ -106,12 +106,14 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const navigate = useNavigate();
   const { state: walletState } = useWallet();
   const [open, setOpen] = useState(false);
+  const tokenPrices = useTokenPrices();
 
   const [raffleType, setRaffleType] = useState<RaffleType>("single_winner");
   const [ticketPrice, setTicketPrice] = useState("1");
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
   const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
+  const [prizeAssetChoice, setPrizeAssetChoice] = useState<PrizeAssetChoice>("usdc");
   // Purely a planning aid, carried forward to the Fund screen (see
   // RaffleDetailPage) - the prize amount isn't part of Instantiate at all
   // (DepositPrize, a separate later tx, is what actually commits real
@@ -190,7 +192,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
         ticketDenom: TICKET_DENOM,
         minPlayers: Number(minPlayers),
         maxPlayers: Number(maxPlayers),
-        prizeNativeDenom: PRIZE_DENOM,
+        prizeNativeDenom: PRIZE_ASSET_DENOMS[prizeAssetChoice],
         podiumSharesBps: [],
         allowedEntrants: parseAllowedEntrants(allowedEntrantsText),
       });
@@ -293,6 +295,24 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
           </label>
 
           <label className="cyol-field">
+            <span>{t("createYourOwnLuck.form.prizeAssetLabel")}</span>
+            <div className="cyol-radio-group">
+              {PRIZE_ASSET_CHOICES.map((choice) => (
+                <label key={choice} className="cyol-radio">
+                  <input
+                    type="radio"
+                    name="prizeAsset"
+                    checked={prizeAssetChoice === choice}
+                    onChange={() => setPrizeAssetChoice(choice)}
+                  />
+                  {PRIZE_ASSET_LABELS[choice]}
+                </label>
+              ))}
+            </div>
+            <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetHint")}</span>
+          </label>
+
+          <label className="cyol-field">
             <span>{t("createYourOwnLuck.form.allowedEntrantsLabel")}</span>
             <textarea
               className="cyol-textarea"
@@ -327,7 +347,7 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
 
           {raffleType === "single_winner" && (
             <label className="cyol-field">
-              <span>{t("createYourOwnLuck.form.plannedPrizeLabel")}</span>
+              <span>{t("createYourOwnLuck.form.plannedPrizeLabel", { asset: PRIZE_ASSET_LABELS[prizeAssetChoice] })}</span>
               <input
                 type="number"
                 min="0"
@@ -340,10 +360,21 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                 const price = Number(ticketPrice);
                 const max = Number(maxPlayers);
                 const prize = Number(plannedPrizeAmount);
-                if (!Number.isFinite(price) || !Number.isFinite(max) || !Number.isFinite(prize) || max < 2) {
+                if (
+                  !Number.isFinite(price) ||
+                  !Number.isFinite(max) ||
+                  !Number.isFinite(prize) ||
+                  max < 2 ||
+                  tokenPrices.status !== "loaded"
+                ) {
                   return null;
                 }
-                const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prize);
+                // The prize amount is in whatever asset was chosen above,
+                // not necessarily USDC - convert to real USD before
+                // comparing against ticket revenue (also in USDC, the only
+                // denom a paid ticket can use).
+                const prizeUsd = prize * priceForDenom(PRIZE_ASSET_DENOMS[prizeAssetChoice], tokenPrices.prices);
+                const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prizeUsd);
                 return (
                   <span className="cyol-hint">
                     {profit > 0

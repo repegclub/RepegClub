@@ -14,6 +14,8 @@ import {
   type ChecklistBand,
 } from "../../lib/cyolChecklist";
 import { useCyolCreatorCooldown } from "../../hooks/useCyolCreatorCooldown";
+import { useTokenPrices } from "../../hooks/useTokenPrices";
+import { priceForDenom } from "../../lib/tokenPrices";
 
 // Separate signals, deliberately not a single combined score (agreed with
 // the user 2026-07-25/26, see "Repeg Club - Create Your Own Luck (seguridad,
@@ -54,6 +56,7 @@ export function CyolSafetyChecklist({
   // this anymore anyway.
   const active = raffleStatus.status === "funding" || raffleStatus.status === "open" || raffleStatus.status === "closed";
   const cooldownState = useCyolCreatorCooldown(config.creator, active);
+  const tokenPrices = useTokenPrices();
 
   if (!active) return null;
   // RaffleDetailPage already excludes Podium raffles entirely before this
@@ -66,14 +69,13 @@ export function CyolSafetyChecklist({
   // The contract allows a paid raffle's prize to be LUNC/USDC/USTC (see
   // ALLOWED_PAID_NATIVE_PRIZE_DENOMS in contract.rs), not just USDC - mixing
   // a non-USDC prize amount into this dollar math would silently produce a
-  // meaningless number (CodeRabbit finding on this PR, 2026-07-26). Today's
-  // creation form hardcodes both ticket and prize to the same testnet
-  // stand-in denom, so this never actually diverges yet, but the check
-  // stays correct regardless of how a raffle got created.
+  // meaningless number (CodeRabbit finding on this PR, 2026-07-26, fixed by
+  // converting through real market prices instead of assuming 1:1 USD).
   const prizeDenom = "native" in config.prize_asset ? config.prize_asset.native.denom : null;
-  const prizeIsUsdc = prizeDenom === config.usdc_denom;
   const prizeUsdc =
-    prizeIsUsdc && raffleStatus.prize_amount !== "0" ? ulunaToDisplayNumber(raffleStatus.prize_amount) : null;
+    prizeDenom && raffleStatus.prize_amount !== "0" && tokenPrices.status === "loaded"
+      ? ulunaToDisplayNumber(raffleStatus.prize_amount) * priceForDenom(prizeDenom, tokenPrices.prices)
+      : null;
 
   const fundraiserProfit =
     !isAirdrop && prizeUsdc !== null
@@ -101,10 +103,6 @@ export function CyolSafetyChecklist({
       <ul className="cyol-checklist-list">
         {isAirdrop ? (
           <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserNotApplicable")}</Row>
-        ) : raffleStatus.prize_amount === "0" ? (
-          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
-        ) : !prizeIsUsdc ? (
-          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserNonUsdcPrize")}</Row>
         ) : fundraiserProfit === null || minParticipationProfit === null ? (
           <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
         ) : (
