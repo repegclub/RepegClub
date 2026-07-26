@@ -63,7 +63,17 @@ export function CyolSafetyChecklist({
 
   const isAirdrop = config.raffle_type === "airdrop";
   const ticketPriceUsdc = ulunaToDisplayNumber(config.ticket_price);
-  const prizeUsdc = raffleStatus.prize_amount !== "0" ? ulunaToDisplayNumber(raffleStatus.prize_amount) : null;
+  // The contract allows a paid raffle's prize to be LUNC/USDC/USTC (see
+  // ALLOWED_PAID_NATIVE_PRIZE_DENOMS in contract.rs), not just USDC - mixing
+  // a non-USDC prize amount into this dollar math would silently produce a
+  // meaningless number (CodeRabbit finding on this PR, 2026-07-26). Today's
+  // creation form hardcodes both ticket and prize to the same testnet
+  // stand-in denom, so this never actually diverges yet, but the check
+  // stays correct regardless of how a raffle got created.
+  const prizeDenom = "native" in config.prize_asset ? config.prize_asset.native.denom : null;
+  const prizeIsUsdc = prizeDenom === config.usdc_denom;
+  const prizeUsdc =
+    prizeIsUsdc && raffleStatus.prize_amount !== "0" ? ulunaToDisplayNumber(raffleStatus.prize_amount) : null;
 
   const fundraiserProfit =
     !isAirdrop && prizeUsdc !== null
@@ -91,6 +101,10 @@ export function CyolSafetyChecklist({
       <ul className="cyol-checklist-list">
         {isAirdrop ? (
           <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserNotApplicable")}</Row>
+        ) : raffleStatus.prize_amount === "0" ? (
+          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
+        ) : !prizeIsUsdc ? (
+          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserNonUsdcPrize")}</Row>
         ) : fundraiserProfit === null || minParticipationProfit === null ? (
           <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
         ) : (

@@ -364,6 +364,7 @@
       "title": "Safety checklist",
       "fundraiserNotApplicable": "Airdrop has no single winner, so this doesn't apply — the prize splits among whoever joins.",
       "fundraiserUnknown": "The prize hasn't been set yet — can't calculate this until the raffle is funded.",
+      "fundraiserNonUsdcPrize": "This raffle's prize isn't in USDC, so this can't be shown in dollar terms.",
       "fundraiserPositive": "If this raffle fills up completely, ticket sales alone could net the creator about ${{amount}} regardless of who wins — this works like a fundraiser with a prize as the incentive.",
       "fundraiserNegative": "Even if this raffle fills up completely, the creator is funding at least ${{amount}} of the prize themselves — a genuine giveaway.",
       "minParticipationPositive": "Even if it closes at just the minimum ({{min}} players, 1 ticket each), the creator would still net about ${{amount}}.",
