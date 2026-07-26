@@ -140,6 +140,7 @@ export function RaffleDetailPage() {
   const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
   const [showFundValueWarning, setShowFundValueWarning] = useState(false);
   const [showSingleWinnerPrizeWarning, setShowSingleWinnerPrizeWarning] = useState(false);
+  const [showSingleWinnerBuyerPrizeWarning, setShowSingleWinnerBuyerPrizeWarning] = useState(false);
   const tokenPrices = useTokenPrices();
 
   useEffect(() => {
@@ -210,7 +211,9 @@ export function RaffleDetailPage() {
         ? priceForDenom(prizeDenom, tokenPrices.prices)
         : null;
   const fundedPrizeUsd =
-    isAirdrop && prizeAssetPrice !== null ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice : null;
+    prizeAssetPrice !== null && raffleStatus.prize_amount !== "0"
+      ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice
+      : null;
   const buyWorstCaseShareUsd = fundedPrizeUsd !== null ? fundedPrizeUsd / config.max_players : null;
   const buyValueMismatch = isAirdrop && isPaid && buyWorstCaseShareUsd !== null && buyWorstCaseShareUsd < ticketPriceUsd;
 
@@ -236,6 +239,9 @@ export function RaffleDetailPage() {
   // lost before the raffle even starts.
   const singleWinnerPrizeBelowTicket =
     !isAirdrop && isPaid && plannedPrizeUsd !== null && plannedPrizeUsd < ticketPriceUsd;
+
+  const singleWinnerBuyerPrizeBelowTicket =
+    !isAirdrop && isPaid && fundedPrizeUsd !== null && fundedPrizeUsd < ticketPriceUsd;
 
   const hasMin = raffleStatus.unique_player_count >= config.min_players;
   const reachedMax = raffleStatus.unique_player_count >= config.max_players;
@@ -334,6 +340,10 @@ export function RaffleDetailPage() {
       setShowBuyValueWarning(true);
       return;
     }
+    if (singleWinnerBuyerPrizeBelowTicket) {
+      setShowSingleWinnerBuyerPrizeWarning(true);
+      return;
+    }
     runBuyTicket();
   }
   function confirmSelfBuy() {
@@ -342,10 +352,18 @@ export function RaffleDetailPage() {
       setShowBuyValueWarning(true);
       return;
     }
+    if (singleWinnerBuyerPrizeBelowTicket) {
+      setShowSingleWinnerBuyerPrizeWarning(true);
+      return;
+    }
     runBuyTicket();
   }
   function confirmBuyValueWarning() {
     setShowBuyValueWarning(false);
+    runBuyTicket();
+  }
+  function confirmSingleWinnerBuyerPrizeWarning() {
+    setShowSingleWinnerBuyerPrizeWarning(false);
     runBuyTicket();
   }
   function handleWithdrawTicket() {
@@ -721,6 +739,17 @@ export function RaffleDetailPage() {
         })}
         onCancel={() => setShowSingleWinnerPrizeWarning(false)}
         onConfirm={confirmSingleWinnerPrizeWarning}
+      />
+    )}
+
+    {showSingleWinnerBuyerPrizeWarning && fundedPrizeUsd !== null && (
+      <ValueMismatchWarningModal
+        bodyText={t("createYourOwnLuck.detail.valueMismatchSingleWinnerBuyBody", {
+          prizeUsd: fundedPrizeUsd.toFixed(2),
+          ticketUsd: ticketPriceUsd.toFixed(2),
+        })}
+        onCancel={() => setShowSingleWinnerBuyerPrizeWarning(false)}
+        onConfirm={confirmSingleWinnerBuyerPrizeWarning}
       />
     )}
     </>
