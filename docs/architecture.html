@@ -351,20 +351,58 @@ function focusNeighbors(nodeId) {
   });
 }
 
+function shortestEdgePath(start, end) {
+  if (start === end) return [];
+  const adjacency = {};
+  DATA.edges.forEach(e => {
+    (adjacency[e.from] ||= []).push({ to: e.to, edge: e.id });
+    (adjacency[e.to] ||= []).push({ to: e.from, edge: e.id });
+  });
+  const visited = new Set([start]);
+  const queue = [[start, []]];
+  while (queue.length) {
+    const [node, path] = queue.shift();
+    for (const { to, edge } of adjacency[node] || []) {
+      if (visited.has(to)) continue;
+      if (to === end) return [...path, edge];
+      visited.add(to);
+      queue.push([to, [...path, edge]]);
+    }
+  }
+  return [];
+}
+
+// A flow's narrative steps only call out the edges worth explaining - the
+// mechanical hops in between (e.g. wallet -> frontend -> page) are filled in
+// here via shortest path, so the highlighted diagram is always one connected
+// walk end to end, never disconnected islands.
 function focusFlow(flow) {
   clearFocus();
   diagram.classList.add("has-focus");
   const nodeIds = new Set();
   const edgeIds = new Set();
+  const orderedNodes = [];
   flow.steps.forEach(s => {
-    if (s.node) nodeIds.add(s.node);
+    if (s.node) {
+      nodeIds.add(s.node);
+      orderedNodes.push(s.node);
+    }
     if (s.edge) {
       edgeIds.add(s.edge);
       const e = edgesById[s.edge];
       nodeIds.add(e.from);
       nodeIds.add(e.to);
+      orderedNodes.push(e.from, e.to);
     }
   });
+  for (let i = 0; i < orderedNodes.length - 1; i++) {
+    if (orderedNodes[i] === orderedNodes[i + 1]) continue;
+    shortestEdgePath(orderedNodes[i], orderedNodes[i + 1]).forEach(edgeId => {
+      edgeIds.add(edgeId);
+      nodeIds.add(edgesById[edgeId].from);
+      nodeIds.add(edgesById[edgeId].to);
+    });
+  }
   nodeIds.forEach(id => {
     const g = document.querySelector(`.node-group[data-id="${id}"]`);
     if (g) g.classList.add("is-active");
@@ -384,11 +422,17 @@ function showNodePanel(id) {
   document.getElementById("node-panel-desc").textContent = n.description;
 }
 
+function clearFlowSelection() {
+  activeFlow = null;
+  document.querySelectorAll(".flow-chip").forEach(c => c.classList.remove("is-selected"));
+  document.getElementById("flow-empty-state").classList.remove("hidden");
+  document.getElementById("flow-detail").classList.add("hidden");
+}
+
 document.querySelectorAll(".node-group").forEach(g => {
   const activate = () => {
-    activeFlow = null;
+    clearFlowSelection();
     activeNode = g.dataset.id;
-    document.querySelectorAll(".flow-chip").forEach(c => c.classList.remove("is-selected"));
     focusNeighbors(g.dataset.id);
     showNodePanel(g.dataset.id);
     document.getElementById("hint-text").textContent = "Click the diagram background to clear the selection.";
@@ -400,6 +444,7 @@ document.querySelectorAll(".node-group").forEach(g => {
 diagram.addEventListener("click", (ev) => {
   if (ev.target === diagram || ev.target.tagName === "svg") {
     activeNode = null;
+    clearFlowSelection();
     clearFocus();
     document.getElementById("node-panel").classList.add("hidden");
     document.getElementById("hint-text").textContent = "Click a node, or select a flow →";
