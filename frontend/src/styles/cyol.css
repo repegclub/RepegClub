@@ -730,3 +730,27 @@
   margin-top: 0.2rem;
   flex-shrink: 0;
 }
+
+/* Creator calculator (CreatorForm) */
+
+.cyol-creator-calculator {
+  background: var(--bg-card);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cyol-calc-title {
+  font-family: var(--display);
+  color: var(--text);
+  font-size: 0.9rem;
+  margin: 0 0 0.2rem;
+}
+
+.cyol-creator-calculator .cyol-submit-secondary {
+  margin-top: 0.4rem;
+  align-self: flex-start;
+}
