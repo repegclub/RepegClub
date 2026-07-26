@@ -396,6 +396,17 @@ export function RaffleDetailPage() {
           {t("createYourOwnLuck.detail.prize", { prize: formatAmount(raffleStatus.prize_amount, prizeCurrency) })}
         </p>
       )}
+      {/* Only USTC needs this - a LUNC-labeled prize already displays as
+          "USDC" on this testnet (see prizeCurrencyLabel's own ambiguity),
+          so showing a conversion next to it would just repeat the same
+          number under a different name. */}
+      {raffleStatus.prize_amount !== "0" && prizeCurrency === "USTC" && prizeAssetPrice !== null && (
+        <p className="cyol-detail-hint">
+          {t("createYourOwnLuck.detail.prizeUsdcEquivalent", {
+            amount: (ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice).toFixed(2),
+          })}
+        </p>
+      )}
       {!prizeDenom && <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.cw20NotSupported")}</p>}
 
       <CyolSafetyChecklist config={config} raffleStatus={raffleStatus} entrants={entrants} />

@@ -1,3 +1,5 @@
+import type { PrizeAssetChoice } from "./cyolPrizeDenoms";
+
 // Real-world USD prices for the raffle prize denoms this app supports,
 // purely to inform a human before they sign - never gates a transaction's
 // actual execution (fund movement always trusts the chain, not this). This
@@ -50,4 +52,20 @@ export function priceForDenom(denom: string, prices: TokenPrices): number | null
   if (denom === "uusd") return prices.ustc;
   if (denom === "uluna") return prices.usdc;
   return null;
+}
+
+// Use this instead of priceForDenom wherever the creator's actual choice is
+// still known (CreatorForm, before Instantiate) rather than only a denom
+// string read back from chain - real bug found live (2026-07-26): picking
+// LUNC still priced the planning disclosure at $1/unit, because
+// priceForDenom("uluna") can't tell LUNC and USDC apart (see above) and this
+// form's own `prizeAssetChoice` state is exactly the information that
+// disambiguates them. Post-creation views (RaffleDetailPage,
+// CyolSafetyChecklist) only ever have the denom string, so they keep using
+// priceForDenom and inherit its testnet-only LUNC/USDC ambiguity - that's a
+// real, accepted limitation, not something this function should paper over.
+export function priceForAsset(choice: PrizeAssetChoice, prices: TokenPrices): number {
+  if (choice === "lunc") return prices.lunc;
+  if (choice === "ustc") return prices.ustc;
+  return prices.usdc;
 }
