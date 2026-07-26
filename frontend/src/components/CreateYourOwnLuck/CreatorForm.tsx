@@ -417,9 +417,25 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
             (() => {
               const price = Number(ticketPrice);
               const max = Number(maxPlayers);
-              if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(max) || !Number.isInteger(max) || max < 2) {
+              // Mirrors validate()'s own constraints exactly (CodeRabbit
+              // finding, 2026-07-26) - minimum price and whole-cent rule,
+              // and max_players within this raffle type's real ceiling -
+              // without these, a value still invalid by submission's own
+              // rules showed calculator numbers for an input that would be
+              // rejected anyway.
+              if (
+                !Number.isFinite(price) ||
+                price <= 0 ||
+                !Number.isFinite(max) ||
+                !Number.isInteger(max) ||
+                max < 2 ||
+                max > maxPlayersLimit(raffleType)
+              ) {
                 return null;
               }
+              const priceMicros = Number(displayNumberToUluna(price));
+              if (priceMicros < 1_000_000 || priceMicros % 10_000 !== 0) return null;
+
               const maxTickets = maxEntrants(raffleType, max);
               const maxRevenue = price * maxTickets;
               const fee = requiredFeeUsdc(raffleType, max, price);
@@ -435,7 +451,15 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                   : null;
               const costToBreakEven = prizeUsd !== null ? fee + prizeUsd : fee;
               const breakEvenTickets = Math.ceil(costToBreakEven / price);
-              const suggestedMinPlayers = Math.min(max, Math.max(2, breakEvenTickets));
+              // Real gap found live-testing this same PR (CodeRabbit finding,
+              // 2026-07-26): capping the suggestion at max_players silently
+              // presented it as actionable even when break-even exceeds the
+              // raffle's own maximum SELLABLE tickets (maxTickets, not just
+              // max_players - a wallet can buy more than one) - that raffle
+              // can never break even at these settings, no matter what
+              // min_players is set to, so suggesting one was misleading.
+              const breakEvenReachable = breakEvenTickets <= maxTickets;
+              const suggestedMinPlayers = breakEvenReachable ? Math.min(max, Math.max(2, breakEvenTickets)) : null;
 
               return (
                 <div className="cyol-creator-calculator">
@@ -446,20 +470,24 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                     {t("createYourOwnLuck.form.calcFeeRate", { fee: fee.toFixed(2), rate: effectiveFeeRate.toFixed(1) })}
                   </p>
                   <p className="cyol-hint">
-                    {t(
-                      prizeUsd !== null
-                        ? "createYourOwnLuck.form.calcBreakEvenWithPrize"
-                        : "createYourOwnLuck.form.calcBreakEvenFeeOnly",
-                      { tickets: breakEvenTickets }
-                    )}
+                    {breakEvenReachable
+                      ? t(
+                          prizeUsd !== null
+                            ? "createYourOwnLuck.form.calcBreakEvenWithPrize"
+                            : "createYourOwnLuck.form.calcBreakEvenFeeOnly",
+                          { tickets: breakEvenTickets }
+                        )
+                      : t("createYourOwnLuck.form.calcBreakEvenUnreachable", { maxTickets })}
                   </p>
-                  <button
-                    type="button"
-                    className="cyol-submit cyol-submit-secondary"
-                    onClick={() => setMinPlayers(String(suggestedMinPlayers))}
-                  >
-                    {t("createYourOwnLuck.form.calcSuggestMinPlayers", { min: suggestedMinPlayers })}
-                  </button>
+                  {breakEvenReachable && suggestedMinPlayers !== null && (
+                    <button
+                      type="button"
+                      className="cyol-submit cyol-submit-secondary"
+                      onClick={() => setMinPlayers(String(suggestedMinPlayers))}
+                    >
+                      {t("createYourOwnLuck.form.calcSuggestMinPlayers", { min: suggestedMinPlayers })}
+                    </button>
+                  )}
                 </div>
               );
             })()}

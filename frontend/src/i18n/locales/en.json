@@ -292,6 +292,7 @@
       "calcFeeRate": "Service fee: {{fee}} USDC — {{rate}}% of that theoretical maximum.",
       "calcBreakEvenWithPrize": "You'd need at least {{tickets}} tickets sold to cover the service fee and your planned prize.",
       "calcBreakEvenFeeOnly": "You'd need at least {{tickets}} tickets sold just to cover the service fee (the real prize you fund later isn't included yet).",
+      "calcBreakEvenUnreachable": "Even selling every possible ticket ({{maxTickets}}), this raffle could never break even at these settings — consider a smaller prize, a higher ticket price, or fewer max players.",
       "calcSuggestMinPlayers": "Use suggested minimum players: {{min}}",
       "submit": "Create raffle",
       "submitting": "Creating…",
