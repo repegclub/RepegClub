@@ -5,7 +5,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
-import { worstCaseTicketRevenueProfit, requiredFeeUsdc } from "../../lib/cyolFundingDisclosure";
+import { worstCaseTicketRevenueProfit, requiredFeeUsdc, maxEntrants } from "../../lib/cyolFundingDisclosure";
 import { PRIZE_ASSET_CHOICES, PRIZE_ASSET_DENOMS, PRIZE_ASSET_LABELS, type PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
 import { priceForAsset } from "../../lib/tokenPrices";
@@ -406,6 +406,91 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               })()}
             </label>
           )}
+
+          {/* Creator calculator - only meaningful once real money is on the
+              line (a free raffle has no fee-vs-revenue tension to plan
+              around). Airdrop's prize isn't known until DepositPrize, so its
+              break-even here only covers the service fee, not the
+              (yet-unknown) prize on top of it - SingleWinner already has a
+              real planned prize in this same form to fold in. */}
+          {Number(ticketPrice) > 0 &&
+            (() => {
+              const price = Number(ticketPrice);
+              const max = Number(maxPlayers);
+              // Mirrors validate()'s own constraints exactly (CodeRabbit
+              // finding, 2026-07-26) - minimum price and whole-cent rule,
+              // and max_players within this raffle type's real ceiling -
+              // without these, a value still invalid by submission's own
+              // rules showed calculator numbers for an input that would be
+              // rejected anyway.
+              if (
+                !Number.isFinite(price) ||
+                price <= 0 ||
+                !Number.isFinite(max) ||
+                !Number.isInteger(max) ||
+                max < 2 ||
+                max > maxPlayersLimit(raffleType)
+              ) {
+                return null;
+              }
+              const priceMicros = Number(displayNumberToUluna(price));
+              if (priceMicros < 1_000_000 || priceMicros % 10_000 !== 0) return null;
+
+              const maxTickets = maxEntrants(raffleType, max);
+              const maxRevenue = price * maxTickets;
+              const fee = requiredFeeUsdc(raffleType, max, price);
+              const effectiveFeeRate = maxRevenue > 0 ? (fee / maxRevenue) * 100 : 0;
+
+              const plannedPrizeNum = Number(plannedPrizeAmount);
+              const prizeUsd =
+                raffleType === "single_winner" &&
+                tokenPrices.status === "loaded" &&
+                Number.isFinite(plannedPrizeNum) &&
+                plannedPrizeNum >= 0
+                  ? plannedPrizeNum * priceForAsset(prizeAssetChoice, tokenPrices.prices)
+                  : null;
+              const costToBreakEven = prizeUsd !== null ? fee + prizeUsd : fee;
+              const breakEvenTickets = Math.ceil(costToBreakEven / price);
+              // Real gap found live-testing this same PR (CodeRabbit finding,
+              // 2026-07-26): capping the suggestion at max_players silently
+              // presented it as actionable even when break-even exceeds the
+              // raffle's own maximum SELLABLE tickets (maxTickets, not just
+              // max_players - a wallet can buy more than one) - that raffle
+              // can never break even at these settings, no matter what
+              // min_players is set to, so suggesting one was misleading.
+              const breakEvenReachable = breakEvenTickets <= maxTickets;
+              const suggestedMinPlayers = breakEvenReachable ? Math.min(max, Math.max(2, breakEvenTickets)) : null;
+
+              return (
+                <div className="cyol-creator-calculator">
+                  <p className="cyol-calc-title">{t("createYourOwnLuck.form.calcTitle")}</p>
+                  <p className="cyol-hint">{t("createYourOwnLuck.form.calcMaxTickets", { tickets: maxTickets })}</p>
+                  <p className="cyol-hint">{t("createYourOwnLuck.form.calcMaxRevenue", { revenue: maxRevenue.toFixed(2) })}</p>
+                  <p className="cyol-hint">
+                    {t("createYourOwnLuck.form.calcFeeRate", { fee: fee.toFixed(2), rate: effectiveFeeRate.toFixed(1) })}
+                  </p>
+                  <p className="cyol-hint">
+                    {breakEvenReachable
+                      ? t(
+                          prizeUsd !== null
+                            ? "createYourOwnLuck.form.calcBreakEvenWithPrize"
+                            : "createYourOwnLuck.form.calcBreakEvenFeeOnly",
+                          { tickets: breakEvenTickets }
+                        )
+                      : t("createYourOwnLuck.form.calcBreakEvenUnreachable", { maxTickets })}
+                  </p>
+                  {breakEvenReachable && suggestedMinPlayers !== null && (
+                    <button
+                      type="button"
+                      className="cyol-submit cyol-submit-secondary"
+                      onClick={() => setMinPlayers(String(suggestedMinPlayers))}
+                    >
+                      {t("createYourOwnLuck.form.calcSuggestMinPlayers", { min: suggestedMinPlayers })}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
           {error && <p className="cyol-form-error">{error}</p>}
 
