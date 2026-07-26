@@ -5,6 +5,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
+import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
 
 // The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
 // contract.rs) as the only denom it accepts for any paid raffle's
@@ -102,20 +103,36 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
   const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
+  // Purely a planning aid, carried forward to the Fund screen (see
+  // RaffleDetailPage) - the prize amount isn't part of Instantiate at all
+  // (DepositPrize, a separate later tx, is what actually commits real
+  // funds), so this never gets sent in CreateRaffle's own message. Only
+  // shown for SingleWinner (2026-07-25, user's call) - Airdrop's prize
+  // funds a split among however many wallets end up joining, so a single
+  // "planned" number doesn't mean the same thing upfront the way it does
+  // for a single winner's prize.
+  const [plannedPrizeAmount, setPlannedPrizeAmount] = useState("100");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function validate(): string | null {
     const price = Number(ticketPrice);
-    if (!Number.isFinite(price) || price <= 0) return t("createYourOwnLuck.form.errorPrice");
-    // Mirrors the contract's own TicketPriceBelowMinimum/TicketPriceNotWholeCents
-    // checks exactly (same rounding displayNumberToUluna will actually send),
-    // so a bad price gets caught here instead of wasting gas on a signed,
-    // guaranteed-to-be-rejected transaction.
-    const priceMicros = Number(displayNumberToUluna(price));
-    if (priceMicros < 1_000_000) return t("createYourOwnLuck.form.errorPriceMinimum");
-    if (priceMicros % 10_000 !== 0) return t("createYourOwnLuck.form.errorPriceCents");
+    // Airdrop can be free (ticket_price = 0, the contract's own zero-fee
+    // free-raffle path) - SingleWinner can't, this form doesn't offer a
+    // free path for it yet.
+    if (!Number.isFinite(price) || price < 0) return t("createYourOwnLuck.form.errorPrice");
+    if (raffleType !== "airdrop" && price <= 0) return t("createYourOwnLuck.form.errorPrice");
+    if (price > 0) {
+      // Mirrors the contract's own TicketPriceBelowMinimum/TicketPriceNotWholeCents
+      // checks exactly (same rounding displayNumberToUluna will actually send),
+      // so a bad price gets caught here instead of wasting gas on a signed,
+      // guaranteed-to-be-rejected transaction. Only applies once a price is
+      // actually being charged - a free raffle has nothing to validate here.
+      const priceMicros = Number(displayNumberToUluna(price));
+      if (priceMicros < 1_000_000) return t("createYourOwnLuck.form.errorPriceMinimum");
+      if (priceMicros % 10_000 !== 0) return t("createYourOwnLuck.form.errorPriceCents");
+    }
 
     const min = Number(minPlayers);
     const max = Number(maxPlayers);
@@ -174,7 +191,11 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
       // isolate onCreated in its own try/catch - if it throws, that must
       // not be mistaken for the transaction itself failing after it
       // already succeeded (only the raffle address is proof of that).
-      if (raffleAddress) navigate(`/create-your-own-luck/${raffleAddress}`);
+      if (raffleAddress) {
+        navigate(`/create-your-own-luck/${raffleAddress}`, {
+          state: raffleType === "single_winner" ? { plannedPrizeAmount } : undefined,
+        });
+      }
       try {
         onCreated?.();
       } catch {
@@ -205,7 +226,13 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                     type="radio"
                     name="raffleType"
                     checked={raffleType === type}
-                    onChange={() => setRaffleType(type)}
+                    onChange={() => {
+                      setRaffleType(type);
+                      // Each type's own sensible default - Airdrop defaults
+                      // to free (0), SingleWinner needs a real ticket price
+                      // (this form doesn't offer a free path for it yet).
+                      setTicketPrice(type === "airdrop" ? "0" : "1");
+                    }}
                   />
                   {t(`createYourOwnLuck.raffleType.${type === "single_winner" ? "singleWinner" : type}`)}
                 </label>
@@ -289,6 +316,36 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
             })()}
           </label>
 
+          {raffleType === "single_winner" && (
+            <label className="cyol-field">
+              <span>{t("createYourOwnLuck.form.plannedPrizeLabel")}</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={plannedPrizeAmount}
+                onChange={(e) => setPlannedPrizeAmount(e.target.value)}
+              />
+              <span className="cyol-hint">{t("createYourOwnLuck.form.plannedPrizeHint")}</span>
+              {(() => {
+                const price = Number(ticketPrice);
+                const max = Number(maxPlayers);
+                const prize = Number(plannedPrizeAmount);
+                if (!Number.isFinite(price) || !Number.isFinite(max) || !Number.isFinite(prize) || max < 2) {
+                  return null;
+                }
+                const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prize);
+                return (
+                  <span className="cyol-hint">
+                    {profit > 0
+                      ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
+                      : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
+                  </span>
+                );
+              })()}
+            </label>
+          )}
+
           {error && <p className="cyol-form-error">{error}</p>}
 
           <button
@@ -300,7 +357,9 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               walletState.status !== "connected" ? t("createYourOwnLuck.form.connectFirst") : undefined
             }
           >
-            {submitting ? t("createYourOwnLuck.form.submitting") : t("createYourOwnLuck.form.submit")}
+            {submitting
+              ? t(raffleType === "airdrop" ? "createYourOwnLuck.form.submittingAirdrop" : "createYourOwnLuck.form.submitting")
+              : t(raffleType === "airdrop" ? "createYourOwnLuck.form.submitAirdrop" : "createYourOwnLuck.form.submit")}
           </button>
         </div>
       )}

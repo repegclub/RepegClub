@@ -29,6 +29,26 @@ export function colorForIndex(i: number): string {
   return PALETTE[i % PALETTE.length];
 }
 
+function truncateAddress(addr: string): string {
+  return addr.length > 16 ? `${addr.slice(0, 10)}...${addr.slice(-4)}` : addr;
+}
+
+// Aggregates a raw one-entry-per-ticket address list (the shape both
+// GetRoundEntrants and Create Your Own Luck's GetEntrants return) into one
+// Entrant row per unique wallet, in first-bought order.
+export function aggregateEntrants(rawEntrants: string[]): Entrant[] {
+  const counts = new Map<string, number>();
+  for (const addr of rawEntrants) {
+    counts.set(addr, (counts.get(addr) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([address, tickets], i) => ({
+    name: truncateAddress(address),
+    address,
+    tickets,
+    color: colorForIndex(i),
+  }));
+}
+
 export function buildArcs(entrants: Entrant[]): Arc[] {
   const total = entrants.reduce((s, e) => s + e.tickets, 0);
   let angleAcc = POINTER_ANGLE;
