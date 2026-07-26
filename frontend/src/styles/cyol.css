@@ -618,3 +618,97 @@
     transition-delay: 0s !important;
   }
 }
+
+/* Safety checklist */
+
+.cyol-checklist {
+  background: var(--bg-card);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.cyol-checklist-title {
+  font-family: var(--display);
+  color: var(--text);
+  font-size: 0.9rem;
+  margin: 0 0 0.6rem;
+}
+
+.cyol-checklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cyol-checklist-row {
+  font-family: var(--body);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding-left: 1.1rem;
+  position: relative;
+  transition: color 0.3s ease;
+}
+
+.cyol-checklist-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--border-bright);
+}
+
+.cyol-checklist-green::before {
+  background: #3ecf8e;
+}
+
+.cyol-checklist-yellow::before {
+  background: var(--gold);
+}
+
+.cyol-checklist-red::before {
+  background: var(--crimson-bright);
+}
+
+.cyol-checklist-neutral::before {
+  background: var(--border-bright);
+}
+
+@keyframes cyol-checklist-flash {
+  0%, 100% {
+    background: transparent;
+  }
+  30% {
+    background: rgba(255, 209, 102, 0.18);
+  }
+}
+
+.cyol-checklist-flash {
+  animation: cyol-checklist-flash 0.9s ease;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cyol-checklist-flash {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* Prose paragraph inside a modal (e.g. the self-buy warning) - unlike
+   .cyol-detail-line (monospace, break-all, meant for compact technical
+   strings like addresses/amounts), this is a normal sentence and needs the
+   body font with word-boundary wrapping, not character-break wrapping. */
+.cyol-modal-body-text {
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}

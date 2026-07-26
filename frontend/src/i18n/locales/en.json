@@ -356,7 +356,32 @@
       "selfBuyWarningTitle": "⚠️ Buying your own ticket",
       "selfBuyWarningBody": "Buying a ticket in your own raffle will flag as self-dealing and may hurt your reputation as a creator. Anyone can see this raffle's participant list, including your own wallet's entries.",
       "selfBuyWarningCancel": "Cancel",
-      "selfBuyWarningConfirm": "Buy anyway"
+      "selfBuyWarningConfirm": "Buy anyway",
+      "closeReputationHintGood": "Closing now looks fine for your reputation as a creator — ticket concentration is healthy.",
+      "closeReputationHintBad": "One wallet holds a large share of tickets right now — closing while it's this concentrated may hurt your reputation as a creator. Waiting for more participants is recommended."
+    },
+    "checklist": {
+      "title": "Safety checklist",
+      "fundraiserNotApplicable": "Airdrop has no single winner, so this doesn't apply — the prize splits among whoever joins.",
+      "fundraiserUnknown": "The prize hasn't been set yet — can't calculate this until the raffle is funded.",
+      "fundraiserNonUsdcPrize": "This raffle's prize isn't in USDC, so this can't be shown in dollar terms.",
+      "fundraiserPositive": "If this raffle fills up completely, ticket sales alone could net the creator about ${{amount}} regardless of who wins — this works like a fundraiser with a prize as the incentive.",
+      "fundraiserNegative": "Even if this raffle fills up completely, the creator is funding at least ${{amount}} of the prize themselves — a genuine giveaway.",
+      "minParticipationPositive": "Even if it closes at just the minimum ({{min}} players, 1 ticket each), the creator would still net about ${{amount}}.",
+      "minParticipationNegative": "If it closes at just the minimum ({{min}} players, 1 ticket each), the creator would be funding ${{amount}} of the prize themselves.",
+      "maxPlayersSmall": "This raffle only allows up to {{max}} unique wallets (below {{threshold}}) — small, paid raffles like this are cheaper for a dishonest creator to repeat for profit.",
+      "maxPlayersFine": "Up to {{max}} unique wallets can join — not a small, easy-to-repeat shape.",
+      "concentrationNone": "No tickets sold yet.",
+      "concentrationGreen": "No wallet holds a large share of tickets ({{percent}}% is the highest so far).",
+      "concentrationYellow": "One wallet holds {{percent}}% of tickets sold so far — worth watching.",
+      "concentrationRed": "One wallet holds {{percent}}% of tickets sold so far — high concentration.",
+      "cooldownLoading": "Checking the creator's history…",
+      "cooldownUnknown": "Couldn't check the creator's history right now.",
+      "cooldownNone": "This creator has no active safety cooldown from the factory.",
+      "cooldownActive": "This creator has a safety cooldown flag (streak: {{streak}}) from repeatedly creating small, paid raffles.",
+      "creatorSelfBuyNone": "The creator hasn't bought any tickets in their own raffle.",
+      "creatorSelfBuyMinority": "The creator holds {{percent}}% of tickets sold so far in their own raffle — some self-dealing risk.",
+      "creatorSelfBuyMajority": "The creator holds a majority ({{percent}}%) of tickets sold so far in their own raffle — high self-dealing risk."
     }
   },
   "weekly": {

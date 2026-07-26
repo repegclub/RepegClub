@@ -47,3 +47,22 @@ export function worstCaseTicketRevenueProfit(
   const fee = requiredFeeUsdc(raffleType, maxPlayers, ticketPriceUsdc);
   return maxPotentialRevenue - fee - prizeUsdc;
 }
+
+// The other extreme, and previously undisclosed (found live-testing
+// 2026-07-26): what if the raffle closes the moment min_players is reached,
+// at 1 ticket each - the cheapest way to satisfy it? A fixed prize funded
+// upfront against an unknown turnout can leave the creator far worse off
+// than they planned for (2 wallets, 1 ticket each, closing immediately to
+// split a prize sized for a much bigger pool). feeUsdc is passed in rather
+// than recomputed here because the real fee is already fixed at funding
+// time from max_players (see requiredFeeUsdc), regardless of how many
+// wallets actually end up joining.
+export function worstCaseMinParticipationProfit(
+  minPlayers: number,
+  ticketPriceUsdc: number,
+  prizeUsdc: number,
+  feeUsdc: number
+): number {
+  const minRevenue = ticketPriceUsdc * minPlayers;
+  return minRevenue - feeUsdc - prizeUsdc;
+}
