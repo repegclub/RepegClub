@@ -124,6 +124,26 @@ export function CyolSafetyChecklist({
           </Row>
         )}
 
+        {/* SingleWinner only - distinct from the fundraiser row above, which
+            is about the creator's ticket-revenue economics. This is a
+            player-facing sanity check: if the whole prize is worth less
+            than a single ticket at real market prices, no odds make that a
+            good bet, regardless of how the raffle's revenue nets out for
+            the creator. Found live-testing 2026-07-26 (a LUNC/USTC prize
+            can look like a big number while being worth very little). */}
+        {!isAirdrop && (
+          <Row band={prizeUsdc === null ? "neutral" : prizeUsdc < ticketPriceUsdc ? "red" : "green"}>
+            {prizeUsdc === null
+              ? t("createYourOwnLuck.checklist.prizeVsTicketUnknown")
+              : prizeUsdc < ticketPriceUsdc
+                ? t("createYourOwnLuck.checklist.prizeBelowTicketPrice", {
+                    prize: prizeUsdc.toFixed(2),
+                    ticket: ticketPriceUsdc.toFixed(2),
+                  })
+                : t("createYourOwnLuck.checklist.prizeAboveTicketPrice")}
+          </Row>
+        )}
+
         <Row band={selfBuyBand}>
           {selfBuy === null
             ? t("createYourOwnLuck.checklist.creatorSelfBuyNone")
