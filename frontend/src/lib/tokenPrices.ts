@@ -35,12 +35,22 @@ export async function fetchTokenPrices(): Promise<TokenPrices> {
 
 // See cyolFormat.ts's prizeCurrencyLabel for the same testnet-only
 // ambiguity this mirrors: USDC_DENOM and LUNC_DENOM are both literally
-// "uluna" on this testnet (contracts/create-your-own-luck/src/contract.rs),
-// so a denom string alone can't distinguish real LUNC from real USDC until
-// mainnet uses their actual distinct denoms - "uluna" is priced as USDC
-// ($1) for now, consistent with how it's already displayed. This
-// under-prices a LUNC-labeled prize on testnet specifically; it
-// self-corrects the moment mainnet's real LUNC denom is wired in.
+// "uluna" on this testnet (contracts/create-your-own-luck/src/contract.rs) -
+// LUNC_DENOM is genuinely "uluna" on every network (it's the chain's own
+// staking/gas token), but USDC_DENOM is a testnet-only placeholder there,
+// explicitly commented as "swap for the real USDC IBC denom before
+// mainnet". Until that swap happens, a denom string alone can't
+// distinguish real LUNC from real USDC, so "uluna" is priced as USDC ($1)
+// here - consistent with how it's already displayed - which under-prices
+// a LUNC-labeled prize on testnet specifically.
+//
+// MAINNET TODO (found live-testing 2026-07-26, not yet reachable so not
+// fixed here): once contract.rs's USDC_DENOM becomes the real IBC hash,
+// this function's "uluna" branch must change from `prices.usdc` to
+// `prices.lunc` (uluna will only ever mean LUNC once USDC has its own real
+// denom), and a new branch must map that real USDC IBC denom to
+// `prices.usdc`. Left as-is until that constant actually changes - fixing
+// it early would just break testnet, where the collision is real.
 //
 // Returns null for any other denom (CodeRabbit finding, 2026-07-26): a paid
 // raffle's prize is always uluna/uusd (contract-enforced), but a *free*
