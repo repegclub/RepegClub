@@ -34,3 +34,20 @@ export function getRaffles(
     },
   });
 }
+
+export type CreatorCooldownResponse = {
+  unsafe_streak: number;
+  // Unix seconds. Null if this wallet has never created an unsafe-shaped
+  // raffle, or its streak has gone stale from a long dormant period.
+  next_unsafe_allowed_at: number | null;
+};
+
+export function getCreatorCooldown(
+  creator: string,
+  contractAddress: string = CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS
+) {
+  return queryContract<CreatorCooldownResponse>(RPC, {
+    address: contractAddress,
+    query: { get_creator_cooldown: { creator } },
+  });
+}

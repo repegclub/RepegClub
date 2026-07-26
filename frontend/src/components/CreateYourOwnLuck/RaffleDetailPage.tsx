@@ -11,6 +11,8 @@ import { useCyolRaffleIndex } from "../../hooks/useCyolRaffleIndex";
 import { displayNumberToUluna, ulunaToDisplayNumber } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
 import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
+import { walletConcentration, concentrationBand } from "../../lib/cyolChecklist";
+import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
   depositPrize,
   payServiceFee,
@@ -75,6 +77,23 @@ export function RaffleDetailPage() {
     const id = setInterval(() => setNowSec(Date.now() / 1000), 5000);
     return () => clearInterval(id);
   }, []);
+
+  // Keeps the safety checklist's wallet-concentration signal live while a
+  // decision is still pending - other wallets buying tickets wouldn't
+  // otherwise show up here until this wallet's own next action triggers a
+  // refetch (see `run()` below).
+  const raffleOpenStatus = detail.status === "loaded" ? detail.raffleStatus.status : null;
+  useEffect(() => {
+    if (raffleOpenStatus !== "open") return;
+    const id = setInterval(() => detail.refetch(), 12_000);
+    return () => clearInterval(id);
+    // detail.refetch is stable (see useCyolRaffleDetail); the full `detail`
+    // object is a fresh literal every render (`{ ...state, refetch: load }`),
+    // so depending on it here would tear down and restart this interval on
+    // every render instead of every 12s - same reasoning as the
+    // exhaustive-deps suppression in WeeklyWheelCard.tsx's countdown effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raffleOpenStatus, detail.refetch]);
 
   const shell = (children: React.ReactNode) => (
     <main className="wheel-page cyol-page">
@@ -282,6 +301,8 @@ export function RaffleDetailPage() {
       )}
       {!prizeDenom && <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.cw20NotSupported")}</p>}
 
+      <CyolSafetyChecklist config={config} raffleStatus={raffleStatus} entrants={entrants} />
+
       {actionError && <p className="cyol-form-error">{actionError}</p>}
 
       {raffleStatus.status === "funding" &&
@@ -370,9 +391,22 @@ export function RaffleDetailPage() {
             </button>
           )}
           {canCloseRound && (
-            <button className="cyol-submit cyol-submit-secondary" onClick={handleCloseRound} disabled={busy || !connected}>
-              {actionBusy === "close" ? t("createYourOwnLuck.detail.closing") : t("createYourOwnLuck.detail.closeRound")}
-            </button>
+            <div className="cyol-buy-group">
+              <button className="cyol-submit cyol-submit-secondary" onClick={handleCloseRound} disabled={busy || !connected}>
+                {actionBusy === "close" ? t("createYourOwnLuck.detail.closing") : t("createYourOwnLuck.detail.closeRound")}
+              </button>
+              {/* Only the creator's own choice to close early (not the
+                  automatic max-players/timeout paths) is a real decision
+                  that reputation should track - see the security catalog's
+                  "distinción de responsabilidad" note. */}
+              {isCreator && !reachedMax && !timeoutElapsed && (
+                <p className="cyol-detail-hint">
+                  {concentrationBand(walletConcentration(entrants)) === "green"
+                    ? t("createYourOwnLuck.detail.closeReputationHintGood")
+                    : t("createYourOwnLuck.detail.closeReputationHintBad")}
+                </p>
+              )}
+            </div>
           )}
           {canExpireRaffle && (
             <button className="cyol-submit cyol-submit-secondary" onClick={handleExpireRaffle} disabled={busy || !connected}>
@@ -447,7 +481,7 @@ export function RaffleDetailPage() {
               ✕
             </button>
           </div>
-          <p className="cyol-detail-line">{t("createYourOwnLuck.detail.selfBuyWarningBody")}</p>
+          <p className="cyol-modal-body-text">{t("createYourOwnLuck.detail.selfBuyWarningBody")}</p>
           <div className="cyol-detail-actions">
             <button className="cyol-submit cyol-submit-secondary" onClick={() => setShowSelfBuyWarning(false)}>
               {t("createYourOwnLuck.detail.selfBuyWarningCancel")}

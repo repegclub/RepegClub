@@ -5,7 +5,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
-import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
+import { worstCaseTicketRevenueProfit, requiredFeeUsdc } from "../../lib/cyolFundingDisclosure";
 
 // The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
 // contract.rs) as the only denom it accepts for any paid raffle's
@@ -49,7 +49,16 @@ function maxPlayersLimit(raffleType: RaffleType): number {
   return raffleType === "airdrop" ? MAX_PLAYERS_AIRDROP : MAX_PLAYERS_SINGLE_WINNER_PODIUM;
 }
 
-function airdropFeeForMaxPlayers(max: number): number | null {
+// Free (ticket_price=0) uses the community-size tier table; a paid Airdrop
+// uses the same 1%-of-max-potential-revenue formula as SingleWinner/Podium
+// instead (mirrors contract.rs's required_fee_usdc exactly - it branches on
+// ticket_price.is_zero(), not on raffle type). The form's own price field
+// defaults Airdrop to $0, so this only diverges from the tier table if the
+// creator types a manual price.
+function airdropFeeForMaxPlayers(max: number, ticketPriceUsdc: number): number | null {
+  if (ticketPriceUsdc > 0) {
+    return max <= MAX_PLAYERS_AIRDROP ? requiredFeeUsdc("airdrop", max, ticketPriceUsdc) : null;
+  }
   const tier = AIRDROP_FEE_TIERS_USDC.find(([cap]) => max <= cap);
   return tier ? tier[1] : null;
 }
@@ -274,10 +283,10 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
             />
             {raffleType === "airdrop" &&
               (() => {
-                const fee = airdropFeeForMaxPlayers(Number(maxPlayers));
+                const fee = airdropFeeForMaxPlayers(Number(maxPlayers), Number(ticketPrice));
                 return fee !== null ? (
                   <span className="cyol-hint">
-                    {t("createYourOwnLuck.form.airdropFeeNote", { fee })}
+                    {t("createYourOwnLuck.form.airdropFeeNote", { fee: fee.toFixed(2) })}
                   </span>
                 ) : null;
               })()}
