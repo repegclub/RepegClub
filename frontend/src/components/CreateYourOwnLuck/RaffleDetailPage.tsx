@@ -12,6 +12,8 @@ import { displayNumberToUluna, ulunaToDisplayNumber } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
 import { worstCaseTicketRevenueProfit } from "../../lib/cyolFundingDisclosure";
 import { walletConcentration, concentrationBand } from "../../lib/cyolChecklist";
+import { useTokenPrices } from "../../hooks/useTokenPrices";
+import { priceForDenom } from "../../lib/tokenPrices";
 import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
   depositPrize,
@@ -41,6 +43,50 @@ function maxTicketsPerWallet(raffleType: string, maxPlayers: number, ticketPrice
 }
 
 type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "reclaim" | "cancel" | "expire";
+
+// Shared by both the buyer-side and creator-side value-mismatch warnings
+// below (security catalog's hallazgo #6, 2026-07-25/26): unlike the
+// self-buy warning's simple confirm/cancel, this one requires an explicit
+// checkbox before the confirm button becomes clickable - a real financial
+// decision (paying more than you'd get back, or shortchanging your own
+// participants), not just a reputational nudge.
+function ValueMismatchWarningModal({
+  bodyText,
+  onCancel,
+  onConfirm,
+}: {
+  bodyText: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="history-overlay" onClick={onCancel}>
+      <div className="history-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="history-modal-header">
+          <h2 className="history-modal-title">{t("createYourOwnLuck.detail.valueMismatchWarningTitle")}</h2>
+          <button type="button" className="history-close-btn" onClick={onCancel}>
+            ✕
+          </button>
+        </div>
+        <p className="cyol-modal-body-text">{bodyText}</p>
+        <label className="cyol-checkbox-label">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+          {t("createYourOwnLuck.detail.valueMismatchWarningCheckbox")}
+        </label>
+        <div className="cyol-detail-actions">
+          <button className="cyol-submit cyol-submit-secondary" onClick={onCancel}>
+            {t("createYourOwnLuck.detail.selfBuyWarningCancel")}
+          </button>
+          <button className="cyol-submit" onClick={onConfirm} disabled={!checked}>
+            {t("createYourOwnLuck.detail.valueMismatchWarningConfirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // The full raffle lifecycle, built to be testable first: buttons show up
 // within their coarse status window (Open, Closed, ...) and the contract's
@@ -72,6 +118,9 @@ export function RaffleDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
   const [showSelfBuyWarning, setShowSelfBuyWarning] = useState(false);
+  const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
+  const [showFundValueWarning, setShowFundValueWarning] = useState(false);
+  const tokenPrices = useTokenPrices();
 
   useEffect(() => {
     const id = setInterval(() => setNowSec(Date.now() / 1000), 5000);
@@ -123,6 +172,30 @@ export function RaffleDetailPage() {
   const connected = walletState.status === "connected";
   const busy = actionBusy !== null;
 
+  // Airdrop-specific value-mismatch check (security catalog's hallazgo #6):
+  // a paid raffle's ticket is always USDC (~$1), but the prize can be any
+  // of LUNC/USDC/USTC - if each wallet's guaranteed share is worth less
+  // than the ticket at real market prices, someone's paying more than
+  // they'll get back, even in the best case. Only meaningful for a paid
+  // Airdrop (a free raffle risks nothing, and SingleWinner/Podium's
+  // prize-vs-ticket mismatch is normal lottery variance, not this).
+  const isPaid = config.ticket_price !== "0";
+  const ticketPriceUsd = ulunaToDisplayNumber(config.ticket_price);
+  const prizeAssetPrice =
+    prizeDenom && tokenPrices.status === "loaded" ? priceForDenom(prizeDenom, tokenPrices.prices) : null;
+  const fundedPrizeUsd =
+    isAirdrop && prizeAssetPrice !== null ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice : null;
+  const buyWorstCaseShareUsd = fundedPrizeUsd !== null ? fundedPrizeUsd / config.max_players : null;
+  const buyValueMismatch = isAirdrop && isPaid && buyWorstCaseShareUsd !== null && buyWorstCaseShareUsd < ticketPriceUsd;
+
+  const plannedPrizeNum = Number(prizeAmount);
+  const plannedPrizeUsd =
+    isAirdrop && prizeAssetPrice !== null && Number.isFinite(plannedPrizeNum)
+      ? plannedPrizeNum * prizeAssetPrice
+      : null;
+  const fundWorstCaseShareUsd = plannedPrizeUsd !== null ? plannedPrizeUsd / config.max_players : null;
+  const fundValueMismatch = isAirdrop && isPaid && fundWorstCaseShareUsd !== null && fundWorstCaseShareUsd < ticketPriceUsd;
+
   const hasMin = raffleStatus.unique_player_count >= config.min_players;
   const reachedMax = raffleStatus.unique_player_count >= config.max_players;
   const timeoutElapsed = raffleStatus.seconds_remaining !== null && raffleStatus.seconds_remaining <= 0;
@@ -156,7 +229,7 @@ export function RaffleDetailPage() {
     }
   }
 
-  function handleFund() {
+  function runFund() {
     if (walletState.status !== "connected" || !prizeDenom) return;
     const wallet = walletState.wallet;
     const amount = displayNumberToUluna(Number(prizeAmount));
@@ -175,6 +248,18 @@ export function RaffleDetailPage() {
         raffleStatus.fee_paid || sameDenomAsFee
       );
     });
+  }
+  function handleFund() {
+    if (walletState.status !== "connected" || !prizeDenom) return;
+    if (fundValueMismatch) {
+      setShowFundValueWarning(true);
+      return;
+    }
+    runFund();
+  }
+  function confirmFundValueWarning() {
+    setShowFundValueWarning(false);
+    runFund();
   }
   function runBuyTicket() {
     if (walletState.status !== "connected") return;
@@ -196,10 +281,22 @@ export function RaffleDetailPage() {
       setShowSelfBuyWarning(true);
       return;
     }
+    if (buyValueMismatch) {
+      setShowBuyValueWarning(true);
+      return;
+    }
     runBuyTicket();
   }
   function confirmSelfBuy() {
     setShowSelfBuyWarning(false);
+    if (buyValueMismatch) {
+      setShowBuyValueWarning(true);
+      return;
+    }
+    runBuyTicket();
+  }
+  function confirmBuyValueWarning() {
+    setShowBuyValueWarning(false);
     runBuyTicket();
   }
   function handleWithdrawTicket() {
@@ -315,13 +412,16 @@ export function RaffleDetailPage() {
               {(config.raffle_type === "single_winner" || config.raffle_type === "airdrop") &&
                 (() => {
                   const prize = Number(prizeAmount);
-                  if (!Number.isFinite(prize)) return null;
-                  const ticketPriceDisplay = ulunaToDisplayNumber(config.ticket_price);
+                  if (!Number.isFinite(prize) || prizeAssetPrice === null) return null;
+                  // Prize amount is in whatever asset this raffle uses, not
+                  // necessarily USDC - convert to real USD before comparing
+                  // against ticket revenue (a paid ticket is always USDC).
+                  const prizeUsd = prize * prizeAssetPrice;
                   const profit = worstCaseTicketRevenueProfit(
                     config.raffle_type,
                     config.max_players,
-                    ticketPriceDisplay,
-                    prize
+                    ticketPriceUsd,
+                    prizeUsd
                   );
                   return (
                     <span className="cyol-hint">
@@ -492,6 +592,28 @@ export function RaffleDetailPage() {
           </div>
         </div>
       </div>
+    )}
+
+    {showBuyValueWarning && buyWorstCaseShareUsd !== null && (
+      <ValueMismatchWarningModal
+        bodyText={t("createYourOwnLuck.detail.valueMismatchBuyBody", {
+          shareUsd: buyWorstCaseShareUsd.toFixed(2),
+          ticketUsd: ticketPriceUsd.toFixed(2),
+        })}
+        onCancel={() => setShowBuyValueWarning(false)}
+        onConfirm={confirmBuyValueWarning}
+      />
+    )}
+
+    {showFundValueWarning && fundWorstCaseShareUsd !== null && (
+      <ValueMismatchWarningModal
+        bodyText={t("createYourOwnLuck.detail.valueMismatchFundBody", {
+          shareUsd: fundWorstCaseShareUsd.toFixed(2),
+          ticketUsd: ticketPriceUsd.toFixed(2),
+        })}
+        onCancel={() => setShowFundValueWarning(false)}
+        onConfirm={confirmFundValueWarning}
+      />
     )}
     </>
   );
