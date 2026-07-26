@@ -35,10 +35,19 @@ export async function fetchTokenPrices(): Promise<TokenPrices> {
 // ambiguity this mirrors: USDC_DENOM and LUNC_DENOM are both literally
 // "uluna" on this testnet (contracts/create-your-own-luck/src/contract.rs),
 // so a denom string alone can't distinguish real LUNC from real USDC until
-// mainnet uses their actual distinct denoms - anything that isn't "uusd"
-// (USTC) is priced as USDC ($1) for now, consistent with how it's already
-// displayed. This under-prices a LUNC-labeled prize on testnet specifically;
-// it self-corrects the moment mainnet's real LUNC denom is wired in.
-export function priceForDenom(denom: string, prices: TokenPrices): number {
-  return denom === "uusd" ? prices.ustc : prices.usdc;
+// mainnet uses their actual distinct denoms - "uluna" is priced as USDC
+// ($1) for now, consistent with how it's already displayed. This
+// under-prices a LUNC-labeled prize on testnet specifically; it
+// self-corrects the moment mainnet's real LUNC denom is wired in.
+//
+// Returns null for any other denom (CodeRabbit finding, 2026-07-26): a paid
+// raffle's prize is always uluna/uusd (contract-enforced), but a *free*
+// raffle's prize denom isn't restricted at all, and this reads whatever
+// raffle is on-chain, not just ones created through this exact form - an
+// unrecognized denom must show "can't calculate" to its callers, never
+// silently get treated as $1.
+export function priceForDenom(denom: string, prices: TokenPrices): number | null {
+  if (denom === "uusd") return prices.ustc;
+  if (denom === "uluna") return prices.usdc;
+  return null;
 }

@@ -181,17 +181,17 @@ export function RaffleDetailPage() {
   // prize-vs-ticket mismatch is normal lottery variance, not this).
   const isPaid = config.ticket_price !== "0";
   const ticketPriceUsd = ulunaToDisplayNumber(config.ticket_price);
+  const prizeAssetPrice =
+    prizeDenom && tokenPrices.status === "loaded" ? priceForDenom(prizeDenom, tokenPrices.prices) : null;
   const fundedPrizeUsd =
-    isAirdrop && prizeDenom && tokenPrices.status === "loaded"
-      ? ulunaToDisplayNumber(raffleStatus.prize_amount) * priceForDenom(prizeDenom, tokenPrices.prices)
-      : null;
+    isAirdrop && prizeAssetPrice !== null ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice : null;
   const buyWorstCaseShareUsd = fundedPrizeUsd !== null ? fundedPrizeUsd / config.max_players : null;
   const buyValueMismatch = isAirdrop && isPaid && buyWorstCaseShareUsd !== null && buyWorstCaseShareUsd < ticketPriceUsd;
 
   const plannedPrizeNum = Number(prizeAmount);
   const plannedPrizeUsd =
-    isAirdrop && prizeDenom && tokenPrices.status === "loaded" && Number.isFinite(plannedPrizeNum)
-      ? plannedPrizeNum * priceForDenom(prizeDenom, tokenPrices.prices)
+    isAirdrop && prizeAssetPrice !== null && Number.isFinite(plannedPrizeNum)
+      ? plannedPrizeNum * prizeAssetPrice
       : null;
   const fundWorstCaseShareUsd = plannedPrizeUsd !== null ? plannedPrizeUsd / config.max_players : null;
   const fundValueMismatch = isAirdrop && isPaid && fundWorstCaseShareUsd !== null && fundWorstCaseShareUsd < ticketPriceUsd;
@@ -412,11 +412,11 @@ export function RaffleDetailPage() {
               {(config.raffle_type === "single_winner" || config.raffle_type === "airdrop") &&
                 (() => {
                   const prize = Number(prizeAmount);
-                  if (!Number.isFinite(prize) || !prizeDenom || tokenPrices.status !== "loaded") return null;
+                  if (!Number.isFinite(prize) || prizeAssetPrice === null) return null;
                   // Prize amount is in whatever asset this raffle uses, not
                   // necessarily USDC - convert to real USD before comparing
                   // against ticket revenue (a paid ticket is always USDC).
-                  const prizeUsd = prize * priceForDenom(prizeDenom, tokenPrices.prices);
+                  const prizeUsd = prize * prizeAssetPrice;
                   const profit = worstCaseTicketRevenueProfit(
                     config.raffle_type,
                     config.max_players,

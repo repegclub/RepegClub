@@ -72,9 +72,11 @@ export function CyolSafetyChecklist({
   // meaningless number (CodeRabbit finding on this PR, 2026-07-26, fixed by
   // converting through real market prices instead of assuming 1:1 USD).
   const prizeDenom = "native" in config.prize_asset ? config.prize_asset.native.denom : null;
+  const prizeAssetPrice =
+    prizeDenom && tokenPrices.status === "loaded" ? priceForDenom(prizeDenom, tokenPrices.prices) : null;
   const prizeUsdc =
-    prizeDenom && raffleStatus.prize_amount !== "0" && tokenPrices.status === "loaded"
-      ? ulunaToDisplayNumber(raffleStatus.prize_amount) * priceForDenom(prizeDenom, tokenPrices.prices)
+    prizeAssetPrice !== null && raffleStatus.prize_amount !== "0"
+      ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice
       : null;
 
   const fundraiserProfit =

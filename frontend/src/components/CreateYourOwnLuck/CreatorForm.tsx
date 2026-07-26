@@ -310,6 +310,14 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
               ))}
             </div>
             <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetHint")}</span>
+            {prizeAssetChoice === "lunc" && (
+              // CodeRabbit finding (2026-07-26): LUNC and USDC serialize to
+              // the exact same testnet denom (see cyolPrizeDenoms.ts) - a
+              // creator picking LUNC deserves to know it won't actually
+              // behave any differently from USDC until mainnet, rather than
+              // silently getting USDC's behavior.
+              <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetLuncTestnetHint")}</span>
+            )}
           </label>
 
           <label className="cyol-field">
@@ -360,20 +368,18 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                 const price = Number(ticketPrice);
                 const max = Number(maxPlayers);
                 const prize = Number(plannedPrizeAmount);
-                if (
-                  !Number.isFinite(price) ||
-                  !Number.isFinite(max) ||
-                  !Number.isFinite(prize) ||
-                  max < 2 ||
-                  tokenPrices.status !== "loaded"
-                ) {
+                const assetPrice =
+                  tokenPrices.status === "loaded"
+                    ? priceForDenom(PRIZE_ASSET_DENOMS[prizeAssetChoice], tokenPrices.prices)
+                    : null;
+                if (!Number.isFinite(price) || !Number.isFinite(max) || !Number.isFinite(prize) || max < 2 || assetPrice === null) {
                   return null;
                 }
                 // The prize amount is in whatever asset was chosen above,
                 // not necessarily USDC - convert to real USD before
                 // comparing against ticket revenue (also in USDC, the only
                 // denom a paid ticket can use).
-                const prizeUsd = prize * priceForDenom(PRIZE_ASSET_DENOMS[prizeAssetChoice], tokenPrices.prices);
+                const prizeUsd = prize * assetPrice;
                 const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prizeUsd);
                 return (
                   <span className="cyol-hint">
