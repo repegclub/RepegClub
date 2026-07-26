@@ -15,7 +15,8 @@ import {
 } from "../../lib/cyolChecklist";
 import { useCyolCreatorCooldown } from "../../hooks/useCyolCreatorCooldown";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
-import { priceForDenom } from "../../lib/tokenPrices";
+import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
+import type { PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
 
 // Separate signals, deliberately not a single combined score (agreed with
 // the user 2026-07-25/26, see "Repeg Club - Create Your Own Luck (seguridad,
@@ -44,10 +45,20 @@ export function CyolSafetyChecklist({
   config,
   raffleStatus,
   entrants,
+  prizeAssetChoiceOverride,
 }: {
   config: CyolConfigResponse;
   raffleStatus: CyolRaffleStatusResponse;
   entrants: string[];
+  // Real bug found live-testing (2026-07-26): a fresh raffle's prize_asset
+  // denom alone can't distinguish LUNC from USDC on this testnet (both
+  // "uluna" - see tokenPrices.ts's priceForDenom), so this checklist would
+  // silently price a LUNC prize as USDC ($1/unit) and show a false "safe"
+  // signal. RaffleDetailPage passes the creator's real choice through here
+  // when it's known (right after creating this exact raffle, via router
+  // state) - falls back to the denom-based guess otherwise, same
+  // degradation as everywhere else this ambiguity shows up.
+  prizeAssetChoiceOverride?: PrizeAssetChoice;
 }) {
   const { t } = useTranslation();
 
@@ -73,7 +84,11 @@ export function CyolSafetyChecklist({
   // converting through real market prices instead of assuming 1:1 USD).
   const prizeDenom = "native" in config.prize_asset ? config.prize_asset.native.denom : null;
   const prizeAssetPrice =
-    prizeDenom && tokenPrices.status === "loaded" ? priceForDenom(prizeDenom, tokenPrices.prices) : null;
+    prizeAssetChoiceOverride && tokenPrices.status === "loaded"
+      ? priceForAsset(prizeAssetChoiceOverride, tokenPrices.prices)
+      : prizeDenom && tokenPrices.status === "loaded"
+        ? priceForDenom(prizeDenom, tokenPrices.prices)
+        : null;
   const prizeUsdc =
     prizeAssetPrice !== null && raffleStatus.prize_amount !== "0"
       ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice

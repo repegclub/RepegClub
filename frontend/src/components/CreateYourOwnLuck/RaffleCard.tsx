@@ -4,6 +4,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import type { CyolRaffleSummaryState } from "../../hooks/useCyolRaffleSummaries";
 import { formatUluna } from "../../lib/format";
 import { prizeCurrencyLabel, formatAmount } from "../../lib/cyolFormat";
+import { participantsWord, statusLabelKey } from "../../lib/cyolTerminology";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
 
 const RAFFLE_TYPE_LABEL_KEYS: Record<string, string> = {
@@ -42,7 +43,7 @@ export function RaffleCard({
           {t("createYourOwnLuck.raffleIdLabel", { id: index })} · {t(RAFFLE_TYPE_LABEL_KEYS[config.raffle_type])}
         </span>
         <span className={`cyol-card-status cyol-card-status-${raffleStatus.status}`}>
-          {t(`createYourOwnLuck.status.${raffleStatus.status}`)}
+          {t(statusLabelKey(raffleStatus.status, config.raffle_type))}
         </span>
       </div>
       {isMine && <span className="cyol-card-mine">{t("createYourOwnLuck.createdByYou")}</span>}
@@ -53,6 +54,7 @@ export function RaffleCard({
         {t("createYourOwnLuck.players", {
           count: raffleStatus.unique_player_count,
           max: config.max_players,
+          unit: participantsWord(config.raffle_type),
         })}
       </p>
       <p className="cyol-card-address">{address}</p>
