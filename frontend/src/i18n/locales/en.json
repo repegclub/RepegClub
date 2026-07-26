@@ -381,7 +381,8 @@
       "valueMismatchWarningConfirm": "Proceed anyway",
       "valueMismatchBuyBody": "At current market prices, each wallet's guaranteed share of this airdrop is worth about {{shareUsd}} USDC — less than the {{ticketUsd}} USDC ticket you're about to pay. You'd be paying more than you'd get back, even in the best case.",
       "valueMismatchFundBody": "At current market prices, each wallet's guaranteed share of this airdrop would be worth about {{shareUsd}} USDC — less than the {{ticketUsd}} USDC ticket price. Participants would be paying more than they receive, even if the raffle fills up completely. This could hurt your reputation as a creator.",
-      "valueMismatchSingleWinnerBody": "At current market prices, this raffle's entire prize is worth about {{prizeUsd}} USDC — less than the {{ticketUsd}} USDC ticket price. Whoever wins would receive less than they paid for a single ticket, while you as the creator get your ticket revenue back regardless of the outcome. This could look like a scam to participants."
+      "valueMismatchSingleWinnerBody": "At current market prices, this raffle's entire prize is worth about {{prizeUsd}} USDC — less than the {{ticketUsd}} USDC ticket price. Whoever wins would receive less than they paid for a single ticket, while you as the creator get your ticket revenue back regardless of the outcome. This could look like a scam to participants.",
+      "valueMismatchSingleWinnerBuyBody": "This raffle's prize is worth about {{prizeUsd}} USDC at current market prices — less than the {{ticketUsd}} USDC ticket. Even if you win, you'll lose money. Do you want to buy anyway?"
     },
     "checklist": {
       "title": "Safety checklist",
