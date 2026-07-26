@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Repeg Club — Platform Architecture</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #070911;
+    --surface: #12172a;
+    --surface-2: #0c1020;
+    --border: #262c42;
+    --border-bright: #3c4560;
+    --ink: #f1f4fb;
+    --ink-dim: #8a91ab;
+    --blue: #5492f7;
+    --blue-deep: #0b3a9e;
+    --gold: #ffd166;
+    --crimson: #ff3a5e;
+    --teal: #3ecf8e;
+  }
+  * { text-wrap: pretty; }
+  html, body { background: var(--bg); color: var(--ink); }
+  body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Manrope, sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+
+  /* --- Diagram node styling --- */
+  .node-rect {
+    fill: var(--surface);
+    stroke: var(--border-bright);
+    stroke-width: 1.25;
+    transition: stroke 0.25s ease, stroke-width 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
+  }
+  .node-group { cursor: pointer; }
+  .node-group:focus { outline: none; }
+  .node-group:focus .node-rect { stroke: var(--gold); stroke-width: 2; }
+  .node-label { fill: var(--ink); font-size: 12.5px; font-weight: 600; pointer-events: none; }
+  .node-sub { fill: var(--ink-dim); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; pointer-events: none; }
+  .cat-dot { pointer-events: none; }
+
+  .edge-path {
+    fill: none;
+    stroke: var(--border-bright);
+    stroke-width: 1.4;
+    opacity: 0.55;
+    transition: stroke 0.25s ease, stroke-width 0.25s ease, opacity 0.25s ease;
+  }
+  .edge-label {
+    fill: var(--ink-dim);
+    font-size: 9px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+
+  /* Dimmed state applied to the whole diagram when something is selected */
+  .diagram.has-focus .node-rect { opacity: 0.25; }
+  .diagram.has-focus .node-label { opacity: 0.35; }
+  .diagram.has-focus .node-sub { opacity: 0.3; }
+  .diagram.has-focus .edge-path { opacity: 0.08; }
+  .diagram.has-focus .cat-dot { opacity: 0.3; }
+
+  .node-group.is-active .node-rect { opacity: 1 !important; stroke: var(--gold); stroke-width: 2; filter: drop-shadow(0 0 6px rgba(255,209,102,0.35)); }
+  .node-group.is-active .node-label { opacity: 1 !important; }
+  .node-group.is-active .node-sub { opacity: 1 !important; }
+  .node-group.is-active .cat-dot { opacity: 1 !important; }
+  .edge-path.is-active { opacity: 1 !important; stroke: var(--gold); stroke-width: 2.25; }
+  .edge-label.is-active { opacity: 1 !important; fill: var(--gold); }
+
+  .node-group.is-dimmed-less .node-rect { opacity: 0.55; }
+  .node-group.is-dimmed-less .node-label { opacity: 0.6; }
+  .node-group.is-dimmed-less .node-sub { opacity: 0.5; }
+  .node-group.is-dimmed-less .cat-dot { opacity: 0.55; }
+
+  .flow-chip {
+    border: 1px solid var(--border-bright);
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  }
+  .flow-chip:hover { border-color: var(--blue); transform: translateX(2px); }
+  .flow-chip.is-selected {
+    border-color: var(--gold);
+    background: linear-gradient(90deg, rgba(255,209,102,0.10), transparent);
+  }
+
+  .step-row { animation: stepIn 0.35s ease both; }
+  @keyframes stepIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .node-rect, .edge-path, .node-group, .flow-chip { transition: none !important; }
+    .step-row { animation: none !important; }
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 8px; }
+</style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b" style="border-color: var(--border);">
+    <div class="max-w-[1500px] mx-auto px-6 py-6 flex flex-col gap-1">
+      <p class="mono text-xs tracking-widest uppercase" style="color: var(--gold);">Repeg Club · repegclub.com</p>
+      <h1 class="text-2xl md:text-3xl font-bold" style="text-wrap: balance;">Platform architecture</h1>
+      <p class="text-sm max-w-2xl" style="color: var(--ink-dim);">
+        How a wallet, three minigames, four contracts, a keeper bot, and the deploy pipeline actually fit together — generated 2026-07-26.
+        Click any node to see its direct connections, or pick a flow on the right to trace a real path end to end.
+      </p>
+    </div>
+  </header>
+
+  <main class="max-w-[1500px] mx-auto px-6 py-6 flex flex-col xl:flex-row gap-6">
+
+    <!-- Diagram column -->
+    <section class="flex-1 min-w-0 flex flex-col gap-4">
+
+      <!-- Legend -->
+      <div class="card px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background: var(--gold);"></span><span style="color: var(--ink-dim);">Actor</span></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background: var(--blue);"></span><span style="color: var(--ink-dim);">Frontend</span></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background: var(--crimson);"></span><span style="color: var(--ink-dim);">External service</span></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background: var(--blue-deep);"></span><span style="color: var(--ink-dim);">Contract (on-chain)</span></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background: var(--teal);"></span><span style="color: var(--ink-dim);">Infrastructure</span></span>
+        <span class="ml-auto text-[11px]" style="color: var(--ink-dim);" id="hint-text">Click a node, or select a flow →</span>
+      </div>
+
+      <!-- Diagram -->
+      <div class="card p-2 overflow-x-auto">
+        <svg id="diagram" class="diagram" viewBox="0 0 1500 780" style="min-width: 1100px; width: 100%; height: auto;">
+          <g id="edges-layer"></g>
+          <g id="nodes-layer"></g>
+        </svg>
+      </div>
+
+      <!-- Node detail panel -->
+      <div class="card px-5 py-4 hidden" id="node-panel">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="mono text-[10px] uppercase tracking-widest" id="node-panel-cat" style="color: var(--ink-dim);"></p>
+            <h3 class="text-base font-semibold mt-0.5" id="node-panel-label"></h3>
+          </div>
+          <button id="node-panel-close" class="text-xs px-2 py-1 rounded-md" style="color: var(--ink-dim); border: 1px solid var(--border-bright);">✕</button>
+        </div>
+        <p class="text-sm mt-2" style="color: var(--ink-dim);" id="node-panel-desc"></p>
+      </div>
+    </section>
+
+    <!-- Flows column -->
+    <aside class="w-full xl:w-[420px] shrink-0 flex flex-col gap-4">
+      <div class="card p-4">
+        <h2 class="text-sm font-semibold uppercase tracking-wide mb-3" style="color: var(--ink-dim);">Flows</h2>
+        <div id="flow-list" class="flex flex-col gap-2"></div>
+      </div>
+
+      <div class="card p-4 flex-1 min-h-[220px]" id="flow-detail-card">
+        <p class="text-sm" style="color: var(--ink-dim);" id="flow-empty-state">Select a flow above to trace it step by step.</p>
+        <div id="flow-detail" class="hidden">
+          <h3 class="text-base font-semibold" id="flow-title"></h3>
+          <p class="text-xs mt-1 mb-4" style="color: var(--ink-dim);" id="flow-summary"></p>
+          <ol id="flow-steps" class="flex flex-col gap-3"></ol>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="max-w-[1500px] mx-auto px-6 pb-8 pt-2 text-xs flex flex-wrap gap-x-4 gap-y-1" style="color: var(--ink-dim);">
+    <span>20 nodes · 27 edges · 9 flows</span>
+    <span>·</span>
+    <span>Machine-readable twin: <code class="mono">architecture.json</code></span>
+  </footer>
+
+<script>
+const DATA = {"generated": "2026-07-26", "platform": "Repeg Club", "description": "Architecture map of the Repeg Club platform on Terra Classic: 3 minigames (Wheel of Repeg, Weekly Round, Create Your Own Luck), their contracts, the React frontend, the keeper bot, and the deploy/verification pipeline. Nodes are components; edges are real relationships (signs, calls, automates, hosts, deploys); flows are ordered, named sequences through the graph for common real-world paths.", "nodes": [{"id": "actor_player", "label": "Player / Creator", "category": "actor", "description": "Anyone with a Keplr wallet - buys tickets, creates raffles, or just verifies a result. No account, no signup."}, {"id": "keplr", "label": "Keplr Wallet", "category": "external", "description": "Browser extension holding the private key. Every transaction is signed here - the frontend never sees a key."}, {"id": "frontend_app", "label": "Frontend (React + Vite SPA)", "category": "frontend", "description": "Single static single-page app, 4 routes, built with @goblinhunt/cosmes for chain access. 100% static - no backend of its own."}, {"id": "page_wheel", "label": "Wheel of Repeg  (/)", "category": "frontend", "description": "Flagship game: buy a ticket, win the right to repeg your own USTC to USDC 1:1."}, {"id": "page_weekly", "label": "Weekly Round  (/weekly-round)", "category": "frontend", "description": "Platform-wide jackpot fed by every Wheel of Repeg round plus its own daily-rising ticket price."}, {"id": "page_cyol_list", "label": "Create Your Own Luck  (/create-your-own-luck)", "category": "frontend", "description": "Discovery feed of every raffle (read from the factory) plus the creator form."}, {"id": "page_cyol_detail", "label": "Raffle detail  (/create-your-own-luck/:address)", "category": "frontend", "description": "One page per raffle: fund, buy tickets, close, draw/execute, reveal, verify, claim."}, {"id": "lib_token_prices", "label": "tokenPrices.ts", "category": "frontend", "description": "Fetches real LUNC/USTC market prices so the safety checklist can price a non-USDC prize correctly instead of assuming 1:1."}, {"id": "lib_verify", "label": "Verification panels", "category": "frontend", "description": "Recomputes a draw's SHA-256 client-side from public chain data (block hash, entrant list) - anyone can check a result wasn't rigged, without trusting the site."}, {"id": "coingecko", "label": "CoinGecko API", "category": "external", "description": "Public, keyless price API - informational only, never gates a transaction."}, {"id": "chain_rpc", "label": "Terra Classic RPC / LCD", "category": "external", "description": "rebel-2 testnet today; the same code targets columbus-5 mainnet by swapping one config value."}, {"id": "contract_wheel", "label": "Wheel Manager contract", "category": "contract", "description": "CosmWasm/Rust. Ticket pool -> block-hash draw -> winner gets the right to redeem their own USTC for USDC 1:1."}, {"id": "contract_weekly", "label": "Weekly Round contract", "category": "contract", "description": "One grand prize per week, topped up by every Wheel Manager round plus its own rising-price ticket sales."}, {"id": "contract_cyol_factory", "label": "CYOL Factory contract", "category": "contract", "description": "Instantiates a fresh, independent raffle contract per creator (CosmWasm submessage + reply) and keeps the public on-chain registry - also owns the creator cooldown anti-abuse mechanism."}, {"id": "contract_cyol_raffle", "label": "CYOL Raffle instance", "category": "contract", "description": "One immutable contract per raffle. SingleWinner, Podium, or Airdrop - prize in LUNC, USDC, or USTC."}, {"id": "keeper_bot", "label": "Keeper bot (Node.js)", "category": "infra", "description": "Polls chain state and calls CloseRound/DrawWinner (or CloseWeek/DrawWeeklyWinner) the instant either is eligible - deliberately dumb/immediate, which is what actually defeats block-grinding. Does NOT watch Create Your Own Luck: its creator decides when to reveal to their own community."}, {"id": "oracle_vm", "label": "Oracle Cloud VM", "category": "infra", "description": "Always-Free tier VM. Runs the keeper as a systemd service with auto-restart, confirmed to recover in seconds after a crash or reboot."}, {"id": "github_repo", "label": "GitHub (private repo)", "category": "infra", "description": "Source of truth. Work happens on branches + PRs, never direct pushes to main, while CodeRabbit's free tier lasts."}, {"id": "coderabbit", "label": "CodeRabbit", "category": "infra", "description": "Automated PR review - catches real bugs before merge (denom mismatches, stale-state races, missing bounds checks) across dozens of PRs so far."}, {"id": "cloudflare", "label": "Cloudflare Pages", "category": "infra", "description": "Builds and deploys the frontend automatically on every push to main. No server to maintain, HTTPS by default."}], "edges": [{"id": "e1", "from": "actor_player", "to": "keplr", "relation": "signs with"}, {"id": "e2", "from": "keplr", "to": "frontend_app", "relation": "connects to"}, {"id": "e3", "from": "frontend_app", "to": "page_wheel", "relation": "renders"}, {"id": "e4", "from": "frontend_app", "to": "page_weekly", "relation": "renders"}, {"id": "e5", "from": "frontend_app", "to": "page_cyol_list", "relation": "renders"}, {"id": "e6", "from": "frontend_app", "to": "page_cyol_detail", "relation": "renders"}, {"id": "e7", "from": "page_wheel", "to": "contract_wheel", "relation": "queries & signs txs"}, {"id": "e8", "from": "page_weekly", "to": "contract_weekly", "relation": "queries & signs txs"}, {"id": "e9", "from": "page_cyol_list", "to": "contract_cyol_factory", "relation": "queries & signs txs"}, {"id": "e10", "from": "page_cyol_detail", "to": "contract_cyol_raffle", "relation": "queries & signs txs"}, {"id": "e11", "from": "contract_cyol_factory", "to": "contract_cyol_raffle", "relation": "instantiates (submsg + reply)"}, {"id": "e12", "from": "page_cyol_detail", "to": "lib_token_prices", "relation": "reads real prize value from"}, {"id": "e13", "from": "lib_token_prices", "to": "coingecko", "relation": "fetches prices from"}, {"id": "e14", "from": "contract_wheel", "to": "chain_rpc", "relation": "lives on"}, {"id": "e15", "from": "contract_weekly", "to": "chain_rpc", "relation": "lives on"}, {"id": "e16", "from": "contract_cyol_factory", "to": "chain_rpc", "relation": "lives on"}, {"id": "e17", "from": "contract_cyol_raffle", "to": "chain_rpc", "relation": "lives on"}, {"id": "e18", "from": "lib_verify", "to": "chain_rpc", "relation": "independently recomputes from"}, {"id": "e19", "from": "page_wheel", "to": "lib_verify", "relation": "embeds"}, {"id": "e20", "from": "page_cyol_detail", "to": "lib_verify", "relation": "embeds"}, {"id": "e21", "from": "keeper_bot", "to": "contract_wheel", "relation": "automates close/draw"}, {"id": "e22", "from": "keeper_bot", "to": "contract_weekly", "relation": "automates close/draw"}, {"id": "e23", "from": "keeper_bot", "to": "chain_rpc", "relation": "polls"}, {"id": "e24", "from": "oracle_vm", "to": "keeper_bot", "relation": "hosts (systemd)"}, {"id": "e25", "from": "github_repo", "to": "coderabbit", "relation": "triggers review on every PR"}, {"id": "e26", "from": "github_repo", "to": "cloudflare", "relation": "triggers build on push to main"}, {"id": "e27", "from": "cloudflare", "to": "frontend_app", "relation": "builds & serves"}], "flows": [{"id": "buy_wheel_ticket", "label": "Buy a Wheel of Repeg ticket", "summary": "The core, most-repeated action on the platform.", "steps": [{"node": "actor_player", "description": "Opens repegclub.com and connects Keplr."}, {"node": "keplr", "description": "Approves the BuyTicket transaction (amount + memo \"REPEG CLUB\")."}, {"edge": "e7", "description": "The ticket booth submits the signed transaction to the contract."}, {"node": "contract_wheel", "description": "BuyTicket executes: pool grows, ticket recorded, rolling deadline resets."}, {"node": "chain_rpc", "description": "Transaction confirms; the frontend refetches and the pool/ticket count update live."}]}, {"id": "wheel_round_auto_close", "label": "A round closes and draws itself", "summary": "No human needs to be present for a round to resolve.", "steps": [{"node": "oracle_vm", "description": "The always-on VM keeps the keeper process alive."}, {"node": "keeper_bot", "description": "Wakes on its poll interval, checks every watched round's eligibility."}, {"edge": "e21", "description": "Once max players or the rolling deadline is reached, it fires CloseRound then DrawWinner."}, {"node": "contract_wheel", "description": "The winner is derived from a future block's hash - unknown to anyone when the round closed."}, {"node": "page_wheel", "description": "Any player can now hit \"Reveal winner\" and watch the wheel land - no spoilers beforehand."}]}, {"id": "redeem_prize", "label": "Winner redeems USTC for USDC", "summary": "The entire point of the game: a personal repeg, funded by the pool.", "steps": [{"node": "actor_player", "description": "The winning wallet opens the redeem box, sees the exact USTC amount before signing."}, {"edge": "e7", "description": "Redeem is submitted with the chosen USTC amount attached."}, {"node": "contract_wheel", "description": "Redeem swaps the attached USTC for USDC 1:1 from the round's escrow, tax-free (funds attached to a contract call aren't taxed)."}, {"node": "chain_rpc", "description": "Confirmed on-chain; lifetime stats and the platform-wide \"USTC repegged\" counter update."}]}, {"id": "create_cyol_raffle", "label": "Create a raffle (Create Your Own Luck)", "summary": "Anyone can become a creator - no admin approval, no separate account.", "steps": [{"node": "actor_player", "description": "Opens the \"I'm a creator\" form: raffle type, ticket price, min/max players, prize asset."}, {"node": "keplr", "description": "Signs CreateRaffle - this signature *is* the creation, there's no draft to save."}, {"edge": "e9", "description": "The factory receives CreateRaffle."}, {"node": "contract_cyol_factory", "description": "Runs the creator-cooldown check, then instantiates a brand-new raffle contract via submessage."}, {"edge": "e11", "description": "The reply captures the new contract's real address."}, {"node": "contract_cyol_raffle", "description": "A fresh, immutable contract now exists - status Funding, waiting for its creator."}]}, {"id": "fund_and_open_raffle", "label": "Fund and open a raffle", "summary": "Where the safety checklist matters most - real money is about to commit.", "steps": [{"node": "actor_player", "description": "The creator returns to their raffle's page to fund it."}, {"edge": "e12", "description": "The page checks the planned prize's real market value."}, {"node": "lib_token_prices", "description": "Converts the prize (LUNC/USDC/USTC) to a real USD-equivalent, not a naive 1:1 assumption."}, {"node": "page_cyol_detail", "description": "If the prize is worth less than a single ticket, a checkbox-gated warning blocks funding until confirmed."}, {"node": "contract_cyol_raffle", "description": "PayServiceFee + DepositPrize execute; status flips to Open."}]}, {"id": "buy_raffle_ticket_and_reveal", "label": "Buy a raffle ticket and reveal the result", "summary": "Same anti-grinding spirit as Wheel of Repeg, but the creator - not a bot - decides when to draw.", "steps": [{"node": "actor_player", "description": "Buys one or more tickets in a single signed transaction."}, {"node": "contract_cyol_raffle", "description": "BuyTicket records the entry; hitting max_players closes and draws atomically in the same call."}, {"node": "actor_player", "description": "For SingleWinner, the creator alone calls DrawWinner - their moment to announce to their own community."}, {"node": "page_cyol_detail", "description": "SingleWinner reveals via the wheel; Airdrop reveals via a wallet-gated treasure chest showing that wallet's own share."}]}, {"id": "public_verification", "label": "Publicly verify any draw", "summary": "The trust mechanism: nobody has to take the site's word for a result.", "steps": [{"node": "actor_player", "description": "Opens \"Verify this round\" on any drawn round or raffle - works for a stranger's browser too."}, {"node": "lib_verify", "description": "Independently queries the real block (by height) and the real entrant list from chain."}, {"edge": "e18", "description": "Recomputes SHA-256(round id, block height, block time, entrants) from scratch, client-side."}, {"node": "chain_rpc", "description": "The recomputed hash is compared against the on-chain winner - match or mismatch, shown plainly."}]}, {"id": "cyol_safety_checklist", "label": "Real-time safety checklist (Create Your Own Luck)", "summary": "5 independent signals, never averaged into one score, so one bad signal can't hide behind good ones.", "steps": [{"node": "page_cyol_detail", "description": "Any visitor sees the checklist before deciding to buy in - not creator-only."}, {"edge": "e12", "description": "Fundraiser-vs-giveaway and prize-vs-ticket value both route through real prices."}, {"node": "lib_token_prices", "description": "Prices the prize in its real asset, not an assumed 1:1 with USDC."}, {"node": "contract_cyol_factory", "description": "GetCreatorCooldown is polled to flag a creator repeating small, paid raffles."}, {"node": "contract_cyol_raffle", "description": "Wallet concentration and self-buy are computed live from the entrant list, polled every 12s."}]}, {"id": "ci_cd_pipeline", "label": "Ship a change to production", "summary": "Every push to main is live within minutes, with an automated reviewer in between.", "steps": [{"node": "github_repo", "description": "A branch is pushed and a PR opened - direct pushes to main are avoided by convention."}, {"edge": "e25", "description": "CodeRabbit reviews automatically, usually within a minute."}, {"node": "coderabbit", "description": "Real findings get fixed before merge, not rubber-stamped."}, {"edge": "e26", "description": "On merge, Cloudflare picks up the push to main."}, {"node": "cloudflare", "description": "Builds the Vite app and deploys - no manual step, no server to touch."}, {"node": "frontend_app", "description": "repegclub.com serves the new build within minutes."}]}]};
+
+const CATEGORY_META = {
+  actor:    { color: "#ffd166", label: "Actor" },
+  frontend: { color: "#5492f7", label: "Frontend" },
+  external: { color: "#ff3a5e", label: "External service" },
+  contract: { color: "#0b3a9e", label: "Contract (on-chain)", ring: "#5492f7" },
+  infra:    { color: "#3ecf8e", label: "Infrastructure" },
+};
+
+// Hand-tuned layout: presentation-only, deliberately kept out of the JSON
+// (that file is the semantic graph for agents; pixel positions are a UI
+// concern for this page alone).
+const LAYOUT = {
+  actor_player:          { x: 40,   y: 330, w: 190, h: 56 },
+  keplr:                 { x: 40,   y: 430, w: 190, h: 56 },
+
+  frontend_app:          { x: 300,  y: 30,  w: 210, h: 56 },
+  page_wheel:            { x: 300,  y: 130, w: 210, h: 56 },
+  page_weekly:           { x: 300,  y: 220, w: 210, h: 56 },
+  page_cyol_list:        { x: 300,  y: 310, w: 210, h: 56 },
+  page_cyol_detail:      { x: 300,  y: 400, w: 210, h: 56 },
+  lib_token_prices:      { x: 300,  y: 520, w: 210, h: 56 },
+  lib_verify:            { x: 300,  y: 610, w: 210, h: 56 },
+
+  coingecko:             { x: 590,  y: 520, w: 190, h: 56 },
+  chain_rpc:             { x: 590,  y: 320, w: 190, h: 66 },
+
+  contract_wheel:        { x: 880,  y: 100, w: 210, h: 56 },
+  contract_weekly:       { x: 880,  y: 200, w: 210, h: 56 },
+  contract_cyol_factory: { x: 880,  y: 320, w: 210, h: 62 },
+  contract_cyol_raffle:  { x: 880,  y: 440, w: 210, h: 62 },
+
+  keeper_bot:            { x: 1180, y: 100, w: 210, h: 56 },
+  oracle_vm:             { x: 1180, y: 200, w: 210, h: 56 },
+  github_repo:           { x: 1180, y: 380, w: 210, h: 56 },
+  coderabbit:            { x: 1180, y: 470, w: 210, h: 56 },
+  cloudflare:            { x: 1180, y: 560, w: 210, h: 56 },
+};
+
+const COLUMN_HEADERS = [
+  { x: 40,   text: "ACTOR" },
+  { x: 300,  text: "FRONTEND (repegclub.com)" },
+  { x: 590,  text: "EXTERNAL / CHAIN" },
+  { x: 880,  text: "CONTRACTS (CosmWasm)" },
+  { x: 1180, text: "INFRASTRUCTURE" },
+];
+
+const nodesById = Object.fromEntries(DATA.nodes.map(n => [n.id, n]));
+const edgesById = Object.fromEntries(DATA.edges.map(e => [e.id, e]));
+
+const svgNS = "http://www.w3.org/2000/svg";
+const edgesLayer = document.getElementById("edges-layer");
+const nodesLayer = document.getElementById("nodes-layer");
+const diagram = document.getElementById("diagram");
+
+function center(id) {
+  const l = LAYOUT[id];
+  return { x: l.x + l.w / 2, y: l.y + l.h / 2, left: l.x, right: l.x + l.w, top: l.y, bottom: l.y + l.h };
+}
+
+// Column headers
+COLUMN_HEADERS.forEach(h => {
+  const t = document.createElementNS(svgNS, "text");
+  t.setAttribute("x", h.x);
+  t.setAttribute("y", 16);
+  t.setAttribute("class", "node-sub");
+  t.setAttribute("fill", "#8a91ab");
+  t.textContent = h.text;
+  nodesLayer.appendChild(t);
+});
+
+// Edges (drawn first, under nodes)
+DATA.edges.forEach(e => {
+  const a = center(e.from), b = center(e.to);
+  const sameColumn = Math.abs(a.x - b.x) < 5;
+  let d;
+  if (sameColumn) {
+    const x = a.x;
+    d = `M ${x} ${a.bottom} L ${x} ${b.top}`;
+  } else {
+    const startX = a.x < b.x ? a.right : a.left;
+    const endX = a.x < b.x ? b.left : b.right;
+    const midX = (startX + endX) / 2;
+    d = `M ${startX} ${a.y} C ${midX} ${a.y}, ${midX} ${b.y}, ${endX} ${b.y}`;
+  }
+  const path = document.createElementNS(svgNS, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("class", "edge-path");
+  path.dataset.id = e.id;
+  path.dataset.from = e.from;
+  path.dataset.to = e.to;
+  edgesLayer.appendChild(path);
+});
+
+// Nodes
+DATA.nodes.forEach(n => {
+  const l = LAYOUT[n.id];
+  const meta = CATEGORY_META[n.category];
+  const g = document.createElementNS(svgNS, "g");
+  g.setAttribute("class", "node-group");
+  g.setAttribute("tabindex", "0");
+  g.setAttribute("role", "button");
+  g.setAttribute("aria-label", n.label);
+  g.dataset.id = n.id;
+
+  const rect = document.createElementNS(svgNS, "rect");
+  rect.setAttribute("x", l.x);
+  rect.setAttribute("y", l.y);
+  rect.setAttribute("width", l.w);
+  rect.setAttribute("height", l.h);
+  rect.setAttribute("rx", 10);
+  rect.setAttribute("class", "node-rect");
+  g.appendChild(rect);
+
+  const dot = document.createElementNS(svgNS, "circle");
+  dot.setAttribute("cx", l.x + 14);
+  dot.setAttribute("cy", l.y + 14);
+  dot.setAttribute("r", 4);
+  dot.setAttribute("fill", meta.ring || meta.color);
+  dot.setAttribute("class", "cat-dot");
+  g.appendChild(dot);
+
+  const sub = document.createElementNS(svgNS, "text");
+  sub.setAttribute("x", l.x + 26);
+  sub.setAttribute("y", l.y + 17);
+  sub.setAttribute("class", "node-sub");
+  sub.textContent = meta.label;
+  g.appendChild(sub);
+
+  const label = document.createElementNS(svgNS, "text");
+  label.setAttribute("x", l.x + 14);
+  label.setAttribute("y", l.y + (l.h > 58 ? 38 : 40));
+  label.setAttribute("class", "node-label");
+  // wrap long labels onto a second tspan if needed
+  const words = n.label.split(" ");
+  if (n.label.length > 24) {
+    const mid = Math.ceil(words.length / 2);
+    const line1 = words.slice(0, mid).join(" ");
+    const line2 = words.slice(mid).join(" ");
+    label.textContent = line1;
+    const tspan2 = document.createElementNS(svgNS, "tspan");
+    tspan2.setAttribute("x", l.x + 14);
+    tspan2.setAttribute("dy", "15");
+    tspan2.textContent = line2;
+    label.appendChild(tspan2);
+  } else {
+    label.textContent = n.label;
+  }
+  g.appendChild(label);
+
+  nodesLayer.appendChild(g);
+});
+
+// --- Interaction state ---
+let activeFlow = null;
+let activeNode = null;
+
+function clearFocus() {
+  diagram.classList.remove("has-focus");
+  document.querySelectorAll(".node-group").forEach(el => el.classList.remove("is-active", "is-dimmed-less"));
+  document.querySelectorAll(".edge-path").forEach(el => el.classList.remove("is-active"));
+}
+
+function focusNeighbors(nodeId) {
+  clearFocus();
+  diagram.classList.add("has-focus");
+  const g = document.querySelector(`.node-group[data-id="${nodeId}"]`);
+  if (g) g.classList.add("is-active");
+  document.querySelectorAll(".edge-path").forEach(edge => {
+    if (edge.dataset.from === nodeId || edge.dataset.to === nodeId) {
+      edge.classList.add("is-active");
+      const otherId = edge.dataset.from === nodeId ? edge.dataset.to : edge.dataset.from;
+      const otherG = document.querySelector(`.node-group[data-id="${otherId}"]`);
+      if (otherG) otherG.classList.add("is-dimmed-less");
+    }
+  });
+}
+
+function shortestEdgePath(start, end) {
+  if (start === end) return [];
+  const adjacency = {};
+  DATA.edges.forEach(e => {
+    (adjacency[e.from] ||= []).push({ to: e.to, edge: e.id });
+    (adjacency[e.to] ||= []).push({ to: e.from, edge: e.id });
+  });
+  const visited = new Set([start]);
+  const queue = [[start, []]];
+  while (queue.length) {
+    const [node, path] = queue.shift();
+    for (const { to, edge } of adjacency[node] || []) {
+      if (visited.has(to)) continue;
+      if (to === end) return [...path, edge];
+      visited.add(to);
+      queue.push([to, [...path, edge]]);
+    }
+  }
+  return [];
+}
+
+// A flow's narrative steps only call out the edges worth explaining - the
+// mechanical hops in between (e.g. wallet -> frontend -> page) are filled in
+// here via shortest path, so the highlighted diagram is always one connected
+// walk end to end, never disconnected islands.
+function focusFlow(flow) {
+  clearFocus();
+  diagram.classList.add("has-focus");
+  const nodeIds = new Set();
+  const edgeIds = new Set();
+  const orderedNodes = [];
+  flow.steps.forEach(s => {
+    if (s.node) {
+      nodeIds.add(s.node);
+      orderedNodes.push(s.node);
+    }
+    if (s.edge) {
+      edgeIds.add(s.edge);
+      const e = edgesById[s.edge];
+      nodeIds.add(e.from);
+      nodeIds.add(e.to);
+      orderedNodes.push(e.from, e.to);
+    }
+  });
+  for (let i = 0; i < orderedNodes.length - 1; i++) {
+    if (orderedNodes[i] === orderedNodes[i + 1]) continue;
+    shortestEdgePath(orderedNodes[i], orderedNodes[i + 1]).forEach(edgeId => {
+      edgeIds.add(edgeId);
+      nodeIds.add(edgesById[edgeId].from);
+      nodeIds.add(edgesById[edgeId].to);
+    });
+  }
+  nodeIds.forEach(id => {
+    const g = document.querySelector(`.node-group[data-id="${id}"]`);
+    if (g) g.classList.add("is-active");
+  });
+  edgeIds.forEach(id => {
+    const el = document.querySelector(`.edge-path[data-id="${id}"]`);
+    if (el) el.classList.add("is-active");
+  });
+}
+
+function showNodePanel(id) {
+  const n = nodesById[id];
+  const panel = document.getElementById("node-panel");
+  panel.classList.remove("hidden");
+  document.getElementById("node-panel-cat").textContent = CATEGORY_META[n.category].label;
+  document.getElementById("node-panel-label").textContent = n.label;
+  document.getElementById("node-panel-desc").textContent = n.description;
+}
+
+function clearFlowSelection() {
+  activeFlow = null;
+  document.querySelectorAll(".flow-chip").forEach(c => c.classList.remove("is-selected"));
+  document.getElementById("flow-empty-state").classList.remove("hidden");
+  document.getElementById("flow-detail").classList.add("hidden");
+}
+
+document.querySelectorAll(".node-group").forEach(g => {
+  const activate = () => {
+    clearFlowSelection();
+    activeNode = g.dataset.id;
+    focusNeighbors(g.dataset.id);
+    showNodePanel(g.dataset.id);
+    document.getElementById("hint-text").textContent = "Click the diagram background to clear the selection.";
+  };
+  g.addEventListener("click", activate);
+  g.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); activate(); } });
+});
+
+diagram.addEventListener("click", (ev) => {
+  if (ev.target === diagram || ev.target.tagName === "svg") {
+    activeNode = null;
+    clearFlowSelection();
+    clearFocus();
+    document.getElementById("node-panel").classList.add("hidden");
+    document.getElementById("hint-text").textContent = "Click a node, or select a flow →";
+  }
+});
+document.getElementById("node-panel-close").addEventListener("click", () => {
+  activeNode = null;
+  clearFocus();
+  document.getElementById("node-panel").classList.add("hidden");
+});
+
+// --- Flow list ---
+const flowList = document.getElementById("flow-list");
+DATA.flows.forEach(flow => {
+  const chip = document.createElement("button");
+  chip.className = "flow-chip w-full text-left rounded-lg px-3 py-2.5 text-sm";
+  chip.dataset.id = flow.id;
+  chip.innerHTML = `<span class="font-medium">${flow.label}</span>`;
+  chip.addEventListener("click", () => selectFlow(flow.id));
+  flowList.appendChild(chip);
+});
+
+function selectFlow(flowId) {
+  const flow = DATA.flows.find(f => f.id === flowId);
+  activeFlow = flowId;
+  activeNode = null;
+  document.getElementById("node-panel").classList.add("hidden");
+  document.querySelectorAll(".flow-chip").forEach(c => c.classList.toggle("is-selected", c.dataset.id === flowId));
+  focusFlow(flow);
+  document.getElementById("hint-text").textContent = `Tracing: ${flow.label}`;
+
+  document.getElementById("flow-empty-state").classList.add("hidden");
+  const detail = document.getElementById("flow-detail");
+  detail.classList.remove("hidden");
+  document.getElementById("flow-title").textContent = flow.label;
+  document.getElementById("flow-summary").textContent = flow.summary;
+
+  const stepsEl = document.getElementById("flow-steps");
+  stepsEl.innerHTML = "";
+  flow.steps.forEach((s, i) => {
+    const label = s.node ? nodesById[s.node].label : `${nodesById[edgesById[s.edge].from].label} → ${nodesById[edgesById[s.edge].to].label}`;
+    const li = document.createElement("li");
+    li.className = "step-row flex gap-3";
+    li.style.animationDelay = `${i * 60}ms`;
+    li.innerHTML = `
+      <span class="mono text-xs shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5" style="background: rgba(255,209,102,0.12); color: var(--gold);">${i + 1}</span>
+      <div class="min-w-0">
+        <p class="text-sm font-medium leading-snug">${label}</p>
+        <p class="text-xs mt-0.5" style="color: var(--ink-dim);">${s.description}</p>
+      </div>`;
+    stepsEl.appendChild(li);
+  });
+}
+</script>
+</body>
+</html>
