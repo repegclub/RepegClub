@@ -368,7 +368,22 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                 const price = Number(ticketPrice);
                 const max = Number(maxPlayers);
                 const prize = Number(plannedPrizeAmount);
-                if (!Number.isFinite(price) || !Number.isFinite(max) || !Number.isFinite(prize) || max < 2 || tokenPrices.status !== "loaded") {
+                // Mirrors validate()'s own constraints (price > 0 for
+                // SingleWinner, integer max_players) - without this, typing
+                // an invalid value still in progress (a negative price, a
+                // fractional max_players) showed a disclosure number for an
+                // input that submit would reject anyway (CodeRabbit finding,
+                // 2026-07-26).
+                if (
+                  !Number.isFinite(price) ||
+                  price <= 0 ||
+                  !Number.isFinite(max) ||
+                  !Number.isInteger(max) ||
+                  max < 2 ||
+                  !Number.isFinite(prize) ||
+                  prize < 0 ||
+                  tokenPrices.status !== "loaded"
+                ) {
                   return null;
                 }
                 // The prize amount is in whatever asset was chosen above,
