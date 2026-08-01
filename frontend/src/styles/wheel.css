@@ -789,20 +789,54 @@
     width: 100%;
     aspect-ratio: 1 / 1;
   }
+  /* Bled 30% past .pixel-wheel-wrap (centered, same technique as
+     .pixel-wheel-frame below) instead of the plain 100%/100% this used to
+     be - a canvas element hard-clips anything drawn outside its own CSS
+     box, so with the disc drawn oversized (see drawPixelWheel.ts) to reach
+     the frame's ring, a canvas sized too close to the disc's own edge
+     still clipped it at 9/3 o'clock. drawPixelWheel.ts's CANVAS_CSS_PERCENT
+     compensates the draw scale for this box size, so widening this margin
+     on its own does NOT make the disc look any bigger - keep both in sync
+     if this value changes. */
   .pixel-wheel-canvas {
     display: block;
-    position: relative;
-    top: 5%;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    left: -15%;
+    top: -15%;
+    width: 130%;
+    height: 130%;
     image-rendering: pixelated;
   }
+  /* frame.png (703x590, hub-free - see drawPixelWheel.ts for why) isn't
+     square, and what matters for centering is the ring's INNER hole (where
+     the disc shows through), not the outer silhouette of the ring shape -
+     those two centers aren't the same point, since the ring's border isn't
+     perfectly even thickness all the way around (thicker near the top,
+     where it connects to the pointer). Measured via a horizontal scan
+     from the image's own center outward on each row to find the hole's
+     edges specifically, then fit: hole center (349.9, 313.8), radius
+     211.9, both in native px. left/top/width/height below place that
+     measured hole center exactly on .pixel-wheel-wrap's own center (where
+     the canvas disc is drawn) and scale the whole frame image to the same
+     real-world scale the disc uses (both images share drawPixelWheel's
+     OVERSIZE-derived scale, since the artist drew them in the same native
+     coordinate space, and are NOT re-tied to .pixel-wheel-canvas's own
+     110% bleed above - see that constant's own comment in
+     drawPixelWheel.ts for why) - re-derive all 4 numbers together if
+     either image changes, and re-measure the HOLE specifically, not the
+     ring's outer edge, if this ever needs recalibrating again. */
+  /* ~7% smaller than the disc-matched scale above (188.319/158.049): first
+     dropped 10% (169.487/142.244), which left too little of the ring
+     showing and cut into some of the disc's own art at the rim, then
+     nudged back up 1% three times - same hole-center fraction re-applied
+     each time so the hole stays centered on the wrap regardless of the
+     overall scale. */
   .pixel-wheel-frame {
     position: absolute;
-    left: -0.6%;
-    top: -5.9%;
-    width: 101.2%;
-    height: 109.8%;
+    left: -36.914%;
+    top: -27.947%;
+    width: 174.623%;
+    height: 146.554%;
     image-rendering: pixelated;
     pointer-events: none;
     z-index: 2;
