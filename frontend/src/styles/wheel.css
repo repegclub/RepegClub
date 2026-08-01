@@ -1042,16 +1042,6 @@
        centering across the FULL box (equal-ish padding) put the text lower
        than the cloud's actual visual center. */
     padding: 0.5rem 1.6rem 1.6rem;
-    /* 10% lower floor than .host-guide-bubble's own clamp(0.85rem, 7cqw,
-       1.3rem) - on a real phone (not just a narrowed desktop window - this
-       bubble's container gets narrower there than any PC browser width
-       reproduced) the floor was still wide enough that some phrases wrapped
-       to 3 lines instead of 2, and the cloud's fixed-height silhouette (see
-       above, can't stretch) only has room for 2 - the 3rd line ran past the
-       cloud's own top edge. Only changes anything where the container is
-       already narrow enough to hit the floor, so desktop (confirmed fine
-       in both a wide and a narrowed window) is untouched. */
-    font-size: clamp(0.765rem, 7cqw, 1.3rem);
   }
   .host-guide-bubble-nube::before {
     content: "";
@@ -1076,6 +1066,30 @@
        computed font-size, clamped or not), instead of needing its own
        separate clamp to avoid the same "shrinks too far" problem. */
     transform: translate(-0.82em, -0.88em);
+  }
+  /* .host-guide-bubble-nube's fixed-size cloud silhouette (can't stretch,
+     see above) only has room for 2 lines of text - on a real phone (not
+     just a narrowed desktop window; this bubble's container gets narrower
+     there than any PC browser width reproduced, confirmed fine in both a
+     wide and a narrowed window) some phrases still wrapped to 3 lines even
+     after a first floor reduction, running past the cloud's own top edge.
+     Explicitly scoped to the same 980px breakpoint .wheel-cabinet itself
+     uses, rather than relying only on the font-size clamp's floor kicking
+     in naturally - both the font-size and the text's upward nudge below
+     are mobile-only on purpose, desktop must stay exactly as it already
+     was confirmed correct. Positioned AFTER the base .host-guide-bubble-nube
+     p rule above (same selector, same specificity) so it actually wins the
+     cascade on mobile instead of silently losing to source order. */
+  @media (max-width: 980px) {
+    .host-guide-bubble-nube {
+      font-size: clamp(0.689rem, 7cqw, 1.3rem);
+    }
+    .host-guide-bubble-nube p {
+      /* Less upward shift than the -0.88em above (5% smaller magnitude) -
+         gives the top line more clearance from the cloud's own upper
+         edge. */
+      transform: translate(-0.82em, -0.836em);
+    }
   }
 
   /* ---------- Wheel card / big-top tent ---------- */
