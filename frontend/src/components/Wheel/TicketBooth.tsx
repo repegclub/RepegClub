@@ -45,9 +45,13 @@ export function TicketBooth({
   // Guarded, not trusted blindly - returnObjects falls back to the raw key
   // string (not an array) if ticketBooth.hostHype is ever missing from a
   // locale, and an empty array would otherwise make `% HYPE_LINES.length`
-  // divide by zero below.
+  // divide by zero below. Elements are filtered too, not just the array
+  // shape - a stray non-string/empty entry would still reach HostGuide's
+  // message.split("\n") otherwise.
   const hostHype = t("ticketBooth.hostHype", { returnObjects: true });
-  const HYPE_LINES = Array.isArray(hostHype) ? (hostHype as string[]) : [];
+  const HYPE_LINES = Array.isArray(hostHype)
+    ? hostHype.filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+    : [];
   const [hypeIndex, setHypeIndex] = useState(0);
   useEffect(() => {
     if (HYPE_LINES.length === 0) return;
