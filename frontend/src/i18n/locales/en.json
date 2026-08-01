@@ -6,6 +6,7 @@
   "myWinnings": {
     "title": "Your unclaimed prizes",
     "roundLabel": "Round #{{roundId}} — unredeemed",
+    "weekLabel": "Week #{{weekId}} — unredeemed",
     "amount": "{{amount}} USDC"
   },
   "platformRepegged": {

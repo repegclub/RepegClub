@@ -51,7 +51,7 @@ export function MyWeeklyWinningsPanel({
           {revealedWinnings.map((entry) => (
             <div key={entry.week_id} className="my-winnings-entry">
               <p className="my-winnings-round-label">
-                {t("myWinnings.roundLabel", { roundId: entry.week_id })}
+                {t("myWinnings.weekLabel", { weekId: entry.week_id })}
               </p>
               <p className="my-winnings-amount">
                 {t("myWinnings.amount", {

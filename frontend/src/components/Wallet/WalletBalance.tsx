@@ -28,15 +28,28 @@ export function WalletBalance() {
     function onClickOutside(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setIsOpen(false);
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsOpen(false);
+    }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [isOpen]);
 
   if (!address) return null;
 
   return (
     <div className="bag-wrap" ref={wrapRef}>
-      <button type="button" className="bag-toggle-btn" onClick={() => setIsOpen((v) => !v)}>
+      <button
+        type="button"
+        className="bag-toggle-btn"
+        aria-haspopup="true"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((v) => !v)}
+      >
         <img src="/wheel-pixel/coinbag-icon.png" alt="" className="bag-toggle-icon" />
         <span className="bag-toggle-label">
           {t("wallet.bagToggle")} {isOpen ? "▴" : "▾"}

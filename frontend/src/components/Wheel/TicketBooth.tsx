@@ -42,9 +42,15 @@ export function TicketBooth({
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const HYPE_LINES = t("ticketBooth.hostHype", { returnObjects: true }) as string[];
+  // Guarded, not trusted blindly - returnObjects falls back to the raw key
+  // string (not an array) if ticketBooth.hostHype is ever missing from a
+  // locale, and an empty array would otherwise make `% HYPE_LINES.length`
+  // divide by zero below.
+  const hostHype = t("ticketBooth.hostHype", { returnObjects: true });
+  const HYPE_LINES = Array.isArray(hostHype) ? (hostHype as string[]) : [];
   const [hypeIndex, setHypeIndex] = useState(0);
   useEffect(() => {
+    if (HYPE_LINES.length === 0) return;
     const id = setInterval(() => setHypeIndex((i) => (i + 1) % HYPE_LINES.length), 8000);
     return () => clearInterval(id);
   }, [HYPE_LINES.length]);
@@ -88,7 +94,7 @@ export function TicketBooth({
       <div className="booth-art-wrap">
         <img src="/wheel-pixel/ticket-booth.png" alt="" className="booth-art" />
         <div className="booth-host-bubble">
-          <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />
+          {HYPE_LINES[hypeIndex] && <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />}
         </div>
       </div>
       <div className="booth-details">

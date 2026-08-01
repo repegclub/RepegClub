@@ -16,6 +16,13 @@ function getPaletteImage(onLoad?: () => void): HTMLImageElement | null {
       paletteLoaded = true;
       paletteWaiters.splice(0).forEach((cb) => cb());
     };
+    // Without this, a failed load (offline, bad deploy) would leave
+    // paletteLoaded false forever - every future redraw request just keeps
+    // pushing another callback onto paletteWaiters with nothing to ever
+    // drain it.
+    paletteImg.onerror = () => {
+      paletteWaiters.splice(0);
+    };
   }
   if (!paletteLoaded && onLoad) paletteWaiters.push(onLoad);
   return paletteLoaded ? paletteImg : null;
@@ -31,7 +38,7 @@ export function drawPixelWheel(ctx: CanvasRenderingContext2D, rotation: number, 
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
 
-  const img = getPaletteImage(() => drawPixelWheel(ctx, rotation, size));
+  const img = getPaletteImage(() => drawPixelWheel(ctx, rotation, _arcs, size));
   if (!img) return;
 
   // Drawn a couple percent oversized so its edge sits under the static

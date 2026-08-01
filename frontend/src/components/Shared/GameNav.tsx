@@ -27,14 +27,27 @@ export function GameNav({ current }: { current: string }) {
     function onClickOutside(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setIsOpen(false);
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsOpen(false);
+    }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [isOpen]);
 
   return (
     <nav className="game-nav">
       <div className="game-nav-wrap" ref={wrapRef}>
-        <button type="button" className="game-nav-toggle-btn" onClick={() => setIsOpen((v) => !v)}>
+        <button
+          type="button"
+          className="game-nav-toggle-btn"
+          aria-haspopup="true"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen((v) => !v)}
+        >
           {t("gameSwitcher.gamesToggle")}{" "}
           <span className="game-nav-toggle-arrow">{isOpen ? "▴" : "▾"}</span>
         </button>
