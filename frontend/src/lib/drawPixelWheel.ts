@@ -33,7 +33,24 @@ function getPaletteImage(onLoad?: () => void): HTMLImageElement | null {
 // intentionally unused, since this wheel's layout never depends on them.
 export function drawPixelWheel(ctx: CanvasRenderingContext2D, rotation: number, _arcs?: unknown, size = 340) {
   const cx = size / 2;
-  const cy = size / 2;
+  // On phone-sized cards (rendered canvas well under its own 340px buffer)
+  // a sliver of the booth background's own painted wheel peeks out above
+  // the disc - not visible once the card is desktop-sized. A CSS media
+  // query nudge (top: calc(5% + 7px) below 980px) fixed this in every
+  // simulator/desktop test but a real iPhone (Safari/Chrome/Brave - all
+  // WebKit on iOS, so really one engine) never applied it even after
+  // clearing cache, closing the tab, and switching networks - baking the
+  // same nudge into the draw call sidesteps whatever that was, since it
+  // only depends on the canvas's own measured rendered width, not on CSS
+  // cascade/media-query evaluation at all. `size` is the fixed internal
+  // buffer (340) regardless of display size, so the 7 target screen-px
+  // has to be converted through the buffer/rendered-width ratio to still
+  // read as 7px once the browser scales the buffer down to fit the card.
+  const renderedWidth = ctx.canvas.clientWidth || size;
+  const MOBILE_CARD_THRESHOLD = 300;
+  const MOBILE_NUDGE_PX = 7;
+  const cy =
+    size / 2 + (renderedWidth < MOBILE_CARD_THRESHOLD ? MOBILE_NUDGE_PX * (size / renderedWidth) : 0);
 
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
