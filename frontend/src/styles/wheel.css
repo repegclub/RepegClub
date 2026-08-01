@@ -797,6 +797,18 @@
     height: 100%;
     image-rendering: pixelated;
   }
+  /* Same 980px breakpoint as .wheel-cabinet's own row->stack switch (see
+     above) - only below it does the wheel card shrink small enough
+     (~90-150px rendered disc) for this to be visible. A small fixed-px
+     nudge, not another %: confirmed correct as-is on desktop (both wide and
+     a narrowed window), so this is scoped to mobile rather than risking a
+     shift there too. User-reported/eyeballed on a real phone, not derived
+     from a formula - nudge the +7px up/down if it drifts again. */
+  @media (max-width: 980px) {
+    .pixel-wheel-canvas {
+      top: calc(5% + 7px);
+    }
+  }
   .pixel-wheel-frame {
     position: absolute;
     left: -0.6%;
