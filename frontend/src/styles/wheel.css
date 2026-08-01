@@ -1042,6 +1042,16 @@
        centering across the FULL box (equal-ish padding) put the text lower
        than the cloud's actual visual center. */
     padding: 0.5rem 1.6rem 1.6rem;
+    /* 10% lower floor than .host-guide-bubble's own clamp(0.85rem, 7cqw,
+       1.3rem) - on a real phone (not just a narrowed desktop window - this
+       bubble's container gets narrower there than any PC browser width
+       reproduced) the floor was still wide enough that some phrases wrapped
+       to 3 lines instead of 2, and the cloud's fixed-height silhouette (see
+       above, can't stretch) only has room for 2 - the 3rd line ran past the
+       cloud's own top edge. Only changes anything where the container is
+       already narrow enough to hit the floor, so desktop (confirmed fine
+       in both a wide and a narrowed window) is untouched. */
+    font-size: clamp(0.765rem, 7cqw, 1.3rem);
   }
   .host-guide-bubble-nube::before {
     content: "";
