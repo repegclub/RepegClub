@@ -33,24 +33,32 @@ function getPaletteImage(onLoad?: () => void): HTMLImageElement | null {
 // intentionally unused, since this wheel's layout never depends on them.
 export function drawPixelWheel(ctx: CanvasRenderingContext2D, rotation: number, _arcs?: unknown, size = 340) {
   const cx = size / 2;
-  // On phone-sized cards (rendered canvas well under its own 340px buffer)
+  // Below .wheel-cabinet's own row->single-column breakpoint (see wheel.css)
   // a sliver of the booth background's own painted wheel peeks out above
-  // the disc - not visible once the card is desktop-sized. A CSS media
-  // query nudge (top: calc(5% + 7px) below 980px) fixed this in every
-  // simulator/desktop test but a real iPhone (Safari/Chrome/Brave - all
-  // WebKit on iOS, so really one engine) never applied it even after
-  // clearing cache, closing the tab, and switching networks - baking the
-  // same nudge into the draw call sidesteps whatever that was, since it
-  // only depends on the canvas's own measured rendered width, not on CSS
-  // cascade/media-query evaluation at all. `size` is the fixed internal
-  // buffer (340) regardless of display size, so the 7 target screen-px
-  // has to be converted through the buffer/rendered-width ratio to still
-  // read as 7px once the browser scales the buffer down to fit the card.
+  // the disc - not visible once the layout is wide enough for the row
+  // version. A CSS media-query nudge on the canvas's own `top` worked in
+  // every desktop/simulator test but never applied on a real iPhone across
+  // Safari, Chrome, and Brave (all WebKit on iOS - one engine), even after
+  // clearing cache and switching networks. Baking the nudge into the draw
+  // call instead sidesteps whatever that was.
+  //
+  // Gated on window.innerWidth against the exact same 980px breakpoint
+  // .wheel-cabinet itself uses, not on the canvas's own rendered width -
+  // that was tried first and mis-fired at desktop sizes too, because the
+  // wheel's own %-of-%-of-% container chain (see .wheel-booth-wheel) makes
+  // its rendered width land in roughly the same ~150-270px range whether
+  // the page is in its wide 3-column layout or its narrow single-column
+  // one, with no width gap clean enough to threshold on directly. The
+  // layout's own breakpoint has no such ambiguity - it's already confirmed
+  // correct on every device this got tested on. `size` is still the fixed
+  // internal buffer (340) regardless of display size, so the 7 target
+  // screen-px is converted through the buffer/rendered-width ratio to
+  // still read as 7px once the browser scales the buffer down to fit
+  // whatever the card's actual size turns out to be.
+  const isMobileLayout = window.innerWidth < 981;
   const renderedWidth = ctx.canvas.clientWidth || size;
-  const MOBILE_CARD_THRESHOLD = 300;
   const MOBILE_NUDGE_PX = 7;
-  const cy =
-    size / 2 + (renderedWidth < MOBILE_CARD_THRESHOLD ? MOBILE_NUDGE_PX * (size / renderedWidth) : 0);
+  const cy = size / 2 + (isMobileLayout ? MOBILE_NUDGE_PX * (size / renderedWidth) : 0);
 
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
