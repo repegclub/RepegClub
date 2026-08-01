@@ -7,9 +7,9 @@ import { WeeklyPoolBanner } from "./WeeklyPoolBanner";
 import { WeeklyWheelCard } from "./WeeklyWheelCard";
 import { MyWeeklyWinningsPanel } from "./MyWeeklyWinningsPanel";
 import { EntrantsPanel } from "../Wheel/EntrantsPanel";
-import { FeedbackButton } from "../Wheel/FeedbackButton";
+import { FeedbackSection } from "../Shared/FeedbackSection";
 import { LifetimeStatsPanel } from "../Wheel/LifetimeStatsPanel";
-import { GameSwitcher } from "../Shared/GameSwitcher";
+import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
@@ -69,19 +69,19 @@ export function WeeklyRoundPage() {
   return (
     <main className="weekly-page">
       <div className="wallet-bar">
-        <ConnectWalletButton />
-        <WalletBalance denom={weekState.status === "loaded" ? weekState.config.redemption_denom : undefined} />
-        <FeedbackButton />
-        <AdminSweepButton
-          adminAddress={weekState.status === "loaded" ? weekState.config.admin : undefined}
-          contractAddress={WEEKLY_ROUND_ADDRESS}
-          redemptionDenom={weekState.status === "loaded" ? weekState.config.redemption_denom : undefined}
-        />
+        <GameNav current="/weekly-round" />
+        <div className="wallet-bar-right">
+          <ConnectWalletButton />
+          <WalletBalance />
+          <AdminSweepButton
+            adminAddress={weekState.status === "loaded" ? weekState.config.admin : undefined}
+            contractAddress={WEEKLY_ROUND_ADDRESS}
+            redemptionDenom={weekState.status === "loaded" ? weekState.config.redemption_denom : undefined}
+          />
+        </div>
       </div>
 
       <WeeklyHeroSign />
-
-      <GameSwitcher current="/weekly-round" />
 
       {weekState.status === "loaded" && (
         <WeeklyPoolBanner
@@ -135,6 +135,8 @@ export function WeeklyRoundPage() {
           <LifetimeStatsPanel stats={lifetimeStats} />
         </div>
       </div>
+
+      <FeedbackSection />
     </main>
   );
 }

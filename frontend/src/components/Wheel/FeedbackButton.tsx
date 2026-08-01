@@ -47,7 +47,8 @@ export function FeedbackButton() {
   return (
     <>
       <button type="button" className="history-open-btn" onClick={() => setIsOpen(true)}>
-        {t("feedback.button")}
+        <img src="/wheel-pixel/envelope-icon.png" alt="" className="round-action-btn-icon" />
+        <span className="history-open-btn-label">{t("feedback.button")}</span>
       </button>
       {isOpen && (
         <div className="history-overlay" onClick={handleClose}>

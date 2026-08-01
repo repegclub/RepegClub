@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { buildVerificationPayload, verifyRound, type VerifyRoundResult } from "../../lib/verifyRound";
 
@@ -24,10 +25,37 @@ function useCopyable() {
   return { copiedKey, copy };
 }
 
+// Was an inline <details> accordion, now a popup "presented" by the
+// scientist character (design-references/characters/cutouts/Personalizados/
+// Scientist.png) - fits the tone (methodical, technical) of a verification
+// tool better than a plain disclosure triangle, and gives the growing
+// advanced/raw-data section room to breathe instead of pushing the rest of
+// the status card taller every time someone opens it.
 export function VerifyRoundPanel({ roundId, contractAddress }: VerifyRoundPanelProps) {
   const { t } = useTranslation();
   const [state, setState] = useState<VerifyState>({ kind: "idle" });
+  const [isOpen, setIsOpen] = useState(false);
   const { copiedKey, copy } = useCopyable();
+
+  const LAB_BUBBLE_LINES = t("verify.labBubble", { returnObjects: true }) as string[];
+  const [labBubbleIndex, setLabBubbleIndex] = useState(0);
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = setInterval(
+      () => setLabBubbleIndex((i) => (i + 1) % LAB_BUBBLE_LINES.length),
+      8000
+    );
+    return () => clearInterval(id);
+  }, [isOpen, LAB_BUBBLE_LINES.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
 
   async function handleVerify() {
     setState({ kind: "checking" });
@@ -40,102 +68,171 @@ export function VerifyRoundPanel({ roundId, contractAddress }: VerifyRoundPanelP
   }
 
   return (
-    <details className="verify-panel">
-      <summary className="verify-summary">{t("verify.title")}</summary>
-      <div className="verify-body">
-        <p className="verify-intro">{t("verify.intro")}</p>
-        <p className="verify-explanation">{t("verify.explanation")}</p>
-
-        <div className="verify-round-id">
-          <span>
-            {t("verify.roundId")}: <strong>{roundId}</strong>
-          </span>
-          <button type="button" className="verify-copy-btn" onClick={() => copy("roundId", String(roundId))}>
-            {copiedKey === "roundId" ? t("verify.copied") : t("verify.copy")}
-          </button>
+    <>
+      <div className="verify-scientist-wrap">
+        <div className="verify-speech-bubble-wrap">
+          <img src="/characters/globo-horizontal.png" alt="" className="verify-speech-bubble-img" />
+          <p className="verify-speech-bubble-text">
+            {t("verify.speechBubble").split("\n").map((line, i) => (
+              <span key={i}>{line}</span>
+            ))}
+          </p>
         </div>
-
-        {state.kind !== "done" && (
-          <button
-            type="button"
-            className="verify-check-btn"
-            onClick={handleVerify}
-            disabled={state.kind === "checking"}
-          >
-            {state.kind === "checking" ? t("verify.verifying") : t("verify.button")}
-          </button>
-        )}
-
-        {state.kind === "error" && <p className="verify-result verify-result-error">{t("verify.error")}</p>}
-
-        {state.kind === "done" && (
-          <div className={`verify-result ${state.result.matches ? "verify-result-ok" : "verify-result-error"}`}>
-            <p>{state.result.matches ? t("verify.matchTrue") : t("verify.matchFalse")}</p>
-            <dl className="verify-details">
-              <dt>{t("verify.drawHeight")}</dt>
-              <dd>{state.result.drawHeight}</dd>
-              <dt>{t("verify.blockTime")}</dt>
-              <dd>{state.result.blockTimeIso}</dd>
-              <dt>{t("verify.entrantsCount")}</dt>
-              <dd>{state.result.entrants.length}</dd>
-              <dt>{t("verify.drawGap")}</dt>
-              <dd>{state.result.drawGap}</dd>
-            </dl>
-            <p className="verify-raw-caption">{t("verify.drawGapCaption")}</p>
-          </div>
-        )}
-
-        {state.kind === "done" && (
-          <details className="verify-advanced">
-            <summary>{t("verify.advancedTitle")}</summary>
-            <div className="verify-advanced-body">
-              <p className="verify-raw-caption">{t("verify.advancedIntro")}</p>
-
-              <p className="verify-advanced-label">{t("verify.entrantsList")}</p>
-              <ul className="verify-entrants-list">
-                {state.result.entrants.map((addr, i) => (
-                  <li key={`${addr}-${i}`} className={i === state.result.winnerIndex ? "verify-winner-row" : ""}>
-                    {addr}
-                  </li>
-                ))}
-              </ul>
-
-              <dl className="verify-details">
-                <dt>{t("verify.digest")}</dt>
-                <dd className="verify-mono-wrap">{state.result.digestHex}</dd>
-                <dt>{t("verify.winnerIndex")}</dt>
-                <dd>{state.result.winnerIndex}</dd>
-              </dl>
-
-              <a className="verify-raw-link" href={state.result.blockQueryUrl} target="_blank" rel="noreferrer">
-                {t("verify.rawBlockLink")}
-              </a>
-              <p className="verify-raw-caption">{t("verify.rawBlockCaption")}</p>
-
-              <a
-                className="verify-raw-link"
-                href={state.result.entrantsQueryUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("verify.rawEntrantsLink")}
-              </a>
-              <p className="verify-raw-caption">{t("verify.rawEntrantsCaption")}</p>
-
-              <button
-                type="button"
-                className="verify-copy-btn verify-copy-json-btn"
-                onClick={() =>
-                  copy("json", JSON.stringify(buildVerificationPayload(state.result), null, 2))
-                }
-              >
-                {copiedKey === "json" ? t("verify.copied") : t("verify.copyJson")}
-              </button>
-              <p className="verify-raw-caption">{t("verify.copyJsonCaption")}</p>
-            </div>
-          </details>
-        )}
+        <img src="/characters/scientist.png" alt="" className="verify-scientist" />
+        <button type="button" className="verify-open-btn" onClick={() => setIsOpen(true)}>
+          {t("verify.title").split("\n").map((line, i) => (
+            <span key={i}>{line}</span>
+          ))}
+        </button>
       </div>
-    </details>
+      {isOpen && createPortal(
+        <div className="verify-modal-backdrop" onClick={() => setIsOpen(false)}>
+          <div
+            className="verify-modal-outline pixel-stepped-corners"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="verify-modal-border pixel-stepped-corners">
+              <div className="verify-modal-highlight pixel-stepped-corners">
+                <div className="verify-modal pixel-stepped-corners">
+                  <button
+                    type="button"
+                    className="verify-modal-close"
+                    onClick={() => setIsOpen(false)}
+                    aria-label={t("verify.close")}
+                  >
+                    &times;
+                  </button>
+                  <div className="verify-modal-header-wrap">
+                    <img src="/characters/verify-lab-panel.png" alt="" className="verify-modal-header" />
+                    <div className="verify-lab-bubble-wrap">
+                      <div className="host-guide-bubble-outline-rectangulo">
+                        <div className="host-guide-bubble host-guide-bubble-rectangulo">
+                          <p>{LAB_BUBBLE_LINES[labBubbleIndex]}</p>
+                        </div>
+                      </div>
+                      <div className="host-guide-bubble-tail host-guide-bubble-tail-1" />
+                      <div className="host-guide-bubble-tail host-guide-bubble-tail-2" />
+                    </div>
+                  </div>
+                  <div className="verify-modal-body">
+                    <p className="verify-intro">{t("verify.intro")}</p>
+                    <p className="verify-explanation">{t("verify.explanation")}</p>
+
+                    <div className="verify-round-id">
+                      <span>
+                        {t("verify.roundId")}: <strong>{roundId}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        className="verify-copy-btn"
+                        onClick={() => copy("roundId", String(roundId))}
+                      >
+                        {copiedKey === "roundId" ? t("verify.copied") : t("verify.copy")}
+                      </button>
+                    </div>
+
+                    {state.kind !== "done" && (
+                      <button
+                        type="button"
+                        className="verify-check-btn"
+                        onClick={handleVerify}
+                        disabled={state.kind === "checking"}
+                      >
+                        {state.kind === "checking" ? t("verify.verifying") : t("verify.button")}
+                      </button>
+                    )}
+
+                    {state.kind === "error" && (
+                      <p className="verify-result verify-result-error">{t("verify.error")}</p>
+                    )}
+
+                    {state.kind === "done" && (
+                      <div
+                        className={`verify-result ${state.result.matches ? "verify-result-ok" : "verify-result-error"}`}
+                      >
+                        <p>{state.result.matches ? t("verify.matchTrue") : t("verify.matchFalse")}</p>
+                        <dl className="verify-details">
+                          <dt>{t("verify.drawHeight")}</dt>
+                          <dd>{state.result.drawHeight}</dd>
+                          <dt>{t("verify.blockTime")}</dt>
+                          <dd>{state.result.blockTimeIso}</dd>
+                          <dt>{t("verify.entrantsCount")}</dt>
+                          <dd>{state.result.entrants.length}</dd>
+                          <dt>{t("verify.drawGap")}</dt>
+                          <dd>{state.result.drawGap}</dd>
+                        </dl>
+                        <p className="verify-raw-caption">{t("verify.drawGapCaption")}</p>
+                      </div>
+                    )}
+
+                    {state.kind === "done" && (
+                      <details className="verify-advanced">
+                        <summary>{t("verify.advancedTitle")}</summary>
+                        <div className="verify-advanced-body">
+                          <p className="verify-raw-caption">{t("verify.advancedIntro")}</p>
+
+                          <p className="verify-advanced-label">{t("verify.entrantsList")}</p>
+                          <ul className="verify-entrants-list">
+                            {state.result.entrants.map((addr, i) => (
+                              <li
+                                key={`${addr}-${i}`}
+                                className={i === state.result.winnerIndex ? "verify-winner-row" : ""}
+                              >
+                                {addr}
+                              </li>
+                            ))}
+                          </ul>
+
+                          <dl className="verify-details">
+                            <dt>{t("verify.digest")}</dt>
+                            <dd className="verify-mono-wrap">{state.result.digestHex}</dd>
+                            <dt>{t("verify.winnerIndex")}</dt>
+                            <dd>{state.result.winnerIndex}</dd>
+                          </dl>
+
+                          <a
+                            className="verify-raw-link"
+                            href={state.result.blockQueryUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t("verify.rawBlockLink")}
+                          </a>
+                          <p className="verify-raw-caption">{t("verify.rawBlockCaption")}</p>
+
+                          <a
+                            className="verify-raw-link"
+                            href={state.result.entrantsQueryUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t("verify.rawEntrantsLink")}
+                          </a>
+                          <p className="verify-raw-caption">{t("verify.rawEntrantsCaption")}</p>
+
+                          <button
+                            type="button"
+                            className="verify-copy-btn verify-copy-json-btn"
+                            onClick={() =>
+                              copy("json", JSON.stringify(buildVerificationPayload(state.result), null, 2))
+                            }
+                          >
+                            {copiedKey === "json" ? t("verify.copied") : t("verify.copyJson")}
+                          </button>
+                          <p className="verify-raw-caption">{t("verify.copyJsonCaption")}</p>
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

@@ -11,9 +11,8 @@ import { FAQSection } from "./FAQSection";
 import { MyWinningsPanel } from "./MyWinningsPanel";
 import { LifetimeStatsPanel } from "./LifetimeStatsPanel";
 import { HistoryButton } from "./HistoryButton";
-import { FeedbackButton } from "./FeedbackButton";
 import { PlatformRepeggedBanner } from "./PlatformRepeggedBanner";
-import { GameSwitcher } from "../Shared/GameSwitcher";
+import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
@@ -113,45 +112,46 @@ export function WheelOfRepeg() {
   return (
     <main>
       <div className="wallet-bar">
-        <ConnectWalletButton />
-        <WalletBalance denom={roundState.status === "loaded" ? roundState.config.redemption_denom : undefined} />
-        <HistoryButton tiers={tiers} />
-        <FeedbackButton />
-        <AdminSweepButton
-          adminAddress={roundState.status === "loaded" ? roundState.config.admin : undefined}
-          contractAddress={selectedTier ?? undefined}
-          redemptionDenom={roundState.status === "loaded" ? roundState.config.redemption_denom : undefined}
-        />
-        <ExpiredPrizesButton
-          adminAddress={roundState.status === "loaded" ? roundState.config.admin : undefined}
-          tiers={tiers}
-        />
+        <GameNav current="/" />
+        <div className="wallet-bar-right">
+          <ConnectWalletButton />
+          <WalletBalance />
+          <HistoryButton tiers={tiers} />
+          <AdminSweepButton
+            adminAddress={roundState.status === "loaded" ? roundState.config.admin : undefined}
+            contractAddress={selectedTier ?? undefined}
+            redemptionDenom={roundState.status === "loaded" ? roundState.config.redemption_denom : undefined}
+          />
+          <ExpiredPrizesButton
+            adminAddress={roundState.status === "loaded" ? roundState.config.admin : undefined}
+            tiers={tiers}
+          />
+        </div>
       </div>
 
       <HeroSign />
 
-      <GameSwitcher current="/" />
+      <div className="stats-lead-row">
+        <PlatformRepeggedBanner stats={platformRepegged} />
 
-      <PlatformRepeggedBanner stats={platformRepegged} />
-
-      <p className="lead">{t("lead")}</p>
+        <div className="lead-outline pixel-stepped-corners">
+          <div className="lead-border pixel-stepped-corners">
+            <div className="lead-highlight pixel-stepped-corners">
+              <div className="lead pixel-stepped-corners">
+                <div className="lead-display-wrap">
+                  <img src="/characters/mago-display.png" alt="" className="lead-display" />
+                  <img src="/characters/alien-wizard.png" alt="" className="lead-professor" />
+                  <p className="lead-text">{t("lead")}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <TierTabs tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />
 
-      <div className="stage">
-        <div className="stage-left">
-          <TicketBooth
-            priceDisplay={ticketPriceDisplay}
-            ticketDenom={roundState.status === "loaded" ? roundState.config.ticket_denom : undefined}
-            ticketPriceAmount={roundState.status === "loaded" ? roundState.config.ticket_price : undefined}
-            contractAddress={selectedTier ?? undefined}
-            availableTickets={availableTickets}
-            ticketCap={ticketCap}
-            onPurchased={handlePurchased}
-          />
-          <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />
-        </div>
-
+      <div className="wheel-cabinet">
         <WheelCard
           key={selectedTier ?? "loading"}
           roundState={roundState}
@@ -167,7 +167,20 @@ export function WheelOfRepeg() {
           onViewRound={setViewRoundId}
         />
 
-        <div className="stage-right">
+        <div className="cabinet-ticket-booth">
+          <TicketBooth
+            priceDisplay={ticketPriceDisplay}
+            ticketDenom={roundState.status === "loaded" ? roundState.config.ticket_denom : undefined}
+            ticketPriceAmount={roundState.status === "loaded" ? roundState.config.ticket_price : undefined}
+            contractAddress={selectedTier ?? undefined}
+            availableTickets={availableTickets}
+            ticketCap={ticketCap}
+            onPurchased={handlePurchased}
+          />
+          <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />
+        </div>
+
+        <div className="cabinet-participants">
           <EntrantsPanel entrants={entrants} />
           {roundState.status === "loaded" && (
             <MyWinningsPanel

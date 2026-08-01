@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { BuntingRow } from "./BuntingRow";
 import { buildArcs, buildPlaceholderArcs, type Entrant } from "../../lib/wheelData";
 import { useWheelSpin } from "../../hooks/useWheelSpin";
-import { WheelCanvas } from "../Shared/WheelCanvas";
+import { PixelWheelCanvas } from "./PixelWheelCanvas";
+import { drawPixelWheel } from "../../lib/drawPixelWheel";
 import type { WheelRoundState } from "../../hooks/useWheelRound";
 import { PRIZE_SHARE } from "../../lib/queryWheelManager";
 import { formatUluna } from "../../lib/format";
@@ -13,6 +14,7 @@ import { markRevealed } from "../../lib/revealCache";
 import { WHEEL_MANAGER_ADDRESS } from "../../lib/deployment";
 import { VerifyRoundPanel } from "./VerifyRoundPanel";
 import { RedeemBox } from "./RedeemBox";
+import { HostGuide } from "./HostGuide";
 
 type WheelCardProps = {
   roundState: WheelRoundState & { refetch: () => void };
@@ -67,6 +69,19 @@ export function WheelCard({
   // the reveal, so the only way to tell them apart is tracking whether this
   // browser tab was the one that fired the DrawWinner tx.
   const [triggeredDraw, setTriggeredDraw] = useState(false);
+  // RedeemBox opens as a popup instead of inline - inline, its amount
+  // input/balance/confirm stack made this card grow tall enough to
+  // stretch (and visibly distort) the lab-screen image next to it.
+  const [isRedeemOpen, setIsRedeemOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isRedeemOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsRedeemOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isRedeemOpen]);
 
   // A fresh purchase makes any earlier "just withdrew/reclaimed" note stale
   // - without this, buying a new ticket after withdrawing left the old
@@ -85,7 +100,7 @@ export function WheelCard({
     () => (entrants.length > 0 ? buildArcs(entrants) : buildPlaceholderArcs(maxPlayers)),
     [entrants, maxPlayers]
   );
-  const { canvasRef, pointerRef, spinning, result, spin, reset } = useWheelSpin(arcs);
+  const { canvasRef, spinning, result, spin, reset } = useWheelSpin(arcs, drawPixelWheel);
 
   // Ticks every second so the countdown reads live and the close button
   // enables itself the instant the deadline passes, without the player
@@ -240,116 +255,196 @@ export function WheelCard({
     !hasMinPlayers &&
     nowSec >= roundState.round.opened_at + roundState.config.max_round_age_seconds + DEADLINE_SAFETY_BUFFER_SECONDS;
 
+  // Whether the top full-width action slot is taken by Redeem. When it's
+  // not (any revealed round where this wallet isn't sitting on an unclaimed
+  // prize - not just "didn't win"), Continue moves up into that same slot
+  // instead of sitting next to Verify - see the "Next Round"/"Continue"
+  // buttons below. Keeps the scientist+Verify row in the exact same spot
+  // whether there are 2 buttons or 3, instead of it shifting up whenever
+  // Redeem is absent.
+  const isWinnerWithPrize =
+    result.kind === "won" &&
+    loaded &&
+    walletState.status === "connected" &&
+    roundState.round.winner === walletState.address &&
+    roundState.round.prize_remaining !== "0";
+
   function formatCountdown(totalSeconds: number): string {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
+  // First pass at the Host mechanic (revived from session 3, unused since -
+  // see HostGuide.tsx): only a handful of SHORT messages go through it so
+  // far - the .rectangulo bubble can genuinely resize to fit text (real
+  // 9-slice border-image), but .alarma/.nube can't stretch without
+  // distorting their spiky/scalloped shapes, so they're reserved for short
+  // lines only. Long paragraphs (expired note, drawnByOther, etc.) stay as
+  // plain text in the status card, untouched - see the "Todavía no
+  // decidido" list in the project notes for what's still unmigrated.
+  const HOST_HYPE_LINES = t("wheel.hostHype", { returnObjects: true }) as string[];
+  const [hypeIndex, setHypeIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setHypeIndex((i) => (i + 1) % HOST_HYPE_LINES.length), 8000);
+    return () => clearInterval(id);
+  }, [HOST_HYPE_LINES.length]);
+
+  const hostBubble: { type: "rectangulo" | "horizontal" | "alarma" | "nube"; message: string } | null = (() => {
+    if (!loaded) return null;
+    // Checked before the generic "waiting for min players" branch below -
+    // both share the exact same secondsToDeadline===null condition (the
+    // deadline stays null until min players is reached, withdrawn ticket
+    // or not), so this has to win the tie or it's dead code.
+    if (
+      roundState.round.status === "open" &&
+      !hasMinPlayers &&
+      justWithdrawn &&
+      walletState.status === "connected"
+    ) {
+      return { type: "horizontal", message: t("wheel.withdrawnNote") };
+    }
+    if (roundState.round.status === "open" && !closeEligible && !expireEligible) {
+      if (secondsToDeadline !== null && secondsToDeadline <= 20) {
+        return { type: "alarma", message: t("wheel.lastCallShort") };
+      }
+      if (secondsToDeadline !== null) {
+        return { type: "horizontal", message: t("wheel.closesIn", { time: formatCountdown(secondsToDeadline) }) };
+      }
+      if (secondsToDeadline === null) {
+        return { type: "horizontal", message: t("wheel.waitingForMinPlayers", { min: roundState.config.min_players }) };
+      }
+    }
+    if (roundState.round.status === "closed") {
+      return { type: "horizontal", message: t("wheel.closedWaitingDraw") };
+    }
+    if (roundState.round.status === "expired" && justReclaimed) {
+      return { type: "horizontal", message: t("wheel.reclaimedNote") };
+    }
+    if (roundState.round.status === "drawn" && result.kind !== "won" && triggeredDraw) {
+      return { type: "rectangulo", message: t("wheel.drawnByYou") };
+    }
+    return { type: "nube", message: HOST_HYPE_LINES[hypeIndex] };
+  })();
+
+  // Renders as 3 separate top-level pieces (a Fragment, not one wrapping
+  // div) so the parent's CSS Grid (see WheelOfRepeg's .wheel-cabinet) can
+  // place each one in its own named area - header full-width up top, the
+  // wheel visual in the center column, actions right under it - instead of
+  // everything being trapped inside a single nested box.
   return (
-    <div className="wheel-card">
-      <BuntingRow count={15} />
-      <div className="prize-tag">
-        {loaded && (
-          <p className="prize-round-badge">{t("wheel.roundBadge", { roundId: roundState.round.round_id })}</p>
-        )}
-        <p className="prize-label">🏆 {t("wheel.prizeLabel")}</p>
-        <div className="prize-row">
-          <span className="prize-amount">{prizeDisplay}</span>
-          {roiPercent !== null && (
-            <span className="prize-roi">
-              {roiPercent >= 0 ? "+" : ""}
-              {roiPercent}%
-            </span>
+    <>
+      <div className="cabinet-header prize-banner">
+        <img src="/wheel-pixel/prize-banner.png" alt="" className="prize-banner-bg" />
+        <div className="prize-banner-content">
+          {loaded && (
+            <p className="prize-round-badge">{t("wheel.roundBadge", { roundId: roundState.round.round_id })}</p>
           )}
+          <p className="prize-label">
+            <img src="/wheel-pixel/trophy-icon.png" alt="" className="prize-label-icon" />
+            {t("wheel.prizeLabel")}
+          </p>
+          <p className="prize-amount">{prizeDisplay}</p>
+          <p className="prize-roi-caption">
+            {roiPercent !== null && (
+              <span className="prize-roi">
+                {roiPercent >= 0 ? "+" : ""}
+                {roiPercent}%
+              </span>
+            )}{" "}
+            {t("wheel.roiCaption", { price: ticketPriceDisplay })}
+          </p>
         </div>
-        <p className="prize-roi-caption">
-          {t("wheel.roiCaption", { price: ticketPriceDisplay })}
-        </p>
       </div>
 
-      <WheelCanvas canvasRef={canvasRef} pointerRef={pointerRef} />
+      <div className="cabinet-wheel-outline pixel-stepped-corners">
+      <div className="cabinet-wheel-border pixel-stepped-corners">
+      <div className="cabinet-wheel-highlight pixel-stepped-corners">
+      <div className="wheel-booth-slot pixel-stepped-corners">
+          <div className="wheel-booth-wrap">
+            <img src="/wheel-pixel/cabinet-wheel-bg.png" alt="" className="wheel-booth-bg" />
+            <div className="wheel-booth-wheel">
+              <PixelWheelCanvas canvasRef={canvasRef} />
+            </div>
+            {hostBubble && (
+              <div
+                className={`wheel-booth-host-bubble${
+                  hostBubble.type === "nube" ? " wheel-booth-host-bubble-nube" : ""
+                }`}
+              >
+                <HostGuide message={hostBubble.message} bubbleType={hostBubble.type} />
+              </div>
+            )}
+          </div>
+      </div>
+      </div>
+      </div>
+      </div>
 
-      {loaded && roundState.round.status === "open" && (
-        closeEligible ? (
-          <button
-            className="round-action-btn"
-            onClick={handleCloseRound}
-            disabled={actionBusy !== "idle" || walletState.status !== "connected"}
-          >
-            {actionBusy === "closing" ? t("wheel.closing") : t("wheel.closeRound")}
-          </button>
-        ) : expireEligible ? (
-          <button
-            className="round-action-btn"
-            onClick={handleExpireRound}
-            disabled={actionBusy !== "idle" || walletState.status !== "connected"}
-          >
-            {actionBusy === "expiring" ? t("wheel.expiring") : t("wheel.expireRound")}
-          </button>
-        ) : secondsToDeadline !== null ? (
-          <p className="round-status-note">
-            {t(secondsToDeadline <= 20 ? "wheel.closesInUrgent" : "wheel.closesIn", {
-              time: formatCountdown(secondsToDeadline),
-            })}
-          </p>
-        ) : (
-          <p className="round-status-note">
-            {t("wheel.waitingForMinPlayers", { min: roundState.config.min_players })}
-          </p>
-        )
+      <div className="cabinet-actions-outline pixel-stepped-corners">
+      <div className="cabinet-actions-border pixel-stepped-corners">
+      <div className="cabinet-actions-highlight pixel-stepped-corners">
+      <div className="cabinet-actions pixel-stepped-corners">
+      <div className="cabinet-actions-left">
+      {loaded && roundState.round.status === "open" && closeEligible && (
+        <button
+          className="round-action-btn"
+          onClick={handleCloseRound}
+          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+        >
+          {actionBusy === "closing" ? t("wheel.closing") : t("wheel.closeRound")}
+        </button>
+      )}
+      {loaded && roundState.round.status === "open" && !closeEligible && expireEligible && (
+        <button
+          className="round-action-btn"
+          onClick={handleExpireRound}
+          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+        >
+          {actionBusy === "expiring" ? t("wheel.expiring") : t("wheel.expireRound")}
+        </button>
       )}
 
       {loaded && roundState.round.status === "open" && roundState.round.round_id > 1 && (
         <button
           type="button"
-          className="round-action-btn"
+          className="round-action-btn round-action-btn-compact round-action-btn-view-previous"
           onClick={() => onViewRound?.(roundState.round.round_id - 1)}
         >
-          {t("wheel.viewPreviousRound", { roundId: roundState.round.round_id - 1 })}
+          <img src="/wheel-pixel/wheel-emoji.png" alt="" className="round-action-btn-icon" />
+          {t("wheel.viewPreviousRoundLine1", { roundId: roundState.round.round_id - 1 })}
+          <br />
+          {t("wheel.viewPreviousRoundLine2")}
         </button>
       )}
 
       {loaded &&
         roundState.round.status === "open" &&
         !hasMinPlayers &&
+        !justWithdrawn &&
         walletState.status === "connected" &&
         entrants.some((e) => e.address === walletState.address) && (
-          <>
-            {justWithdrawn ? (
-              <p className="round-status-note">{t("wheel.withdrawnNote")}</p>
-            ) : (
-              <>
-                <button
-                  className="round-action-btn round-action-btn-secondary"
-                  onClick={handleWithdrawTicket}
-                  disabled={actionBusy !== "idle"}
-                >
-                  {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("wheel.withdrawTicket")}
-                </button>
-                <p className="withdraw-lockin-note">{t("wheel.withdrawLockInNote")}</p>
-              </>
-            )}
-          </>
+          <button
+            className="round-action-btn round-action-btn-secondary"
+            onClick={handleWithdrawTicket}
+            disabled={actionBusy !== "idle"}
+          >
+            {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("wheel.withdrawTicket")}
+          </button>
         )}
 
       {loaded && roundState.round.status === "closed" && (
-        <>
-          <p className="round-status-note">{t("wheel.closedWaitingDraw")}</p>
-          <button
-            className="round-action-btn"
-            onClick={handleDrawWinner}
-            disabled={actionBusy !== "idle" || walletState.status !== "connected"}
-          >
-            {actionBusy === "drawing" ? t("wheel.drawing") : t("wheel.drawWinner")}
-          </button>
-        </>
+        <button
+          className="round-action-btn"
+          onClick={handleDrawWinner}
+          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+        >
+          {actionBusy === "drawing" ? t("wheel.drawing") : t("wheel.drawWinner")}
+        </button>
       )}
 
       {loaded && roundState.round.status === "expired" && (
         <>
-          <p className="round-status-note">{t("wheel.expiredNote")}</p>
-          {justReclaimed && <p className="round-status-note">{t("wheel.reclaimedNote")}</p>}
           {!justReclaimed &&
             walletState.status === "connected" &&
             entrants.some((e) => e.address === walletState.address) && (
@@ -368,65 +463,151 @@ export function WheelCard({
       )}
 
       {loaded && roundState.round.status === "drawn" && result.kind !== "won" && (
-        <>
-          <p className="round-status-note">
-            {t(triggeredDraw ? "wheel.drawnByYou" : "wheel.drawnByOther")}
-          </p>
-          <button
-            className="spin-btn"
-            onClick={() => roundState.round.winner && spinToWinner(roundState.round.winner)}
-            disabled={spinning || !roundState.round.winner}
-          >
-            {t("wheel.spin")}
-          </button>
-        </>
+        <button
+          className="spin-btn"
+          onClick={() => roundState.round.winner && spinToWinner(roundState.round.winner)}
+          disabled={spinning || !roundState.round.winner}
+        >
+          {t("wheel.spin")}
+        </button>
       )}
 
-      {result.kind === "won" && (
-        <>
-          {loaded &&
-            walletState.status === "connected" &&
-            roundState.round.winner === walletState.address &&
-            roundState.round.prize_remaining !== "0" && (
-              <RedeemBox
-                roundId={roundState.round.round_id}
-                redemptionDenom={roundState.config.redemption_denom}
-                prizeRemainingUluna={roundState.round.prize_remaining}
-                unclaimedDeadlineDays={roundState.config.unclaimed_deadline_days}
-                contractAddress={contractAddress}
-                onRedeemed={() => {
-                  roundState.refetch();
-                  onRedeemed?.();
-                }}
-              />
-            )}
-          <button className="round-action-btn" onClick={handleContinue}>
-            {t("wheel.continueNextRound")}
-          </button>
-        </>
+      {isWinnerWithPrize && (
+        <button className="round-action-btn redeem-open-btn" onClick={() => setIsRedeemOpen(true)}>
+          {t("wheel.redeem")}
+        </button>
+      )}
+
+      {result.kind === "won" && !isWinnerWithPrize && (
+        <button className="round-action-btn continue-top-btn" onClick={handleContinue}>
+          {t("wheel.continueNextRound")}
+        </button>
+      )}
+
+      {isRedeemOpen &&
+        loaded &&
+        createPortal(
+          <div className="verify-modal-backdrop" onClick={() => setIsRedeemOpen(false)}>
+            <div
+              className="verify-modal-outline pixel-stepped-corners"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="verify-modal-border pixel-stepped-corners">
+                <div className="verify-modal-highlight pixel-stepped-corners">
+                  <div className="verify-modal pixel-stepped-corners">
+                    <button
+                      type="button"
+                      className="verify-modal-close"
+                      onClick={() => setIsRedeemOpen(false)}
+                      aria-label={t("verify.close")}
+                    >
+                      &times;
+                    </button>
+                    <RedeemBox
+                      roundId={roundState.round.round_id}
+                      redemptionDenom={roundState.config.redemption_denom}
+                      prizeRemainingUluna={roundState.round.prize_remaining}
+                      unclaimedDeadlineDays={roundState.config.unclaimed_deadline_days}
+                      contractAddress={contractAddress}
+                      onRedeemed={() => {
+                        roundState.refetch();
+                        onRedeemed?.();
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {loaded && roundState.round.status === "drawn" && (
+        <div className={`verify-continue-row${isWinnerWithPrize ? "" : " verify-continue-row-solo"}`}>
+          <VerifyRoundPanel roundId={roundState.round.round_id} contractAddress={contractAddress} />
+          {isWinnerWithPrize && (
+            <button className="verify-open-btn continue-next-btn" onClick={handleContinue}>
+              {t("wheel.continueShort").split("\n").map((line, i) => (
+                <span key={i}>{line}</span>
+              ))}
+            </button>
+          )}
+        </div>
+      )}
+      </div>
+
+      <div className="cabinet-actions-right">
+      <div className="lab-screen">
+      <img src="/characters/lab-screen.png" alt="" />
+      <div className="lab-screen-messages">
+      <p className="lab-screen-title">{t("wheel.screenTitle")}</p>
+
+      <div className="lab-screen-message">
+      {/* Neither branch has card text here anymore - the Host already
+          covers both (alarma for the urgent countdown, horizontal for the
+          normal one), same pattern as the other skipped notes above. */}
+
+      {/* justWithdrawn's note is skipped here - the Host already says it
+          (see hostBubble above), same pattern as waitingForMinPlayers and
+          drawnByYou. */}
+      {loaded &&
+        roundState.round.status === "open" &&
+        !hasMinPlayers &&
+        !justWithdrawn &&
+        walletState.status === "connected" &&
+        entrants.some((e) => e.address === walletState.address) && (
+          <p className="withdraw-lockin-note">{t("wheel.withdrawLockInNote")}</p>
+        )}
+
+      {/* closedWaitingDraw is skipped here too - the Host already says it
+          (see hostBubble above). */}
+
+      {/* reclaimedNote is skipped here too, same pattern - the Host already
+          says it (see hostBubble above). expiredNote stays, it's long. */}
+      {loaded && roundState.round.status === "expired" && (
+        <p className="round-status-note">{t("wheel.expiredNote")}</p>
+      )}
+
+      {/* drawnByYou is skipped here too, same reason - the Host already
+          says it (see hostBubble above). drawnByOther is long enough
+          (and a different audience: the player who DIDN'T trigger the
+          draw) that it stays as plain card text. */}
+      {loaded && roundState.round.status === "drawn" && result.kind !== "won" && !triggeredDraw && (
+        <p className="round-status-note">{t("wheel.drawnByOther")}</p>
       )}
 
       {actionError && <p className="round-action-error">{actionError}</p>}
 
-      <p className="result">
-        {result.kind === "spinning" && t("wheel.spinning")}
-        {result.kind === "idle" &&
-          (ticketCount !== null
-            ? t("wheel.initialResult", { count: ticketCount, amount: poolDisplay })
-            : t("wheel.loading"))}
-        {result.kind === "won" && (
-          <>
-            {t("wheel.winPrefix")} <strong>{result.winner}</strong>{" "}
-            {loaded && roundState.round.prize_remaining !== "0"
-              ? t("wheel.winSuffix", { amount: formatUluna(roundState.round.prize_remaining, "USDC") })
-              : t("wheel.winSuffixRedeemed")}
-          </>
-        )}
-      </p>
-
-      {loaded && roundState.round.status === "drawn" && (
-        <VerifyRoundPanel roundId={roundState.round.round_id} contractAddress={contractAddress} />
+      {result.kind === "spinning" && <p className="result">{t("wheel.spinning")}</p>}
+      {result.kind === "won" && (
+        <>
+          <p className="result">
+            {t("wheel.winPrefix")} <strong>{result.winner}</strong>
+          </p>
+          <p className="result">{t("wheel.continuePrompt")}</p>
+        </>
       )}
-    </div>
+      </div>
+
+      <div className="lab-screen-stats">
+        {ticketCount !== null ? (
+          <>
+            <p>{t("wheel.ticketsSoldLabel", { count: ticketCount })}</p>
+            <p>{t("wheel.poolPrizeLabel", { amount: poolDisplay })}</p>
+          </>
+        ) : (
+          <p>{t("wheel.loading")}</p>
+        )}
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
+    </>
   );
 }

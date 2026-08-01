@@ -18,15 +18,21 @@ export function PlatformRepeggedBanner({ stats }: PlatformRepeggedBannerProps) {
   if (stats.status !== "loaded") return null;
 
   return (
-    <div className="platform-repegged-banner">
-      <div className="platform-repegged-glow" />
-      <BulbStrip position="top" count={10} />
-      <p className="platform-repegged-label">{t("platformRepegged.label")}</p>
-      <p className="platform-repegged-amount">
-        {ulunaToDisplayNumber(stats.totalRedeemed).toFixed(2)}
-      </p>
-      <p className="platform-repegged-tagline">{t("platformRepegged.tagline")}</p>
-      <BulbStrip position="bottom" count={10} />
+    <div className="platform-repegged-outline pixel-stepped-corners">
+      <div className="platform-repegged-border pixel-stepped-corners">
+        <div className="platform-repegged-highlight pixel-stepped-corners">
+          <div className="platform-repegged-banner pixel-stepped-corners">
+            <div className="platform-repegged-glow" />
+            <BulbStrip position="top" count={10} />
+            <p className="platform-repegged-label">{t("platformRepegged.label")}</p>
+            <p className="platform-repegged-amount">
+              {ulunaToDisplayNumber(stats.totalRedeemed).toFixed(2)}
+            </p>
+            <p className="platform-repegged-tagline">{t("platformRepegged.tagline")}</p>
+            <BulbStrip position="bottom" count={10} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

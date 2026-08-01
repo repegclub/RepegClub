@@ -408,7 +408,7 @@ export function WeeklyWheelCard({
       {loaded && weekState.week.status === "open" && weekState.week.week_id > 1 && (
         <button
           type="button"
-          className="round-action-btn"
+          className="round-action-btn round-action-btn-compact"
           onClick={() => onViewWeek?.(weekState.week.week_id - 1)}
         >
           {t("weekly.viewPreviousWeek", { weekId: weekState.week.week_id - 1 })}

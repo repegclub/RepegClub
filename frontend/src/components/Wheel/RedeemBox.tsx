@@ -110,8 +110,12 @@ export function RedeemBox({
   }
 
   return (
-    <div className="redeem-box">
-      <p className="round-status-note">{t("wheel.redeemHint")}</p>
+    <div className="redeem-box-outline pixel-stepped-corners">
+    <div className="redeem-box pixel-stepped-corners">
+      <details className="redeem-hint">
+        <summary>{t("wheel.redeemHintSummary")}</summary>
+        <p>{t("wheel.redeemHint")}</p>
+      </details>
       {balance.status === "loaded" && (
         <p className="redeem-balance-note">
           {t("wheel.redeemYourBalance", { amount: ulunaToDisplayNumber(balance.amount).toFixed(2) })}
@@ -121,16 +125,19 @@ export function RedeemBox({
         {t("wheel.redeemAmountLabel")}
       </label>
       <div className="redeem-amount-row">
-        <input
-          id={`redeem-amount-${roundId}`}
-          type="number"
-          min={0}
-          max={prizeRemainingDisplay}
-          step="0.01"
-          value={amountValue}
-          onChange={(e) => setAmountInput(e.target.value)}
-          className="redeem-amount-input"
-        />
+        <div className="redeem-amount-input-wrap">
+          <input
+            id={`redeem-amount-${roundId}`}
+            type="number"
+            min={0}
+            max={prizeRemainingDisplay}
+            step="0.01"
+            value={amountValue}
+            onChange={(e) => setAmountInput(e.target.value)}
+            className="redeem-amount-input"
+          />
+          <span className="redeem-amount-unit">{t("wheel.redeemAmountUnit")}</span>
+        </div>
         <button type="button" className="redeem-max-btn" onClick={() => setAmountInput(null)}>
           {t("wheel.redeemMax")}
         </button>
@@ -141,10 +148,15 @@ export function RedeemBox({
           receive: amountValid ? ulunaToDisplayNumber(amountUluna).toFixed(2) : "0.00",
         })}
       </p>
-      <button className="round-action-btn" onClick={handleRedeem} disabled={busy || !amountValid}>
+      <button
+        className="round-action-btn redeem-open-btn"
+        onClick={handleRedeem}
+        disabled={busy || !amountValid}
+      >
         {busy ? t("wheel.redeeming") : t("wheel.redeem")}
       </button>
       {error && <p className="round-action-error">{error}</p>}
+    </div>
     </div>
   );
 }

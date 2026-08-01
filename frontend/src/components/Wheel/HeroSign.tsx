@@ -10,21 +10,30 @@ import { BulbStrip } from "./BulbStrip";
 export function HeroSign() {
   const { t } = useTranslation();
   return (
-    <div className="hero-sign">
-      <BulbStrip position="top" count={22} />
-      <div className="hero-sign-grid">
-        <p className="hero-sign-hook hero-sign-hook-left" aria-hidden="true">
-          {t("banners.left")}
-        </p>
-        <div className="hero-sign-title">
-          <p className="eyebrow">{t("marquee.eyebrow")}</p>
-          <h1>Wheel of Repeg</h1>
+    <div className="hero-sign-outline">
+      <div className="hero-sign">
+        <div className="hero-sign-highlight">
+          <div className="hero-sign-inner">
+            <BulbStrip position="top" count={22} />
+            <div className="hero-sign-grid">
+              <img
+                src="/wheel-pixel/marquee-left.png"
+                alt={t("banners.left")}
+                className="hero-sign-hook hero-sign-hook-left"
+              />
+              <div className="hero-sign-title">
+                <h1>Wheel of Repeg</h1>
+              </div>
+              <img
+                src="/wheel-pixel/marquee-right.png"
+                alt={t("banners.right")}
+                className="hero-sign-hook hero-sign-hook-right"
+              />
+            </div>
+            <BulbStrip position="bottom" count={22} />
+          </div>
         </div>
-        <p className="hero-sign-hook hero-sign-hook-right" aria-hidden="true">
-          {t("banners.right")}
-        </p>
       </div>
-      <BulbStrip position="bottom" count={22} />
     </div>
   );
 }

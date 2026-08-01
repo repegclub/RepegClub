@@ -55,29 +55,38 @@ export function MyWinningsPanel({
   if (revealedWinnings.length === 0) return null;
 
   return (
-    <section className="my-winnings-panel">
-      <h2 className="my-winnings-title">{t("myWinnings.title")}</h2>
-      {revealedWinnings.map((entry) => (
-        <div key={entry.round_id} className="my-winnings-entry">
-          <p className="my-winnings-round">
-            {t("myWinnings.round", {
-              roundId: entry.round_id,
-              amount: ulunaToDisplayNumber(entry.prize_remaining).toFixed(2),
-            })}
-          </p>
-          <RedeemBox
-            roundId={entry.round_id}
-            redemptionDenom={redemptionDenom}
-            prizeRemainingUluna={entry.prize_remaining}
-            unclaimedDeadlineDays={unclaimedDeadlineDays}
-            contractAddress={contractAddress}
-            onRedeemed={() => {
-              winnings.refetch();
-              onRedeemed?.();
-            }}
-          />
-        </div>
-      ))}
-    </section>
+    <div className="my-winnings-border pixel-stepped-corners">
+      <div className="my-winnings-highlight pixel-stepped-corners">
+        <section className="my-winnings-panel pixel-stepped-corners">
+          <h2 className="my-winnings-title">
+            <img src="/wheel-pixel/trophy-icon.png" alt="" className="prize-label-icon" />
+            {t("myWinnings.title")}
+          </h2>
+          {revealedWinnings.map((entry) => (
+            <div key={entry.round_id} className="my-winnings-entry">
+              <p className="my-winnings-round-label">
+                {t("myWinnings.roundLabel", { roundId: entry.round_id })}
+              </p>
+              <p className="my-winnings-amount">
+                {t("myWinnings.amount", {
+                  amount: ulunaToDisplayNumber(entry.prize_remaining).toFixed(2),
+                })}
+              </p>
+              <RedeemBox
+                roundId={entry.round_id}
+                redemptionDenom={redemptionDenom}
+                prizeRemainingUluna={entry.prize_remaining}
+                unclaimedDeadlineDays={unclaimedDeadlineDays}
+                contractAddress={contractAddress}
+                onRedeemed={() => {
+                  winnings.refetch();
+                  onRedeemed?.();
+                }}
+              />
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
   );
 }
