@@ -36,29 +36,25 @@ export function drawPixelWheel(ctx: CanvasRenderingContext2D, rotation: number, 
   // Below .wheel-cabinet's own row->single-column breakpoint (see wheel.css)
   // a sliver of the booth background's own painted wheel peeks out above
   // the disc - not visible once the layout is wide enough for the row
-  // version. A CSS media-query nudge on the canvas's own `top` worked in
-  // every desktop/simulator test but never applied on a real iPhone across
-  // Safari, Chrome, and Brave (all WebKit on iOS - one engine), even after
-  // clearing cache and switching networks. Baking the nudge into the draw
-  // call instead sidesteps whatever that was.
+  // version. Gated on window.innerWidth against that same 980px breakpoint,
+  // not on the canvas's own rendered width - the wheel's %-of-%-of-%
+  // container chain (see .wheel-booth-wheel) lands its rendered width in
+  // roughly the same ~150-270px range in both layouts, with no width gap
+  // clean enough to threshold on directly (confirmed: that mis-fired at
+  // desktop sizes too).
   //
-  // Gated on window.innerWidth against the exact same 980px breakpoint
-  // .wheel-cabinet itself uses, not on the canvas's own rendered width -
-  // that was tried first and mis-fired at desktop sizes too, because the
-  // wheel's own %-of-%-of-% container chain (see .wheel-booth-wheel) makes
-  // its rendered width land in roughly the same ~150-270px range whether
-  // the page is in its wide 3-column layout or its narrow single-column
-  // one, with no width gap clean enough to threshold on directly. The
-  // layout's own breakpoint has no such ambiguity - it's already confirmed
-  // correct on every device this got tested on. `size` is still the fixed
-  // internal buffer (340) regardless of display size, so the 7 target
-  // screen-px is converted through the buffer/rendered-width ratio to
-  // still read as 7px once the browser scales the buffer down to fit
-  // whatever the card's actual size turns out to be.
+  // A flat fraction of `size` (the fixed 340px buffer), not a target
+  // screen-px converted through the canvas's measured clientWidth - the
+  // clientWidth version overshot in Responsively's iPhone 12/iPad presets
+  // (both still narrower than 981px) while looking correct on a real
+  // iPhone at the same logical width, pointing at clientWidth being read
+  // before layout had fully settled in one of those environments and not
+  // the other. Reading `size` instead of the DOM removes that timing
+  // dependency entirely - it's a compile-time constant, never wrong to
+  // measure early.
   const isMobileLayout = window.innerWidth < 981;
-  const renderedWidth = ctx.canvas.clientWidth || size;
-  const MOBILE_NUDGE_PX = 7;
-  const cy = size / 2 + (isMobileLayout ? MOBILE_NUDGE_PX * (size / renderedWidth) : 0);
+  const MOBILE_NUDGE_FRACTION = 0.012;
+  const cy = size / 2 + (isMobileLayout ? size * MOBILE_NUDGE_FRACTION : 0);
 
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
