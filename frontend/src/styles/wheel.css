@@ -71,7 +71,7 @@
     --gold-dim: #b8811f;
     --black: #05060a;
     --display: 'Silkscreen', 'Arial Black', sans-serif;
-    --body: VT323, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+    --body: vt323, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
     --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
   }
 
