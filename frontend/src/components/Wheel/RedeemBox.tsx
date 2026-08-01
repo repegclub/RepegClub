@@ -136,7 +136,7 @@ export function RedeemBox({
             onChange={(e) => setAmountInput(e.target.value)}
             className="redeem-amount-input"
           />
-          <span className="redeem-amount-unit">USTC</span>
+          <span className="redeem-amount-unit">{t("wheel.redeemAmountUnit")}</span>
         </div>
         <button type="button" className="redeem-max-btn" onClick={() => setAmountInput(null)}>
           {t("wheel.redeemMax")}

@@ -74,6 +74,15 @@ export function WheelCard({
   // stretch (and visibly distort) the lab-screen image next to it.
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
 
+  useEffect(() => {
+    if (!isRedeemOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsRedeemOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isRedeemOpen]);
+
   // A fresh purchase makes any earlier "just withdrew/reclaimed" note stale
   // - without this, buying a new ticket after withdrawing left the old
   // "Withdrawn" note stuck on screen instead of the (relevant again)
@@ -481,6 +490,8 @@ export function WheelCard({
           <div className="verify-modal-backdrop" onClick={() => setIsRedeemOpen(false)}>
             <div
               className="verify-modal-outline pixel-stepped-corners"
+              role="dialog"
+              aria-modal="true"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="verify-modal-border pixel-stepped-corners">

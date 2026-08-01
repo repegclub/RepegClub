@@ -34,14 +34,14 @@
   src: url('../assets/fonts/Manrope-800.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Silkscreen';
+  font-family: Silkscreen;
   font-style: normal;
   font-weight: 400;
   font-display: swap;
   src: url('../assets/fonts/silkscreen-400.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Silkscreen';
+  font-family: Silkscreen;
   font-style: normal;
   font-weight: 700;
   font-display: swap;
@@ -71,7 +71,7 @@
     --gold-dim: #b8811f;
     --black: #05060a;
     --display: 'Silkscreen', 'Arial Black', sans-serif;
-    --body: 'VT323', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --body: VT323, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
     --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
   }
 

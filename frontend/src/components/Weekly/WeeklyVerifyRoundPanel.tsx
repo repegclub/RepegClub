@@ -51,6 +51,15 @@ export function WeeklyVerifyRoundPanel({ weekId, contractAddress }: WeeklyVerify
     return () => clearInterval(id);
   }, [isOpen, LAB_BUBBLE_LINES.length]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen]);
+
   async function handleVerify() {
     setState({ kind: "checking" });
     try {
@@ -83,6 +92,8 @@ export function WeeklyVerifyRoundPanel({ weekId, contractAddress }: WeeklyVerify
         <div className="verify-modal-backdrop" onClick={() => setIsOpen(false)}>
           <div
             className="verify-modal-outline pixel-stepped-corners"
+            role="dialog"
+            aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="verify-modal-border pixel-stepped-corners">

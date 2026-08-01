@@ -146,6 +146,7 @@
     "redeemHint": "This sends USTC from your own wallet and gets the same amount back in USDC, 1:1 — nothing is sent until you choose an amount and confirm below.",
     "redeemYourBalance": "Your USTC balance: {{amount}}",
     "redeemAmountLabel": "Amount of USTC to send (editable — send less if you don't hold the full amount)",
+    "redeemAmountUnit": "USTC",
     "redeemMax": "Max",
     "redeemReceiveNote": "You'll send {{send}} — you'll receive {{receive}} back in USDC.",
     "redeemInsufficientFunds": "Not enough USTC in this wallet for that amount. Lower it above and try again — you can always come back and redeem the rest later, up to {{days}} days after the draw.",
