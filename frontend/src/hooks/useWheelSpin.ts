@@ -21,7 +21,11 @@ export type WheelSpinResult = { kind: "idle" } | { kind: "spinning" } | { kind: 
 // *when* a spin is allowed (round status, redeem, verify panel) stays with
 // each caller - this only knows how to animate landing on a given address
 // among the arcs it's given.
-export function useWheelSpin(arcs: Arc[]) {
+//
+// `draw` defaults to the shared carnival/chrome renderer - Wheel of Repeg's
+// pixel-art wheel passes drawPixelWheel instead, which ignores arcs (its
+// visual layout is fixed) but still needs the same rotation-per-frame calls.
+export function useWheelSpin(arcs: Arc[], draw: (ctx: CanvasRenderingContext2D, rotation: number, arcs: Arc[]) => void = drawWheel) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerRef = useRef<HTMLDivElement>(null);
   const currentRotationRef = useRef(0);
@@ -36,6 +40,12 @@ export function useWheelSpin(arcs: Arc[]) {
   // component that's no longer there.
   const activeRef = useRef(true);
   useEffect(() => {
+    // Re-arm on every (re)mount, not just via useRef's initial value - under
+    // StrictMode's dev-only mount->cleanup->mount simulation, hook state
+    // survives the simulated remount but this cleanup still runs once, so
+    // relying on the initial `true` alone left this permanently false after
+    // React's very first commit, silently freezing every future spin.
+    activeRef.current = true;
     return () => {
       activeRef.current = false;
     };
@@ -44,7 +54,7 @@ export function useWheelSpin(arcs: Arc[]) {
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    drawWheel(ctx, currentRotationRef.current, arcs);
+    draw(ctx, currentRotationRef.current, arcs);
 
     // Bungee paints the "Nx" segment labels; force one redraw once it's
     // actually loaded so the very first paint isn't a fallback-font flash
@@ -52,10 +62,10 @@ export function useWheelSpin(arcs: Arc[]) {
     if (document.fonts?.load) {
       document.fonts
         .load("400 15px Bungee")
-        .then(() => drawWheel(ctx, currentRotationRef.current, arcs))
+        .then(() => draw(ctx, currentRotationRef.current, arcs))
         .catch(() => {});
     }
-  }, [arcs]);
+  }, [arcs, draw]);
 
   function reset() {
     setResult({ kind: "idle" });
@@ -65,10 +75,13 @@ export function useWheelSpin(arcs: Arc[]) {
 
   function spin(winnerAddress: string, onLanded?: () => void) {
     const canvas = canvasRef.current;
+    // Only used for the old flapper's flick animation - the pixel wheel's
+    // pointer is baked into its static frame image and has no ref at all,
+    // so this stays optional instead of bailing the whole spin out on it.
     const pointer = pointerRef.current;
     const ctx = canvas?.getContext("2d");
     const winner = arcs.find((a) => a.address === winnerAddress);
-    if (!canvas || !pointer || !ctx || !winner) return;
+    if (!canvas || !ctx || !winner) return;
     const winnerArc = winner;
 
     getAudioCtx();
@@ -114,12 +127,12 @@ export function useWheelSpin(arcs: Arc[]) {
       const progress = wheelProgress(t, CRUISE_FRACTION);
       const rot = startRotation + totalRotation * progress;
 
-      drawWheel(ctx!, rot, arcs);
+      draw(ctx!, rot, arcs);
 
       const tickIndex = pegsPassed(rot, pegBoundaryOffsets);
       if (tickIndex !== lastTickIndex) {
         lastTickIndex = tickIndex;
-        flickFlapper(pointer!);
+        if (pointer) flickFlapper(pointer);
         playTick();
       }
 

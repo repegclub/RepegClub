@@ -24,3 +24,6 @@ npm-debug.log*
 !.vscode/extensions.json
 .idea
 .DS_Store
+
+# Design references (images dropped for Claude to review, never committed)
+design-references/

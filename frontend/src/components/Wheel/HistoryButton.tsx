@@ -38,7 +38,8 @@ export function HistoryButton({ tiers }: HistoryButtonProps) {
   return (
     <>
       <button type="button" className="history-open-btn" onClick={handleOpen}>
-        {t("history.open")}
+        <img src="/wheel-pixel/scroll-icon.png" alt="" className="round-action-btn-icon" />
+        <span className="history-open-btn-label">{t("history.open")}</span>
       </button>
       {isOpen && (
         <div className="history-overlay" onClick={() => setIsOpen(false)}>

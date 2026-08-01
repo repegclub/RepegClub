@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
-import { GameSwitcher } from "../Shared/GameSwitcher";
+import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffles } from "../../hooks/useCyolRaffles";
@@ -49,12 +49,13 @@ export function CreateYourOwnLuckPage() {
   return (
     <main className="wheel-page cyol-page">
       <div className="wallet-bar">
-        <ConnectWalletButton />
+        <GameNav current="/create-your-own-luck" />
+        <div className="wallet-bar-right">
+          <ConnectWalletButton />
+        </div>
       </div>
 
       <h1 className="cyol-title">{t("createYourOwnLuck.pageTitle")}</h1>
-
-      <GameSwitcher current="/create-your-own-luck" />
 
       <CreatorForm onCreated={raffles.refetch} />
 

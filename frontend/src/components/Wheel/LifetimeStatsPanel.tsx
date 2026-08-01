@@ -33,22 +33,38 @@ export function LifetimeStatsPanel({ stats }: LifetimeStatsPanelProps) {
   const netDisplay = netRounded === "-0.00" ? "0.00" : netRounded;
 
   return (
-    <section className="lifetime-stats-panel">
-      <div className="lifetime-stats-tile">
-        <p className="lifetime-stats-label">{t("lifetimeStats.investedLabel")}</p>
-        <p className="lifetime-stats-value">{ulunaToDisplayNumber(stats.totalInvested).toFixed(2)} USDC</p>
+    <div className="lifetime-stats-border pixel-stepped-corners">
+      <div className="lifetime-stats-highlight pixel-stepped-corners">
+        <section className="lifetime-stats-panel pixel-stepped-corners">
+          <div className="lifetime-stats-screen">
+            <img src="/wheel-pixel/lifetime-stats-screen.png" alt="" className="lifetime-stats-screen-bg" />
+            <div className="lifetime-stats-rows">
+              <p className="lifetime-stats-row">
+                <span className="lifetime-stats-row-label">{t("lifetimeStats.investedLabel")}</span>
+                <span className="lifetime-stats-row-dots" aria-hidden="true" />
+                <span className="lifetime-stats-row-value">
+                  {ulunaToDisplayNumber(stats.totalInvested).toFixed(2)} USDC
+                </span>
+              </p>
+              <p className="lifetime-stats-row">
+                <span className="lifetime-stats-row-label">{t("lifetimeStats.repeggedLabel")}</span>
+                <span className="lifetime-stats-row-dots" aria-hidden="true" />
+                <span className="lifetime-stats-row-value">
+                  {ulunaToDisplayNumber(stats.totalRedeemed).toFixed(2)} USTC
+                </span>
+              </p>
+              <p className="lifetime-stats-row">
+                <span className="lifetime-stats-row-label">{t("lifetimeStats.netLabel")}</span>
+                <span className="lifetime-stats-row-dots" aria-hidden="true" />
+                <span className="lifetime-stats-row-value">
+                  {net >= 0n ? "+" : ""}
+                  {netDisplay} USDC
+                </span>
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
-      <div className="lifetime-stats-tile">
-        <p className="lifetime-stats-label">{t("lifetimeStats.repeggedLabel")}</p>
-        <p className="lifetime-stats-value">{ulunaToDisplayNumber(stats.totalRedeemed).toFixed(2)} USTC</p>
-      </div>
-      <div className="lifetime-stats-tile">
-        <p className="lifetime-stats-label">{t("lifetimeStats.netLabel")}</p>
-        <p className="lifetime-stats-value">
-          {net >= 0n ? "+" : ""}
-          {netDisplay} USDC
-        </p>
-      </div>
-    </section>
+    </div>
   );
 }

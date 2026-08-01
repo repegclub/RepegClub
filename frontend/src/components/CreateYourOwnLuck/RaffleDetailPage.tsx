@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
-import { GameSwitcher } from "../Shared/GameSwitcher";
+import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffleDetail } from "../../hooks/useCyolRaffleDetail";
@@ -168,9 +168,11 @@ export function RaffleDetailPage() {
   const shell = (children: React.ReactNode) => (
     <main className="wheel-page cyol-page">
       <div className="wallet-bar">
-        <ConnectWalletButton />
+        <GameNav current="/create-your-own-luck" />
+        <div className="wallet-bar-right">
+          <ConnectWalletButton />
+        </div>
       </div>
-      <GameSwitcher current="/create-your-own-luck" />
       <Link className="cyol-back-link" to="/create-your-own-luck">
         {t("createYourOwnLuck.detail.back")}
       </Link>

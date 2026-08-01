@@ -2,22 +2,23 @@
   "marquee": {
     "eyebrow": "Repeg Club — prototype"
   },
-  "lead": "🔁 Win the RIGHT to REPEG your own USTC 1:1 for USDC — up to the entire accumulated prize pool!",
+  "lead": "Win the RIGHT to REPEG your own USTC 1:1 for USDC, up to the entire accumulated prize!",
   "myWinnings": {
-    "title": "🏆 Your unclaimed prizes",
-    "round": "Round #{{roundId}} — {{amount}} USDC left to redeem"
+    "title": "Your unclaimed prizes",
+    "roundLabel": "Round #{{roundId}} — unredeemed",
+    "amount": "{{amount}} USDC"
   },
   "platformRepegged": {
     "label": "Total USTC REPEGGED by Repeg Club:",
     "tagline": "One repeg at a time — real USTC, redeemed 1:1, verifiable on-chain."
   },
   "lifetimeStats": {
-    "investedLabel": "🎟️ You've played",
-    "repeggedLabel": "🔁 USTC you've repegged",
-    "netLabel": "📊 Net"
+    "investedLabel": "You've played",
+    "repeggedLabel": "USTC repegged",
+    "netLabel": "Net"
   },
   "feedback": {
-    "button": "✉️ Feedback",
+    "button": "Feedback",
     "title": "Send us feedback",
     "messagePlaceholder": "Found a bug? Have an idea? Tell us here...",
     "emailPlaceholder": "Your email (optional, if you want a reply)",
@@ -27,7 +28,7 @@
     "error": "Couldn't send right now — try again in a moment."
   },
   "history": {
-    "open": "📜 History",
+    "open": "History",
     "title": "Your round history",
     "loading": "Loading your history…",
     "empty": "No past rounds found for this wallet yet.",
@@ -44,11 +45,26 @@
     "connectFirst": "Connect your wallet first.",
     "roundExpiredHint": "This round expired without reaching the minimum players. Tap \"Expire round\" below the wheel and confirm — that opens a fresh round you can buy into.",
     "roundNotOpenHint": "This round already closed to new tickets. A new round opens automatically right after the winner is drawn — check back in a moment.",
-    "ticketCapHint": "You've reached the most tickets one wallet can buy in this round ({{max}}, half of this round's maximum player capacity) — buy from another wallet, or wait for the next round.",
+    "ticketCapHint": "You've reached the most tickets one wallet can buy in this round ({{max}}, half of this round's maximum player capacity) — wait for the next round.",
     "available_one": "🎟️ {{count}} ticket available (max)",
     "available_other": "🎟️ {{count}} tickets available (max)",
     "availableLast": "🎟️ Only 1 ticket available — hurry, this could be the best value of the round!",
-    "maxPerWallet": "Max {{max}} tickets per wallet"
+    "maxPerWallet": "Max {{max}} tickets per wallet",
+    "hostHype": [
+      "Step right up,\nticket's waiting!",
+      "Don't just watch,\nplay to win!",
+      "Tickets moving fast,\ndon't miss out!",
+      "The pool's growing,\ngrab a ticket!",
+      "Fresh tickets, hot\noff the counter!",
+      "Tentacles crossed for\nyou, buy in!",
+      "Step up, friend,\nyour luck awaits!",
+      "Somebody's winning big\ntonight, why not you?",
+      "Best odds in\nthis galaxy, folks!",
+      "Every round has\na winner!",
+      "Check the\nweekly prize!",
+      "Ticket's cheap,\nprize could be huge!",
+      "Create your own\nluck here!"
+    ]
   },
   "otherTickets": {
     "title": "Your other active tickets"
@@ -59,35 +75,63 @@
   },
   "wheel": {
     "roundBadge": "Round #{{roundId}}",
+    "hostWelcome": "Welcome to the Wheel of Repeg!",
+    "hostBuyTicket": "Buy a ticket to join before the round closes!",
+    "hostWaitingMore": "You're in! Let's see if more players join.",
+    "hostCloseEligible": "This round's ready to close — anyone can do it!",
+    "hostClosed": "Round closed. Now we wait for the winner to be drawn.",
+    "hostDrawn": "The winner's decided! Spin the wheel to reveal it.",
+    "hostSpinning": "Spinning... let's see where it lands!",
+    "hostWon": "We have a winner! Check if it's you.",
+    "hostExpired": "This round expired without enough players. You can get your ticket back.",
     "prizeLabel": "Accumulated prize",
     "roiCaption": "return if you win with 1 ticket ({{price}})",
     "spin": "Reveal winner",
     "drawnByYou": "Winner decided — reveal it!",
     "drawnByOther": "Another player already closed this round and drew the winner. Find out who won!",
-    "viewPreviousRound": "🎡 Check round #{{roundId}} — see if you won!",
+    "viewPreviousRoundLine1": "Check round #{{roundId}}",
+    "viewPreviousRoundLine2": "see if you won!",
     "spinning": "Revealing…",
-    "initialResult": "{{count}} tickets sold — {{amount}} pool",
+    "screenTitle": "Wheel Status",
+    "ticketsSoldLabel": "Tickets Sold: {{count}}",
+    "poolPrizeLabel": "Pool prize: {{amount}}",
     "winPrefix": "Won",
     "winSuffix": "— redeem up to {{amount}}",
     "winSuffixRedeemed": "— already fully redeemed.",
+    "continuePrompt": "Hit continue to next round to keep playing.",
     "loading": "…",
-    "testnetNotice": "testnet",
     "closeRound": "Close round",
     "closing": "Closing…",
     "waitingToClose": "Waiting for more tickets or the timeout.",
     "waitingForPlayers": "Waiting for more players to start the countdown.",
-    "waitingForMinPlayers": "Minimum players: {{min}}. The countdown to close starts once the minimum buys in.",
+    "waitingForMinPlayers": "Needs {{min}} players to start the countdown.",
     "withdrawTicket": "Withdraw my ticket(s)",
     "withdrawing": "Withdrawing…",
     "withdrawnNote": "Withdrawn — your money is on its way back to your wallet.",
     "withdrawLockInNote": "Once a second player buys in, your ticket locks in and can no longer be withdrawn.",
     "closesIn": "Closes in {{time}} unless someone buys another ticket",
     "closesInUrgent": "Last call! Closes in {{time}} unless someone buys another ticket",
+    "lastCallShort": "Last call!",
+    "hostHype": [
+      "Feeling lucky today?",
+      "The wheel never\nlies!",
+      "Somebody's about to\nrepeg...",
+      "Spin fever incoming!",
+      "Step right up,\ndon't be shy!",
+      "This wheel has\nseen things...",
+      "Round and round\nshe goes!",
+      "Somewhere out there,\na jackpot awaits.",
+      "The stars are\naligning... or are they?",
+      "Every ticket's a\nshot at glory!",
+      "Best show in\nthis galaxy, folks!",
+      "Fortune favors the\nticket holder!"
+    ],
     "closedWaitingDraw": "Round closed — no more tickets accepted. The draw unlocks in a few seconds.",
     "drawWinner": "Draw winner",
     "drawing": "Drawing…",
     "drawTooEarly": "Not confirmed yet — try again in a few seconds.",
     "continueNextRound": "Continue to next round",
+    "continueShort": "Next\nRound",
     "actionFailed": "Action failed.",
     "expireRound": "Expire round",
     "expiring": "Expiring…",
@@ -97,6 +141,7 @@
     "reclaimedNote": "Reclaimed! Your ticket money is on its way back to your wallet.",
     "redeem": "Redeem prize",
     "redeeming": "Redeeming…",
+    "redeemHintSummary": "How this works?",
     "redeemHint": "This sends USTC from your own wallet and gets the same amount back in USDC, 1:1 — nothing is sent until you choose an amount and confirm below.",
     "redeemYourBalance": "Your USTC balance: {{amount}}",
     "redeemAmountLabel": "Amount of USTC to send (editable — send less if you don't hold the full amount)",
@@ -117,6 +162,7 @@
   },
   "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (draw block height/time + ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
   "faq": {
+    "feedbackPrompt": "Any feedback? We hear you!",
     "title": "How does it work?",
     "items": [
       {
@@ -158,7 +204,15 @@
     ]
   },
   "verify": {
-    "title": "Verify this round",
+    "title": "Verify\nthis\nround",
+    "speechBubble": "Don't trust.\nVerify!",
+    "labBubble": [
+      "We take this shxt serious here in the lab",
+      "Your trust is our most precious asset",
+      "We only trust in blockchain data",
+      "Centralized Casinos? Huh... Humans..."
+    ],
+    "close": "Close",
     "intro": "Don't take our word for who won — recompute it yourself from public blockchain data.",
     "roundId": "Round ID (for your reference)",
     "copy": "Copy",
@@ -192,7 +246,14 @@
     "copyJsonCaption": "Everything above in one file: the raffle's contract address, draw height/time, the full ticket list, the formula, the resulting hash, and both source links. Paste it anywhere — including to an AI — and ask it to redo the math."
   },
   "verifyWeekly": {
-    "title": "Verify this week",
+    "title": "Verify\nthis\nweek",
+    "speechBubble": "Don't trust.\nVerify!",
+    "labBubble": [
+      "We take this shxt serious here in the lab",
+      "Your trust is our most precious asset",
+      "We only trust in blockchain data",
+      "Centralized Casinos? Huh... Humans..."
+    ],
     "weekId": "Week ID (for your reference)",
     "copyJsonCaption": "Everything above in one file: week ID, draw height/time, the full ticket list, the formula, the resulting hash, and both source links. Paste it anywhere — including to an AI — and ask it to redo the math.",
     "explanation": "This app doesn't ask our own servers who won. When you click \"Verify on-chain\", your browser fetches the actual block straight from Terra Classic's public network and recomputes the winner itself, using the exact formula the smart contract runs: hash the week ID, that block's real height and time, and every ticket bought (across the whole week, price rising day by day), then pick a ticket weighted by the result. Nobody chooses the outcome — the formula does, from data that didn't exist yet while the week was still open. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
@@ -206,7 +267,7 @@
     "notInstalled": "Keplr is not installed in this browser.",
     "connectFailed": "Could not connect to the chain.",
     "rejected": "Connection rejected.",
-    "ustcBalance": "USTC: {{amount}}"
+    "bagToggle": "My Bag"
   },
   "admin": {
     "sweepButton": "Sweep stray funds",
@@ -233,9 +294,10 @@
     "sweepFailed": "Sweep failed."
   },
   "gameSwitcher": {
-    "wheelOfRepeg": "🎡 Wheel of Repeg",
-    "weeklyRound": "👑 Weekly Round",
-    "createYourOwnLuck": "🍀 Create Your Own Luck"
+    "wheelOfRepeg": "Wheel of Repeg",
+    "weeklyRound": "Weekly Round",
+    "gamesToggle": "Games",
+    "creators": "Create"
   },
   "createYourOwnLuck": {
     "pageTitle": "Create Your Own Luck",

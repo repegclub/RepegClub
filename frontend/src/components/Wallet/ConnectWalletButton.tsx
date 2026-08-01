@@ -5,6 +5,13 @@ function truncate(address: string): string {
   return `${address.slice(0, 10)}...${address.slice(-4)}`;
 }
 
+// Narrow phones only (see .wallet-address-short/-full in wheel.css) - the
+// wallet-bar is already tight there once Games/Creators sit next to it, and
+// the full truncated form is still 17 characters wide.
+function truncateShort(address: string): string {
+  return `...${address.slice(-4)}`;
+}
+
 export function ConnectWalletButton() {
   const { t } = useTranslation();
   const { state, connect, disconnect } = useWallet();
@@ -13,7 +20,8 @@ export function ConnectWalletButton() {
     return (
       <div className="wallet-chip">
         <span className="wallet-dot" />
-        <span className="wallet-address">{truncate(state.address)}</span>
+        <span className="wallet-address-full">{truncate(state.address)}</span>
+        <span className="wallet-address-short">{truncateShort(state.address)}</span>
         <button className="wallet-disconnect" onClick={disconnect}>
           {t("wallet.disconnect")}
         </button>

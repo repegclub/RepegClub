@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
 import { buyTicket } from "../../lib/roundActions";
+import { HostGuide } from "./HostGuide";
 
 type TicketBoothProps = {
   priceDisplay: string;
@@ -41,6 +42,13 @@ export function TicketBooth({
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const HYPE_LINES = t("ticketBooth.hostHype", { returnObjects: true }) as string[];
+  const [hypeIndex, setHypeIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setHypeIndex((i) => (i + 1) % HYPE_LINES.length), 8000);
+    return () => clearInterval(id);
+  }, [HYPE_LINES.length]);
+
   const ready = walletState.status === "connected" && ticketDenom && ticketPriceAmount;
 
   async function handleBuy() {
@@ -74,36 +82,44 @@ export function TicketBooth({
   }
 
   return (
-    <div className="ticket-booth">
-      <div className="booth-awning" />
-      <div className="booth-info">
-        <span className="booth-icon">🎟️</span>
-        <div>
-          <p className="booth-label">{t("ticketBooth.label")}</p>
-          <p className="booth-price">
-            {priceDisplay} <span className="booth-currency">{t("wheel.testnetNotice")}</span>
-          </p>
-          {availableTickets !== null && availableTickets !== undefined && (
-            <p className={`booth-available${availableTickets === 1 ? " booth-available-urgent" : ""}`}>
-              {availableTickets === 1
-                ? t("ticketBooth.availableLast")
-                : t("ticketBooth.available", { count: availableTickets })}
-            </p>
-          )}
-          {ticketCap !== undefined && (
-            <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
-          )}
-          {error && <p className="booth-error">{error}</p>}
+    <div className="ticket-booth-border pixel-stepped-corners">
+    <div className="ticket-booth-highlight pixel-stepped-corners">
+    <div className="ticket-booth pixel-stepped-corners">
+      <div className="booth-art-wrap">
+        <img src="/wheel-pixel/ticket-booth.png" alt="" className="booth-art" />
+        <div className="booth-host-bubble">
+          <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />
         </div>
       </div>
-      <button
-        className="booth-buy"
-        onClick={handleBuy}
-        disabled={!ready || buying}
-        title={walletState.status !== "connected" ? t("ticketBooth.connectFirst") : undefined}
-      >
-        {buying ? t("ticketBooth.buying") : t("ticketBooth.buy")}
-      </button>
+      <div className="booth-details">
+        <div className="booth-info">
+          <div>
+            <p className="booth-label">{t("ticketBooth.label")}</p>
+            <p className="booth-price">{priceDisplay}</p>
+            {availableTickets !== null && availableTickets !== undefined && (
+              <p className={`booth-available${availableTickets === 1 ? " booth-available-urgent" : ""}`}>
+                {availableTickets === 1
+                  ? t("ticketBooth.availableLast")
+                  : t("ticketBooth.available", { count: availableTickets })}
+              </p>
+            )}
+            {ticketCap !== undefined && (
+              <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
+            )}
+            {error && <p className="booth-error">{error}</p>}
+          </div>
+        </div>
+        <button
+          className="booth-buy"
+          onClick={handleBuy}
+          disabled={!ready || buying}
+          title={walletState.status !== "connected" ? t("ticketBooth.connectFirst") : undefined}
+        >
+          {buying ? t("ticketBooth.buying") : t("ticketBooth.buy")}
+        </button>
+      </div>
+    </div>
+    </div>
     </div>
   );
 }

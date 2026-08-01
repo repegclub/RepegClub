@@ -33,6 +33,27 @@
   font-display: swap;
   src: url('../assets/fonts/Manrope-800.woff2') format('woff2');
 }
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/silkscreen-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/silkscreen-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/vt323-400.woff2') format('woff2');
+}
 
   :root {
     --bg: #070911;
@@ -41,7 +62,7 @@
     --border: #262c3f;
     --border-bright: #3c4560;
     --text: #f1f4fb;
-    --text-dim: #8a91ab;
+    --text-dim: #b9bfd6;
     --blue: #5492f7;
     --blue-deep: #0b3a9e;
     --crimson: #d01e43;
@@ -49,8 +70,8 @@
     --gold: #ffd166;
     --gold-dim: #b8811f;
     --black: #05060a;
-    --display: 'Bungee', 'Arial Black', sans-serif;
-    --body: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --display: 'Silkscreen', 'Arial Black', sans-serif;
+    --body: 'VT323', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
   }
 
@@ -79,19 +100,69 @@
   }
 
   /* ---------- Hero sign: title + the two hook taglines as one marquee ---------- */
-  .hero-sign {
-    position: relative;
+  /* Stepped/staircase corners instead of a smooth border-radius arc - reads
+     as blocky low-res pixel art instead of a rounded modern card. A plain
+     CSS border can't do this on its own: clip-path only masks paint that
+     already happened at the ORIGINAL rectangle's edges, so the deeper step
+     corners (more than border-width from that original edge) showed bare
+     fill with no border color at all - "open" corners. Fixed the proper way,
+     as 3 nested layers instead of a single border: .hero-sign-outline (the
+     thin black contour), .hero-sign (the gold border), .hero-sign-inner (the
+     actual fill) - each inset from its parent by exactly its own padding and
+     clipped with the SAME absolute-px polygon. Since the step sizes are
+     fixed px (not %), the gap between any two neighboring shapes is a
+     uniform ribbon that follows the staircase all the way around, corners
+     included, instead of the usual "open corner" a plain border+clip-path
+     would give. */
+  .hero-sign-outline {
     max-width: 920px;
     margin: 0 auto 2rem;
+    padding: 2px;
+    background: var(--black);
+    box-shadow: 0 30px 70px -30px rgba(84,146,247,0.35);
+    clip-path: polygon(
+      0 20px, 5px 20px, 5px 15px, 10px 15px, 10px 10px, 15px 10px, 15px 5px, 20px 5px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 5px, calc(100% - 15px) 5px, calc(100% - 15px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 15px, calc(100% - 5px) 15px, calc(100% - 5px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 5px) calc(100% - 20px), calc(100% - 5px) calc(100% - 15px), calc(100% - 10px) calc(100% - 15px), calc(100% - 10px) calc(100% - 10px), calc(100% - 15px) calc(100% - 10px), calc(100% - 15px) calc(100% - 5px), calc(100% - 20px) calc(100% - 5px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 5px), 15px calc(100% - 5px), 15px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 15px), 5px calc(100% - 15px), 5px calc(100% - 20px), 0 calc(100% - 20px)
+    );
+  }
+  .hero-sign {
+    position: relative;
+    padding: 4px;
+    background: var(--gold-dim);
+    clip-path: polygon(
+      0 20px, 5px 20px, 5px 15px, 10px 15px, 10px 10px, 15px 10px, 15px 5px, 20px 5px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 5px, calc(100% - 15px) 5px, calc(100% - 15px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 15px, calc(100% - 5px) 15px, calc(100% - 5px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 5px) calc(100% - 20px), calc(100% - 5px) calc(100% - 15px), calc(100% - 10px) calc(100% - 15px), calc(100% - 10px) calc(100% - 10px), calc(100% - 15px) calc(100% - 10px), calc(100% - 15px) calc(100% - 5px), calc(100% - 20px) calc(100% - 5px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 5px), 15px calc(100% - 5px), 15px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 15px), 5px calc(100% - 15px), 5px calc(100% - 20px), 0 calc(100% - 20px)
+    );
+  }
+  /* Light-yellow inner contour between the gold border and the fill - a
+     bevel "shine" line, same thin thickness as the black outline. */
+  .hero-sign-highlight {
+    padding: 2px;
+    background: var(--gold);
+    clip-path: polygon(
+      0 20px, 5px 20px, 5px 15px, 10px 15px, 10px 10px, 15px 10px, 15px 5px, 20px 5px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 5px, calc(100% - 15px) 5px, calc(100% - 15px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 15px, calc(100% - 5px) 15px, calc(100% - 5px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 5px) calc(100% - 20px), calc(100% - 5px) calc(100% - 15px), calc(100% - 10px) calc(100% - 15px), calc(100% - 10px) calc(100% - 10px), calc(100% - 15px) calc(100% - 10px), calc(100% - 15px) calc(100% - 5px), calc(100% - 20px) calc(100% - 5px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 5px), 15px calc(100% - 5px), 15px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 15px), 5px calc(100% - 15px), 5px calc(100% - 20px), 0 calc(100% - 20px)
+    );
+  }
+  .hero-sign-inner {
     padding: 1.5rem 1.8rem 1.65rem;
     text-align: center;
     background:
       linear-gradient(155deg, rgba(84,146,247,0.16), transparent 55%),
       linear-gradient(205deg, rgba(208,30,67,0.14), transparent 55%),
       var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: 0 30px 70px -30px rgba(84,146,247,0.35);
+    clip-path: polygon(
+      0 20px, 5px 20px, 5px 15px, 10px 15px, 10px 10px, 15px 10px, 15px 5px, 20px 5px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 5px, calc(100% - 15px) 5px, calc(100% - 15px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 15px, calc(100% - 5px) 15px, calc(100% - 5px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 5px) calc(100% - 20px), calc(100% - 5px) calc(100% - 15px), calc(100% - 10px) calc(100% - 15px), calc(100% - 10px) calc(100% - 10px), calc(100% - 15px) calc(100% - 10px), calc(100% - 15px) calc(100% - 5px), calc(100% - 20px) calc(100% - 5px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 5px), 15px calc(100% - 5px), 15px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 15px), 5px calc(100% - 15px), 5px calc(100% - 20px), 0 calc(100% - 20px)
+    );
   }
   .hero-sign-grid {
     display: grid;
@@ -100,44 +171,64 @@
     gap: 0.5rem;
   }
   .hero-sign-title { padding: 0 0.6rem; }
+  /* Pixel-art marquee panel (frame, pin, and diagonal stripes are baked
+     into the image itself now) - just sized/rotated, no CSS chrome drawn
+     behind it anymore. */
   .hero-sign-hook {
-    position: relative;
-    margin: 0;
-    padding: 0.75rem 0.8rem;
-    background:
-      repeating-linear-gradient(-45deg, rgba(255,209,102,0.07) 0 8px, transparent 8px 16px),
-      rgba(255,255,255,0.02);
-    border: 2px solid var(--gold-dim);
-    border-radius: 8px;
-    font-family: var(--display);
-    font-weight: 400;
-    font-size: 0.92rem;
-    line-height: 1.24;
-    color: #fff;
-    text-transform: uppercase;
-    letter-spacing: 0.01em;
-    text-shadow: 0 0 14px rgba(255,209,102,0.3);
-    box-shadow: 0 8px 18px -10px rgba(0,0,0,0.6);
-  }
-  .hero-sign-hook::before {
-    content: "";
-    position: absolute;
-    top: -7px;
-    left: 50%;
-    width: 12px; height: 12px;
-    margin-left: -6px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #fff8e0, var(--gold) 60%, var(--gold-dim) 100%);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    display: block;
+    width: 100%;
+    max-width: 233px;
+    aspect-ratio: 233 / 100;
+    margin: 0 auto;
+    /* Not pixelated: these two are rotated a couple degrees for the
+       fairground tilt, and nearest-neighbor sampling + a CSS rotate()
+       together stair-step the frame border and glyphs badly. Normal
+       smooth scaling barely blurs at 1.2deg and avoids that entirely. */
+    image-rendering: auto;
   }
   .hero-sign-hook-left { transform: rotate(-1.2deg); }
   .hero-sign-hook-right { transform: rotate(1.2deg); }
+  /* On a narrow phone, stacking the 2 marquees above/below the title (as
+     the desktop grid does when wrapped) made the whole hero sign grow
+     tall for no real reason - they aren't content competing with the
+     title for space, they're flourish either side of it. So instead they
+     go absolute, tucked to the left/right behind the title, same as the
+     original two-signs-flanking-the-page idea - the card's height ends up
+     driven by the title alone. */
   @media (max-width: 720px) {
-    .hero-sign-grid { display: flex; flex-direction: column; }
-    .hero-sign-title { order: 1; padding: 0; }
-    .hero-sign-hook { font-size: 0.82rem; }
-    .hero-sign-hook-left { order: 2; margin-top: 1rem; }
-    .hero-sign-hook-right { order: 3; margin-top: 0.6rem; }
+    .hero-sign-grid {
+      position: relative;
+      display: block;
+    }
+    .hero-sign-title {
+      position: relative;
+      z-index: 1;
+      padding: 0;
+    }
+    /* A bit of extra bottom room in the card itself, just on mobile, so
+       the left hook (pushed down below) has more space to clear the title
+       before it runs into the card's own clip-path edge. */
+    .hero-sign-inner {
+      padding-bottom: 2.6rem;
+    }
+    .hero-sign-hook {
+      position: absolute;
+      top: 50%;
+      width: 42%;
+      max-width: 150px;
+    }
+    .hero-sign-hook-left {
+      left: -0.6rem;
+      top: 180%;
+      z-index: 2;
+      transform: translateY(-50%) rotate(-1.2deg);
+    }
+    .hero-sign-hook-right {
+      right: -0.6rem;
+      top: 180%;
+      z-index: 2;
+      transform: translateY(-50%) rotate(1.2deg);
+    }
   }
   .bulb-strip {
     display: flex;
@@ -146,11 +237,19 @@
   }
   .bulb-strip.top { margin-bottom: 1.1rem; }
   .bulb-strip.bottom { margin-top: 1.2rem; }
+  /* Chunky square pixel instead of a smooth round bulb with a glossy
+     highlight gradient - flat fill reads as lo-fi pixel art, the round
+     gradient version looked too polished/photoreal. Glow itself stays
+     soft (a blurred box-shadow can't really be "pixelated" anyway, and
+     it's the part that sells "lit up"). */
   .bulb-mini {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #fff8e0, var(--gold) 55%, var(--gold-dim) 100%);
-    box-shadow: 0 0 6px 1.5px rgba(255,209,102,0.65);
+    width: 10px; height: 10px;
+    background: var(--gold);
+    /* No corner treatment at all - at 10px a step (or even a single
+       diagonal cut) is too small a fraction of the shape for the eye to
+       read as anything but rounding, so a plain flat square is the more
+       honest low-res look. */
+    box-shadow: 0 0 3px 1px rgba(255,209,102,0.65);
     animation: bulb-pulse 1.6s ease-in-out infinite;
   }
   .bulb-mini:nth-child(odd) { animation-delay: 0.8s; }
@@ -161,7 +260,7 @@
 
   .eyebrow {
     font-family: var(--body);
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     font-weight: 800;
     letter-spacing: 0.16em;
     text-transform: uppercase;
@@ -171,7 +270,7 @@
   h1 {
     font-family: var(--display);
     font-weight: 400;
-    font-size: clamp(1.9rem, 5.2vw, 2.85rem);
+    font-size: clamp(2.185rem, 5.98vw, 3.277rem);
     letter-spacing: 0.005em;
     line-height: 1.08;
     margin: 0;
@@ -182,97 +281,258 @@
       0 0 42px rgba(84,146,247,0.25);
   }
 
-  .lead {
+  /* Same 4-layer pixel frame as .hero-sign / .platform-repegged-*. */
+  .lead-outline {
     max-width: 640px;
     margin: 0 auto 2.5rem;
+    padding: 2px;
+    background: var(--black);
+  }
+  .lead-border {
+    padding: 4px;
+    background: var(--gold-dim);
+  }
+  .lead-highlight {
+    padding: 2px;
+    background: var(--gold);
+  }
+  .lead {
+    position: relative;
+    margin: 0;
     padding: 0.9rem 1.5rem;
+    background: linear-gradient(160deg, rgba(255,209,102,0.1), transparent 60%), var(--bg-card);
+  }
+  /* Same technique as .booth-art-wrap on the ticket booth card: a real
+     in-flow block (not position:absolute), sized from its own image via
+     width:100%/height:auto and pulled out past .lead's own padding - plus a
+     bit more, for the same "~9% bigger than an exact fit" bleed as before -
+     with negative margins. This is what the old absolute+inset version was
+     missing: .lead had NO in-flow content of its own (professor/display/text
+     were all position:absolute), so its height depended entirely on being
+     externally stretched by the flex row at >=981px (see .stats-lead-row
+     further down) and collapsed to just its own padding at any narrower
+     width, where that stretch doesn't apply. Giving it one real sized child
+     fixes that at every width, same as the booth's image gives .ticket-booth
+     real height in both its column and row layouts - no breakpoint-specific
+     override needed here anymore. */
+  .lead-display-wrap {
+    position: relative;
+    width: calc(100% + 3rem + 30px);
+    margin: calc(-0.9rem - 15px) calc(-1.5rem - 15px);
+  }
+  .lead-display {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+  }
+  /* Positioned against .lead-display-wrap (the box the image itself now
+     fills exactly, real size, no letterboxing) instead of .lead - same
+     relationship as .booth-host-bubble against .booth-art-wrap. Anchored to
+     the wrap's own bottom-left corner; bleeds past its left edge on purpose
+     (same idea as before), cropped only by .lead's own clip-path if he pokes
+     out past the visible frame. */
+  .lead-professor {
+    position: absolute;
+    left: -33px;
+    bottom: 0;
+    height: 192px;
+    width: auto;
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Insets hand-measured against mago-display.png's own glow-screen area -
+     now against the wrap that's always exactly the image's own aspect
+     ratio, so these % land in the same spot at every width without needing
+     the old px correction terms (those were compensating for .lead's box
+     not matching the image's real displayed area, which no longer happens). */
+  .lead-text {
+    position: absolute;
+    left: 29%;
+    right: 28%;
+    top: 21%;
+    bottom: 28%;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    margin: 0;
     text-align: center;
     font-family: var(--display);
     font-weight: 400;
-    font-size: 1.15rem;
-    line-height: 1.4;
+    font-size: 0.83rem;
+    line-height: 1.3;
     color: var(--gold);
     text-shadow: 0 0 16px rgba(255,209,102,0.35);
-    background: linear-gradient(160deg, rgba(255,209,102,0.1), transparent 60%), var(--bg-card);
-    border: 2px solid var(--gold-dim);
-    border-radius: 12px;
   }
 
   /* ---------- My unclaimed prizes ---------- */
-  .my-winnings-panel {
+  /* Same 2-layer red/white pixel frame as .panel-border and .ticket-booth-
+     border - a literal copy of the Entrants panel right above it in the
+     same rail, not a new variant (an earlier gold version, then a
+     double-red one, both read as off-style next to the rest of the page). */
+  .my-winnings-border {
     max-width: 340px;
     margin: 0 auto 1.4rem;
-    padding: 1.1rem 1.3rem;
+    padding: 5px;
+    background: var(--crimson);
+  }
+  .my-winnings-highlight {
+    padding: 2px;
+    background: #fff;
+  }
+  .my-winnings-panel {
+    position: relative;
     background: var(--bg-raised);
-    border: 2px solid var(--gold-dim);
-    border-radius: 12px;
+    padding: 1.2rem 1.25rem 1.25rem;
+    overflow: hidden;
   }
   .my-winnings-title {
-    font-family: var(--display);
-    font-weight: 400;
-    font-size: 1.05rem;
-    color: var(--gold);
-    margin: 0 0 0.9rem;
+    font-size: 0.828rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 1rem;
     text-align: center;
   }
   .my-winnings-entry {
     padding-top: 0.9rem;
     margin-top: 0.9rem;
     border-top: 1px dashed var(--border-bright);
+    text-align: center;
   }
   .my-winnings-entry:first-of-type {
     padding-top: 0;
     margin-top: 0;
     border-top: none;
   }
-  .my-winnings-round {
-    margin: 0 0 0.4rem;
+  /* Round and amount split onto their own lines (used to be one run-on
+     sentence) - the amount is what a wallet actually came here to check, so
+     it gets a big/gold/tabular-nums treatment instead of body-sized text
+     buried mid-sentence. */
+  .my-winnings-round-label {
+    margin: 0 0 0.2rem;
+    font-size: 0.759rem;
     font-weight: 700;
-    color: var(--text);
-    text-align: center;
-  }
-
-  /* ---------- Lifetime stats ---------- */
-  .lifetime-stats-panel {
-    position: relative;
-    max-width: 340px;
-    margin: 0 auto;
-    padding: 1.2rem 1.2rem 1rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    display: flex;
-    justify-content: center;
-    gap: 1.2rem;
-    flex-wrap: wrap;
-    overflow: hidden;
-  }
-  .lifetime-stats-panel::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 5px;
-    background: repeating-linear-gradient(45deg, var(--blue) 0 8px, #fff 8px 16px);
-  }
-  .lifetime-stats-tile { text-align: center; }
-  .lifetime-stats-label {
-    margin: 0 0 0.15rem;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--text-dim);
   }
-  .lifetime-stats-value {
-    margin: 0;
+  .my-winnings-amount {
+    margin: 0 0 0.7rem;
     font-family: var(--display);
     font-variant-numeric: tabular-nums;
     font-weight: 400;
-    font-size: 1.7rem;
+    font-size: 1.610rem;
     color: var(--gold);
-    text-shadow: 0 0 14px rgba(255,209,102,0.3);
+    text-shadow: 0 0 12px rgba(255,209,102,0.3);
   }
 
+  /* ---------- Lifetime stats ---------- */
+  /* Same 2-layer red/white pixel frame as .panel-border and .my-winnings-
+     border right above it - the old ::before candy stripe was a stand-in
+     for a proper border and would read as redundant clutter next to a
+     real one now (same call already made for .panel-border on the
+     Entrants list). */
+  .lifetime-stats-border {
+    max-width: 340px;
+    margin: 0 auto;
+    padding: 5px;
+    background: var(--crimson);
+  }
+  .lifetime-stats-highlight {
+    padding: 2px;
+    background: #fff;
+  }
+  .lifetime-stats-panel {
+    padding: 0.7rem;
+    background: var(--bg-card);
+    /* Clips .lifetime-stats-screen's 15% overscale below - the enlarged
+       image bleeds into this padding and gets cropped clean at the panel's
+       own edge, so it never actually paints over .lifetime-stats-highlight/
+       -border (both ancestors, otherwise sit in normal paint order UNDER
+       this panel's own overflowing content - overflow:hidden here is what
+       keeps the frame looking intact instead of covered). */
+    overflow: hidden;
+  }
+  /* Pixel-art "readout screen" image (wood/circuit bezel around a flat dark
+     teal interior) instead of 3 plain text tiles - the 3 stat rows overlay
+     the image the same way .lab-screen-messages/.prize-banner-content do:
+     locked aspect-ratio so the whole image (and the text positioned as a %
+     of it) scales as one unit at any width, never distorted or cropped.
+     Insets below are hand-measured against the PNG's own screen area.
+     Scaled up 15% (transform, not width) so it visually overflows past the
+     card's own padding - the frame reads as if it's cropping/"eating" the
+     edges of a bigger image, instead of the image just fitting neatly. */
+  .lifetime-stats-screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 700 / 190;
+    container-type: inline-size;
+    transform: scale(1.15);
+  }
+  .lifetime-stats-screen-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+  .lifetime-stats-rows {
+    position: absolute;
+    left: 7.5%;
+    right: 7.5%;
+    top: 16%;
+    bottom: 13%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .lifetime-stats-row {
+    margin: 0;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.3em;
+  }
+  .lifetime-stats-row-label {
+    flex-shrink: 0;
+    font-family: var(--body);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    /* Same green readout color as .lab-screen-stats p (the wheel-status
+       screen in the actions cabinet) - both are pixel-art CRT screens now,
+       so they should read as the same kind of display. */
+    color: #8fd66a;
+    font-size: clamp(0.68rem, 4.6cqw, 1.1rem);
+  }
+  /* Dotted leader between label and value, receipt/menu-style - a plain
+     justify-content:space-between left a wide dead gap between the two,
+     since neither one is anywhere near as wide as the row itself. */
+  .lifetime-stats-row-dots {
+    flex: 1;
+    min-width: 0.6em;
+    border-bottom: 2px dotted rgba(143,214,106,0.45);
+    margin-bottom: 0.3em;
+  }
+  .lifetime-stats-row-value {
+    flex-shrink: 0;
+    font-family: var(--display);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    color: #8fd66a;
+    text-shadow: 0 0 6px rgba(143,214,106,0.45);
+    font-size: clamp(0.68rem, 4.6cqw, 1.1rem);
+  }
+
+  /* Still used by Weekly Round (WeeklyRoundPage.tsx) and its weekly.css
+     overrides - Wheel of Repeg itself moved to .wheel-cabinet below and no
+     longer renders a .stage at all, but this has to stay for the other
+     page that still does. */
   .stage {
     display: grid;
     grid-template-columns: minmax(220px, 1fr) minmax(0, 480px) minmax(260px, 1fr);
@@ -282,13 +542,470 @@
   }
   @media (max-width: 980px) {
     .stage { grid-template-columns: 1fr; justify-content: stretch; }
-    /* The wheel is the main attraction - keep it first when stacked, even
-       though the ticket booth comes first in the markup (source order stays
-       booth-first for a logical reading order/tab order; this only reorders
-       the visual stack). */
-    .wheel-card { order: 1; }
+    .wheel-card, .wheel-card-shell { order: 1; }
     .stage-left { order: 2; }
     .stage-right { order: 3; }
+  }
+
+  /* ---------- Wheel cabinet: one unified card, arcade-cabinet style -------
+     All of Wheel of Repeg's play area (prize header, ticket booth, the
+     wheel itself, participants, action buttons) lives inside one shared
+     frame instead of 3 separate floating cards side by side - makes better
+     use of horizontal space on desktop and reads as a single game console
+     rather than fragmented panels. Each cabinet-* area still keeps its own
+     component's existing background/border for now (TicketBooth, panels) -
+     only the grid placement changed, not their own visual treatment; that's
+     next once custom pixel-art frames exist for each slot. */
+  .wheel-cabinet {
+    display: grid;
+    /* Wheel column gets more than double the side columns' share - it's the
+       star of the page, not an equal third. */
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2.4fr) minmax(220px, 1fr);
+    grid-template-areas:
+      "header       header  header";
+    gap: 1.6rem;
+    align-items: start;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .cabinet-header { grid-area: header; }
+  .cabinet-ticket-booth { grid-area: booth; }
+  /* Same 3-color frame as .cabinet-actions - groups the wheel visual and
+     the button/status card as one matching pair, distinct from whatever
+     border the booth/participants cards get. */
+  .cabinet-wheel-outline {
+    grid-area: wheel;
+    padding: 2px;
+    background: #0d0e1f;
+  }
+  .cabinet-wheel-border {
+    padding: 4px;
+    background: #6a6a94;
+  }
+  .cabinet-wheel-highlight {
+    padding: 2px;
+    background: #8bd3e2;
+  }
+  /* Actions had no container of their own once they stopped being nested
+     inside .wheel-card - without this they were just bare buttons floating
+     on the page background instead of reading as one grouped panel.
+     Same 4-layer pixel frame as .hero-sign, .platform-repegged-*, and .lead,
+     but in a cool blue/indigo palette instead of black/gold. */
+  .cabinet-actions-outline {
+    grid-area: actions;
+    padding: 2px;
+    background: #0d0e1f;
+  }
+  .cabinet-actions-border {
+    padding: 4px;
+    background: #6a6a94;
+  }
+  .cabinet-actions-highlight {
+    padding: 2px;
+    background: #8bd3e2;
+  }
+  /* Always split left/right (button+status on the left, text/result/Verify
+     on the right) - not just on narrow screens. The user preferred keeping
+     this divided even at full desktop width instead of it re-stacking into
+     one tall column there. */
+  .cabinet-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    background: var(--bg-card);
+    /* No right padding - cabinet-actions-right (the lab screen) sits flush
+       against the frame's right edge by construction instead of via a
+       horizontal negative margin, which fought the flex-shrink math at
+       narrow widths (the screen wasn't shrinking with the column). */
+    padding: 1.5rem 0 1.5rem 1.5rem;
+  }
+  /* Every state has something for both sides now - left is always a button
+     (or nothing, briefly, between states), right always has at least the
+     result line, so a plain 50/50 flex split is safe here (flex:1 on both,
+     not fixed widths, just so neither side is ever forced narrower than
+     its content needs). */
+  .cabinet-actions-left {
+    container-type: inline-size;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    padding-right: 0.8rem;
+  }
+  .cabinet-actions-right {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    padding-left: 0;
+    border-left: 1px solid var(--border);
+    /* Bleeds past .cabinet-actions's shared top/bottom padding so the
+       screen reaches the frame's real top/bottom edge - vertical margin
+       only (cross-axis for this row), so it doesn't fight the row's
+       horizontal flex-shrink math the way a right-side one did earlier. */
+    margin: -1.5rem 0;
+  }
+  .cabinet-actions .round-action-btn,
+  .cabinet-actions .round-action-btn-secondary,
+  .cabinet-actions .spin-btn {
+    margin-top: 0;
+  }
+  /* Plain text, no pill/badge - matches how it already looked at narrow
+     widths (see the old media-query override below, now folded in here
+     since it read better than the bordered pill at any width). */
+  .cabinet-actions .result,
+  .cabinet-actions .round-status-note {
+    margin-top: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .cabinet-participants { grid-area: participants; }
+
+  /* Desktop (>= 981px): 3 columns side by side, actions sit right under the
+     wheel (not full-width) since they're what the player uses mid-game. */
+  @media (min-width: 981px) {
+    .wheel-cabinet {
+      grid-template-areas:
+        "header       header  header"
+        "booth        wheel   participants"
+        "booth        actions participants";
+    }
+  }
+
+  /* Narrow (<= 980px): the wheel is the attractive animated centerpiece, so
+     it gets its own full-width row instead of squeezing side-by-side with
+     the booth - the booth becomes a horizontal card instead (image left,
+     price/button to its right) rather than shrinking to fit a half-width
+     column. */
+  @media (max-width: 980px) {
+    .wheel-cabinet {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "header"
+        "booth"
+        "wheel"
+        "actions"
+        "participants";
+    }
+    .cabinet-ticket-booth, .cabinet-wheel-outline { min-width: 0; }
+    /* .cabinet-actions/-left/-right's own left/right split is unconditional
+       now (see the base rules above) - only the tighter padding is still
+       mobile-specific here. */
+    .cabinet-actions {
+      padding: 1.1rem 0 1.1rem 1.1rem;
+    }
+    .cabinet-actions-right {
+      margin: -1.1rem 0;
+    }
+    /* The 340px cap on .panel-border/.my-winnings-border/.lifetime-stats-
+       border only makes sense next to the wheel in the real 3-column
+       sidebar (>= 981px, see below) - once the cabinet collapses to a
+       single full-width column here, booth/wheel/actions already stretch
+       to fill it, so these 3 rail cards should too instead of sitting
+       narrower and off-center. Scoped under .cabinet-participants (2
+       classes) rather than the bare class so this wins on specificity
+       regardless of source order - .panel-border's own unconditional
+       max-width rule lives further down the file and would otherwise
+       cancel a same-specificity override declared earlier, as it did the
+       first time this was tried. */
+    .cabinet-participants .panel-border,
+    .cabinet-participants .my-winnings-border,
+    .cabinet-participants .lifetime-stats-border {
+      max-width: none;
+    }
+  }
+
+  /* ---------- Wheel booth (pixel-art background stall, wheel overlaid) ---------- */
+  .wheel-booth-slot {
+    position: relative;
+    width: 100%;
+    /* Matches cabinet-wheel-bg.png's own ratio (703:740) so it's never
+       distorted, and scales cleanly with whatever width wheel-card-visual
+       ends up with instead of assuming a fixed card width. */
+    aspect-ratio: 703 / 740;
+    overflow: hidden;
+    background: var(--bg-card);
+  }
+  .wheel-booth-wrap {
+    position: absolute;
+    inset: 0;
+  }
+  .wheel-booth-bg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+  .wheel-booth-wheel {
+    position: absolute;
+    /* % of wheel-booth-wrap's own box, not fixed px - stays aligned with
+       the booth art regardless of the wrap's actual rendered size. Measured
+       against cabinet-wheel-bg.png's own decorative wheel (center ~338,272,
+       radius ~126 in its native 703x740 px). */
+    left: 30.65%;
+    top: 18.72%;
+    width: 35.56%;
+    aspect-ratio: 1 / 1;
+  }
+
+  /* ---------- Pixel-art wheel (canvas palette + static frame overlay) ---------- */
+  .pixel-wheel-wrap {
+    position: relative;
+    /* % + aspect-ratio, not fixed px - this can sit inside containers of
+       very different actual widths (see wheel-booth-wheel), and fixed px
+       here would silently misalign the moment the card isn't exactly the
+       one width it was measured at. */
+    width: 100%;
+    aspect-ratio: 1 / 1;
+  }
+  .pixel-wheel-canvas {
+    display: block;
+    position: relative;
+    top: 5%;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  .pixel-wheel-frame {
+    position: absolute;
+    left: -0.6%;
+    top: -5.9%;
+    width: 101.2%;
+    height: 109.8%;
+    image-rendering: pixelated;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* ---------- Host guide (pixel-art character + speech bubble) ---------- */
+  .wheel-card-shell {
+    position: relative;
+  }
+  /* Floats over the wheel visual, near the host character already drawn
+     into cabinet-wheel-bg.png - positioned in % of .wheel-booth-wrap (same
+     technique as .wheel-booth-wheel) so it scales down with the image on
+     narrow screens instead of staying a fixed px size. Measured roughly
+     above-right of the host's hat in the image's own 703x740 native
+     coordinates; nudge left/top if it doesn't land well against his head. */
+  .wheel-booth-host-bubble {
+    position: absolute;
+    left: 38%;
+    top: 46%;
+    width: 56%;
+    z-index: 3;
+    pointer-events: none;
+    /* Lets the bubble's own text (and the nube-specific offset below) use
+       cqw - relative to THIS element's actual rendered width, whatever
+       that ends up being at any viewport size - instead of fixed rem/px
+       that stayed constant while the bubble itself shrank on narrow
+       screens, which is what let text overflow the nube's hard image edge
+       and drift off its (also now-shifted) center. */
+    container-type: inline-size;
+  }
+  /* The hype-line thought bubble sits above-left of the head instead - at
+     the shared position it covered the "wheel of repeg / spin and win"
+     sign board (nothing to say, no urgency, so it doesn't need to sit
+     right next to his face like the others). */
+  .wheel-booth-host-bubble-nube {
+    left: 0%;
+    top: 26%;
+    width: 45%;
+  }
+  /* Outline is its own layer behind the fill (both clipped with the
+     IDENTICAL polygon, the outline's box just 3px bigger all around via
+     padding) - a plain border+clip-path leaves the deeper step corners
+     with no border color at all ("open" corners, same issue .hero-sign
+     had), since a border only paints near the box's ORIGINAL rectangular
+     edge and clip-path just cuts through the fill beyond that. Nesting two
+     same-shape layers instead makes the gap between them a uniform ring
+     everywhere, tail included. */
+  .host-guide-bubble-outline-rectangulo,
+  .host-guide-bubble-outline-horizontal {
+    position: relative;
+    z-index: 2;
+    padding: 3px;
+    background: #17140f;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.35);
+  }
+  /* Same plain box shape as rectangulo - no tail baked into the polygon.
+     Tried that twice (verified via the browser's own Computed clip-path
+     matching the source exactly at 2 different sizes) with no visible tail
+     ever showing, so the tail is now 2 separate plain squares instead (see
+     .host-guide-bubble-tail below) - simpler shapes, no clip-path/polygon
+     involved, nothing subtle left to get wrong. */
+  .host-guide-bubble-outline-rectangulo,
+  .host-guide-bubble-outline-horizontal {
+    clip-path: polygon(
+      0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0,
+      calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%,
+      6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px)
+    );
+  }
+  .host-guide-bubble-wrap {
+    position: relative;
+  }
+  /* z-index:1, one below the box's own z-index:2 - the tail sits BEHIND
+     the box, tucked under its bottom-left corner (the box's border/fill
+     paints over whatever part of the tail overlaps it), same as a normal
+     speech-bubble tail. */
+  .host-guide-bubble-tail {
+    position: absolute;
+    z-index: 1;
+    box-sizing: border-box;
+    background: #fff8e7;
+    border: 3px solid #17140f;
+  }
+  /* Calibrated live against .host-guide-bubble-outline-horizontal's own
+     stepped bottom-left corner (2 steps of 3px, see its clip-path above) -
+     tail-1's top-right corner meets that corner's own vertex. Don't re-tune
+     from scratch if the box's corner-step size ever changes; re-derive
+     from the corner's own geometry instead. */
+  .host-guide-bubble-tail-1 {
+    width: 18px;
+    height: 18px;
+    left: -9px;
+    top: calc(100% - 7px);
+  }
+  .host-guide-bubble-tail-2 {
+    width: 13px;
+    height: 13px;
+    left: -15px;
+    top: calc(100% + 9px);
+  }
+  .host-guide-bubble {
+    position: relative;
+    width: 100%;
+    padding: 0.85rem 0.8rem 0.9rem;
+    font-family: var(--body);
+    font-weight: 700;
+    /* clamp(), not a plain cqw - a pure cqw value shrunk way too far on a
+       narrow screen (the bubble's actual container turned out smaller than
+       first assumed). The floor (0.85rem) stops it from ever getting
+       smaller than that regardless of how small the bubble's container
+       gets, the ceiling (1.3rem) stops it from getting oversized on a huge
+       one - only the middle range actually scales with cqw. */
+    font-size: clamp(0.85rem, 7cqw, 1.3rem);
+    line-height: 1.2;
+    color: #17140f;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .host-guide-bubble p { margin: 0; }
+  /* Pure CSS, not the globo-rectangulo.png anymore - a stretched image's
+     border-image corners never truly hold their shape across every possible
+     text length, while a real fill genuinely resizes with zero distortion,
+     and the quote marks are just text characters, immune to it entirely.
+     Same small stepped-corner bevel as the big cards, scaled down (2 steps
+     of 3px), same polygon as its own outline layer above. */
+  .host-guide-bubble-rectangulo,
+  .host-guide-bubble-horizontal {
+    background: #fff8e7;
+    clip-path: polygon(
+      0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0,
+      calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%,
+      6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px)
+    );
+  }
+  /* Twice the message's own font-size (2em, relative to .host-guide-bubble's
+     0.78rem) - part of the bubble's fixed graphic, not scaled to the text
+     itself, same idea as the quote marks baked into the original
+     globo-rectangulo.png art. */
+  .host-guide-bubble-rectangulo::before,
+  .host-guide-bubble-rectangulo::after,
+  .host-guide-bubble-horizontal::before,
+  .host-guide-bubble-horizontal::after {
+    position: absolute;
+    /* Not var(--display) (Silkscreen) - that pixel webfont has no curly-
+       quote glyph, so the browser rendered its .notdef box (the solid
+       black rectangle) instead of falling back further down the stack.
+       Arial Black has real, heavy quote glyphs and reads just as bold. */
+    font-family: 'Arial Black', Arial, sans-serif;
+    font-weight: 900;
+    font-size: 1.4em;
+    line-height: 1;
+    color: #17140f;
+  }
+  .host-guide-bubble-rectangulo::before,
+  .host-guide-bubble-horizontal::before {
+    content: "\201C";
+    /* As close to the box's own top edge as the clip-path allows (0 is the
+       limit - going negative puts it outside the polygon entirely, and the
+       box's own clip-path clips its pseudo-elements same as any other
+       content). Real separation from the text comes from .host-guide-
+       bubble's own padding, not from pushing this past 0. */
+    top: 0;
+    left: 4px;
+  }
+  .host-guide-bubble-rectangulo::after,
+  .host-guide-bubble-horizontal::after {
+    content: "\201D";
+    bottom: 0;
+    right: 4px;
+  }
+  /* Alarma/nube can't stretch (spiky/scalloped silhouettes) - fixed aspect
+     ratio, short text only, kept away from the jagged/scalloped edges by
+     padding. */
+  .host-guide-bubble-alarma {
+    aspect-ratio: 300 / 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1.4rem;
+    background: url('/characters/globo-alarma.png') center / contain no-repeat;
+    image-rendering: pixelated;
+  }
+  /* Mirrored (its little trailing thought-bubbles pointed down-left in the
+     source art) so they point toward the host's head from this bubble's
+     new above-left position instead of off into empty space. Flipping the
+     background image needs its own layer so the text (a normal, unflipped
+     child on top of it) never gets mirrored along with it - not needed
+     right now (the current globo-nube.png already has its trailing
+     thought-bubbles pointing the right way for this bubble's above-left
+     position), but keeping the layer split so a future re-mirror is just
+     adding transform back here, not restructuring anything. */
+  .host-guide-bubble-nube {
+    position: relative;
+    aspect-ratio: 300 / 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* More top padding, less bottom - the visible round part of the cloud
+       sits in the upper ~65% of this box (the trailing thought-bubbles/
+       tail live in the bottom-right, outside the "safe" text area), so
+       centering across the FULL box (equal-ish padding) put the text lower
+       than the cloud's actual visual center. */
+    padding: 0.5rem 1.6rem 1.6rem;
+  }
+  .host-guide-bubble-nube::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url('/characters/globo-nube.png') center / contain no-repeat;
+    image-rendering: pixelated;
+  }
+  .host-guide-bubble-nube p {
+    position: relative;
+    z-index: 1;
+    /* Narrower than the box's own padded width on purpose - the cloud's
+       round silhouette is narrower than its bounding box at this text's
+       height, so wrapping at the box's full width let phrases over ~3
+       words run past the visible cloud edge before ever breaking a line. */
+    max-width: 85%;
+    margin: 0 auto;
+    /* Nudged off the flex-centered position, up and left, to sit better
+       within the cloud's actual round silhouette. */
+    /* em, not cqw - inherits the SAME clamp() floor/ceiling as the text's
+       own font-size above automatically (em is always relative to the
+       computed font-size, clamped or not), instead of needing its own
+       separate clamp to avoid the same "shrinks too far" problem. */
+    transform: translate(-0.82em, -0.88em);
   }
 
   /* ---------- Wheel card / big-top tent ---------- */
@@ -328,6 +1045,74 @@
     margin-top: 1px;
   }
 
+  /* ---------- Prize banner (pixel-art sign replacing the old CSS octagon
+     medallion) - text overlaid on the frame's hollow center via %, same
+     "grows/shrinks with the container, never upscaled past native res"
+     pattern as .booth-art. Capped at prize-banner.png's own native width
+     (426px) so it's never stretched blurry on wide desktop screens - it
+     just stays at its native size and centers, shrinking on narrower ones. */
+  .prize-banner {
+    position: relative;
+    width: 100%;
+    max-width: 660px;
+    aspect-ratio: 660 / 310;
+    margin: 0 auto 1.5rem;
+    /* Lets the text below use cqw (container-width-relative) units so it
+       shrinks in lockstep with the banner image on narrow screens, instead
+       of staying fixed rem size and overflowing the frame's teal area. */
+    container-type: inline-size;
+  }
+  .prize-banner-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+  .prize-banner-content {
+    position: absolute;
+    /* Matches prize-banner.png's own hollow teal area (its interior is
+       480x178, centered in the 660x310 native canvas) so text never
+       overlaps the wooden frame or the trophy/tickets icon posts. */
+    left: 13.6%;
+    top: 21.3%;
+    width: 72.7%;
+    height: 57.4%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    text-align: center;
+  }
+  /* ROI% badge now sits inline with the caption text (same line) instead of
+     next to the prize amount - reads confusingly split otherwise. Slightly
+     bigger than .prize-roi-caption's shared base size, scoped to this
+     banner only (Weekly Round's own caption line is untouched).
+     All 5 sizes below are cqw, calibrated to equal their old rem size at
+     the banner's native 660px width (1cqw = 6.6px there), then shrink from
+     there as the banner narrows - the rem values only still apply to
+     Weekly Round's plain (non-image) .prize-tag, untouched. */
+  .prize-banner-content .prize-round-badge { font-size: 1.894cqw; }
+  .prize-banner-content .prize-label { font-size: 4.818cqw; }
+  .prize-banner-content .prize-amount { font-size: 6.409cqw; }
+  .prize-banner-content .prize-roi {
+    font-size: 2.924cqw;
+    vertical-align: middle;
+    margin-right: 0.3rem;
+  }
+  .prize-banner-content .prize-roi-caption {
+    font-size: 2.636cqw;
+  }
+  .prize-label-icon {
+    width: 1.15em;
+    height: 1.15em;
+    vertical-align: -0.2em;
+    margin-right: 0.35em;
+    image-rendering: pixelated;
+  }
+
   .prize-tag {
     display: flex;
     flex-direction: column;
@@ -347,7 +1132,7 @@
   }
   .prize-round-badge {
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.782rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -356,7 +1141,7 @@
   }
   .prize-label {
     font-family: var(--body);
-    font-size: 0.72rem;
+    font-size: 0.994rem;
     font-weight: 800;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -371,16 +1156,17 @@
   .prize-amount {
     font-family: var(--display);
     font-variant-numeric: tabular-nums;
-    font-size: 2.3rem;
+    font-size: 2.645rem;
     font-weight: 400;
     color: var(--text);
     letter-spacing: 0.01em;
     text-shadow: 0 0 18px rgba(255,209,102,0.45);
+    margin: 0;
   }
   .prize-roi {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
-    font-size: 1.05rem;
+    font-size: 1.208rem;
     font-weight: 700;
     color: var(--blue);
     background: rgba(84,146,247,0.12);
@@ -389,36 +1175,76 @@
     padding: 0.15rem 0.65rem;
   }
   .prize-roi-caption {
-    font-size: 0.72rem;
+    font-size: 0.994rem;
     color: var(--text-dim);
     margin: 0;
     text-align: center;
   }
 
   /* ---------- Ticket booth (fair-style ticket sale) - a compact side panel
-     in the stage, not a full-width bar, so it doesn't push the wheel down */
+     in the stage, not a full-width bar, so it doesn't push the wheel down.
+     Same pixel frame idea as the wheel/actions cards, but only 2 layers -
+     thick red outside, thin white inside - no third/outline color. */
+  .ticket-booth-border {
+    margin: 0 auto;
+    padding: 5px;
+    background: var(--crimson);
+  }
+  .ticket-booth-highlight {
+    padding: 2px;
+    background: #fff;
+  }
   .ticket-booth {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 0.7rem;
-    max-width: 300px;
-    margin: 0 auto;
     padding: 1.3rem 1.1rem 1.1rem;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
     position: relative;
     overflow: hidden;
   }
-  .booth-awning {
+  /* Wrapper carries the bleed/sizing that used to live directly on the img
+     (see the narrow-breakpoint override below too) - .booth-host-bubble
+     positions against this box instead of the img itself, so its % offsets
+     land on the same spot in both the full-bleed desktop layout and the
+     50%-column narrow one. */
+  .booth-art-wrap {
+    position: relative;
+    width: calc(100% + 2.2rem);
+    height: auto;
+    margin: -1.3rem -1.1rem 1rem;
+  }
+  .booth-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    transform: translateX(5px);
+  }
+  /* Hype bubble for the tentacled vendor already baked into ticket-booth.png
+     - positioned above his head, same "rectangulo"/"horizontal" bubble the
+     Host uses over the wheel (see .wheel-booth-host-bubble), reused as-is
+     rather than inventing a new bubble type. */
+  .booth-host-bubble {
     position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 6px;
-    background: repeating-linear-gradient(45deg,
-      var(--crimson) 0 10px,
-      #fff 10px 20px);
+    left: calc(2% - 10px);
+    top: calc(24% + 20px);
+    width: 34%;
+    z-index: 3;
+    pointer-events: none;
+    container-type: inline-size;
+  }
+  /* Flatter than the Host's own wheel bubble - less vertical padding so it
+     doesn't read as mostly empty cream space around 2 short lines. */
+  .booth-host-bubble .host-guide-bubble {
+    padding: 0.5rem 0.3rem 0.55rem;
+  }
+  .booth-host-bubble .host-guide-bubble-rectangulo::before,
+  .booth-host-bubble .host-guide-bubble-rectangulo::after {
+    font-size: 0.98em;
   }
   .booth-info {
     display: flex;
@@ -426,13 +1252,9 @@
     align-items: center;
     gap: 0.3rem;
   }
-  .booth-icon {
-    font-size: 1.6rem;
-    line-height: 1;
-  }
   .booth-label {
     font-family: var(--body);
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -442,19 +1264,13 @@
   .booth-price {
     font-family: var(--display);
     font-variant-numeric: tabular-nums;
-    font-size: 1.5rem;
+    font-size: 2.07rem;
     font-weight: 400;
     color: var(--text);
     margin: 0;
   }
-  .booth-currency {
-    font-family: var(--body);
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--text-dim);
-  }
   .booth-available {
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     font-weight: 700;
     color: var(--text-dim);
     margin: 0.3rem 0 0;
@@ -464,7 +1280,7 @@
     animation: booth-urgent-pulse 1.6s ease-in-out infinite;
   }
   .booth-cap-note {
-    font-size: 0.66rem;
+    font-size: 0.759rem;
     color: var(--text-dim);
     opacity: 0.75;
     margin: 0.15rem 0 0;
@@ -477,25 +1293,78 @@
     .booth-available-urgent { animation: none; }
   }
   .booth-error {
-    font-size: 0.76rem;
+    font-size: 0.874rem;
     color: var(--crimson-bright);
     margin: 0.3rem 0 0;
   }
+  /* Pixel-art button: flat fill, no blur anywhere (hard-edged inset bevel
+     instead of a soft gradient/glow), square corners, and a solid 4px
+     "ledge" below instead of a drop shadow - it presses flush into that
+     ledge on :active rather than just nudging down 1px. */
   .booth-buy {
     width: 100%;
-    background: linear-gradient(180deg, var(--blue), var(--blue-deep));
+    background: #2fb968;
     color: #fff;
-    border: 1px solid #7fb0ff;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
     font-weight: 800;
-    font-size: 0.85rem;
+    font-size: 1.4rem;
     letter-spacing: 0.02em;
     padding: 0.7rem 1.3rem;
-    border-radius: 10px;
     cursor: pointer;
-    box-shadow: 0 10px 22px -10px rgba(84,146,247,0.55), inset 0 1px 0 rgba(255,255,255,0.25);
+    box-shadow:
+      inset 3px 3px 0 rgba(168,240,192,0.9),
+      inset -3px -3px 0 rgba(26,122,65,0.9),
+      0 4px 0 #1a7a41;
   }
-  .booth-buy:active { transform: translateY(1px); }
+  .booth-buy:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(26,122,65,0.9),
+      inset -3px -3px 0 rgba(168,240,192,0.5);
+    transform: translateY(4px);
+  }
+  /* Narrow (<= 980px): the wheel gets its own full-width row below (see
+     .wheel-cabinet's mobile grid), so the booth becomes a horizontal card
+     instead of shrinking to fit a half-width column - image flush left,
+     price/button in a column to its right. This has to live AFTER the base
+     .ticket-booth/.booth-art rules above, not earlier in the file - an
+     unconditional rule always beats a media-query rule of equal
+     specificity that comes before it in source order, media query or not,
+     which is why an earlier attempt at this silently did nothing. */
+  @media (max-width: 980px) {
+    /* Exact 50/50 split, not an arbitrary fixed-px image size - padding
+       moves from the shared card to .booth-details only, so the left half
+       has nothing fighting it for space and can be a clean, true 50%. */
+    .ticket-booth {
+      flex-direction: row;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+    }
+    .booth-art-wrap {
+      width: 50%;
+      height: auto;
+      flex-shrink: 0;
+      margin: 0;
+    }
+    .booth-details {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      /* Pushed to the top, not vertically centered - leaves room below the
+         button for the upcoming multi-ticket quantity stepper. */
+      justify-content: flex-start;
+      align-items: center;
+      text-align: center;
+      min-width: 0;
+      gap: 0.35rem;
+      padding: 0.6rem 1.1rem 1.1rem;
+    }
+    .booth-info { align-items: center; }
+    .booth-price { font-size: 1.6rem; }
+    .booth-buy { width: auto; padding: 0.4rem 1.4rem; }
+  }
 
   /* ---------- Other active tickets (other tiers) - stacks under the booth ---------- */
   .other-tickets-list {
@@ -517,7 +1386,7 @@
   }
   .other-tickets-title {
     margin: 0 0 0.7rem;
-    font-size: 0.68rem;
+    font-size: 0.782rem;
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -538,7 +1407,7 @@
     border-radius: 9px;
     cursor: pointer;
     font-family: var(--body);
-    font-size: 0.78rem;
+    font-size: 0.897rem;
     color: var(--text);
   }
   .other-tickets-row::before, .other-tickets-row::after {
@@ -555,7 +1424,7 @@
   .other-tickets-row:first-of-type { margin-top: 0; }
   .other-tickets-row:hover { border-color: var(--gold-dim); }
   .other-tickets-price { font-weight: 800; }
-  .other-tickets-count { color: var(--text-dim); font-size: 0.72rem; }
+  .other-tickets-count { color: var(--text-dim); font-size: 0.828rem; }
 
   .wheel-wrap {
     position: relative;
@@ -642,26 +1511,100 @@
     .hub-spiral { animation: none; }
   }
 
+  /* ---------- Shared pixel-art stepped-corner shape (same 4 x 5px-step
+     staircase as .hero-sign's frame) - just the clip-path, so any new
+     framed element can reuse it without repeating the whole polygon. ---- */
+  .pixel-stepped-corners {
+    clip-path: polygon(
+      0 20px, 5px 20px, 5px 15px, 10px 15px, 10px 10px, 15px 10px, 15px 5px, 20px 5px, 20px 0,
+      calc(100% - 20px) 0, calc(100% - 20px) 5px, calc(100% - 15px) 5px, calc(100% - 15px) 10px, calc(100% - 10px) 10px, calc(100% - 10px) 15px, calc(100% - 5px) 15px, calc(100% - 5px) 20px, 100% 20px,
+      100% calc(100% - 20px), calc(100% - 5px) calc(100% - 20px), calc(100% - 5px) calc(100% - 15px), calc(100% - 10px) calc(100% - 15px), calc(100% - 10px) calc(100% - 10px), calc(100% - 15px) calc(100% - 10px), calc(100% - 15px) calc(100% - 5px), calc(100% - 20px) calc(100% - 5px), calc(100% - 20px) 100%,
+      20px 100%, 20px calc(100% - 5px), 15px calc(100% - 5px), 15px calc(100% - 10px), 10px calc(100% - 10px), 10px calc(100% - 15px), 5px calc(100% - 15px), 5px calc(100% - 20px), 0 calc(100% - 20px)
+    );
+  }
+  /* Smaller-step version (2 x 3px, same geometry as .host-guide-bubble's
+     own outline/fill) for compact elements where the big 20px staircase
+     would read as oversized relative to the box - e.g. .ticket-outline. */
+  .pixel-stepped-corners-sm {
+    clip-path: polygon(
+      0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0,
+      calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%,
+      6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px)
+    );
+  }
   /* ---------- Platform-wide repegged total (neon sign) ---------- */
+  /* Side by side with .lead-outline from 981px up (see .stats-lead-row) so
+     the wheel cabinet - the actual game - lands higher on the page instead
+     of needing a scroll past 2 stacked banners first. Stays stacked below
+     that, each keeping its own centered max-width as before. */
+  .stats-lead-row {
+    display: flex;
+    flex-direction: column;
+  }
+  @media (min-width: 981px) {
+    .stats-lead-row {
+      flex-direction: row;
+      align-items: stretch;
+      justify-content: center;
+      gap: 1.6rem;
+      max-width: 900px;
+      margin: 0 auto 2.5rem;
+    }
+    .stats-lead-row .platform-repegged-outline,
+    .stats-lead-row .lead-outline {
+      max-width: none;
+      flex: 1 1 400px;
+      margin: 0;
+    }
+    /* .lead's own content (one short paragraph) is naturally shorter than
+       the repegged banner's (label + big number + tagline + bulb strips),
+       so once both cards are stretched to the same height, .lead's text
+       needs to be centered in that extra space instead of sitting at the
+       top with empty card below it. */
+    .stats-lead-row .lead-outline,
+    .stats-lead-row .lead-border,
+    .stats-lead-row .lead-highlight {
+      display: flex;
+    }
+    .stats-lead-row .lead-border,
+    .stats-lead-row .lead-highlight {
+      flex: 1;
+    }
+    .stats-lead-row .lead {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+  .platform-repegged-outline {
+    max-width: 620px;
+    margin: 0 auto 1.6rem;
+    padding: 2px;
+    background: var(--black);
+    box-shadow:
+      0 0 22px 2px rgba(84,146,247,0.22),
+      0 0 34px 6px rgba(208,30,67,0.12),
+      0 22px 46px -22px rgba(0,0,0,0.75);
+  }
+  .platform-repegged-border {
+    padding: 4px;
+    background: var(--gold-dim);
+  }
+  .platform-repegged-highlight {
+    padding: 2px;
+    background: var(--gold);
+  }
   .platform-repegged-banner {
     position: relative;
     text-align: center;
-    max-width: 620px;
-    margin: 0 auto 1.6rem;
     padding: 1.3rem 1.6rem 1.5rem;
     background:
       radial-gradient(ellipse 320px 160px at 20% 0%, rgba(84,146,247,0.22), transparent 65%),
       radial-gradient(ellipse 320px 160px at 80% 100%, rgba(208,30,67,0.2), transparent 65%),
       repeating-linear-gradient(115deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 14px),
       #090c17;
-    border-radius: 16px;
-    box-shadow:
-      0 0 0 1px rgba(84,146,247,0.45),
-      0 0 0 1px rgba(208,30,67,0.25) inset,
-      0 0 22px 2px rgba(84,146,247,0.22),
-      0 0 34px 6px rgba(208,30,67,0.12),
-      0 22px 46px -22px rgba(0,0,0,0.75),
-      inset 0 1px 0 rgba(255,255,255,0.05);
     overflow: hidden;
   }
   .platform-repegged-glow {
@@ -678,7 +1621,7 @@
     margin: 0;
     font-family: var(--display);
     font-weight: 400;
-    font-size: 0.95rem;
+    font-size: 1.092rem;
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: #fff;
@@ -694,7 +1637,7 @@
     margin: 0.15rem 0 0;
     font-family: var(--display);
     font-weight: 400;
-    font-size: 1.9rem;
+    font-size: 2.185rem;
     color: #fff;
     text-shadow:
       0 0 4px #fff,
@@ -706,7 +1649,7 @@
   .platform-repegged-tagline {
     position: relative;
     margin: 0.5rem 0 0;
-    font-size: 0.74rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: var(--text-dim);
   }
@@ -718,27 +1661,37 @@
     .platform-repegged-label, .platform-repegged-amount { animation: none; }
   }
 
+  /* Pixel-art button - same flat-fill/hard-bevel/pressed-ledge pattern as
+     .booth-buy/.round-action-btn, in red since this is the "Reveal winner"
+     CTA the player is told to watch for. */
   .spin-btn {
+    /* Stretched to the column's full width (same margin both sides) at any
+       width - same treatment as .redeem-open-btn/.continue-top-btn, the
+       other top-slot buttons in this same spot. */
+    align-self: stretch;
     margin-top: 2.2rem;
-    background: linear-gradient(180deg, var(--crimson-bright), var(--crimson));
+    background: var(--crimson-bright);
     color: #fff;
-    border: 1px solid #ff6b84;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
     font-weight: 800;
-    font-size: 0.92rem;
+    font-size: 1.25rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     padding: 0.85rem 2.4rem;
-    border-radius: 999px;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
     box-shadow:
-      0 10px 28px -8px rgba(208,30,67,0.8),
-      inset 0 1px 0 rgba(255,255,255,0.3),
-      inset 0 -3px 0 rgba(0,0,0,0.18);
+      inset 3px 3px 0 rgba(255,157,176,0.9),
+      inset -3px -3px 0 rgba(122,15,40,0.9),
+      0 4px 0 #7a0f28;
   }
-  .spin-btn:hover:not(:disabled) { transform: translateY(-1px); }
-  .spin-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 4px 14px -6px rgba(208,30,67,0.8), inset 0 1px 0 rgba(255,255,255,0.2); }
+  .spin-btn:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 0 rgba(122,15,40,0.9),
+      inset -3px -3px 0 rgba(255,157,176,0.5);
+    transform: translateY(4px);
+  }
   .spin-btn:disabled {
     opacity: 0.5;
     cursor: default;
@@ -749,10 +1702,105 @@
     outline-offset: 2px;
   }
 
+  /* "Lab screen" pixel-art monitor - the status messages read as if shown
+     on the scientist's display instead of floating text in the card. Fills
+     the column edge to edge on both axes (no object-fit) so it never gaps
+     or crops - accepts a slight stretch instead if the column's aspect
+     ratio doesn't exactly match the PNG's. Insets below are hand-measured
+     against lab-screen.png's own dark screen area (vs. its beige bezel/
+     control-panel strip at the bottom). */
+  .lab-screen {
+    position: relative;
+    container-type: inline-size;
+    flex: 1;
+    width: 100%;
+  }
+  .lab-screen img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  .lab-screen-messages {
+    position: absolute;
+    left: 11%;
+    right: 11%;
+    top: 14%;
+    bottom: 13%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    text-align: center;
+  }
+  /* Pinned header - "WHEEL STATUS" reads like the display's own label,
+     distinct from whatever contextual message is currently showing. Plain
+     flow (not space-between) so it can never end up pushed above the
+     screen's own top edge when the message below overflows. */
+  .lab-screen-title {
+    flex-shrink: 0;
+    margin: 0 0 clamp(0.5rem, 5cqw, 1rem);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: underline;
+    color: #9be86a;
+    font-size: clamp(0.85rem, 7.5cqw, 1.25rem);
+  }
+  /* Takes the middle space and centers whatever message is showing (or
+     nothing at all, between states) - the stats block below is pushed to
+     the bottom via margin-top: auto instead, so an overflowing message
+     shrinks first instead of displacing the title or the stats. */
+  .lab-screen-message {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 0;
+  }
+  /* Low-third readout - always visible, separate from the contextual
+     message above it. Left-aligned/uppercase, unlike everything else on
+     the screen which stays centered. */
+  .lab-screen-stats {
+    flex-shrink: 0;
+    align-self: stretch;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .lab-screen-stats p {
+    margin: 0;
+    color: #8fd66a;
+    text-transform: uppercase;
+    font-size: clamp(0.55rem, 4.5cqw, 0.85rem);
+  }
+  .lab-screen-messages .result,
+  .lab-screen-messages .withdraw-lockin-note,
+  .lab-screen-messages .round-status-note {
+    color: #8fd66a;
+    text-transform: uppercase;
+  }
+  /* Text scales with the screen's own rendered width (container query, not
+     viewport) instead of a fixed rem size, same idea as the Host's nube
+     bubble - keeps it inside the dark screen area at any card width. */
+  .lab-screen-messages .result {
+    font-size: clamp(0.65rem, 5.5cqw, 1.092rem);
+  }
+  .lab-screen-messages .round-status-note {
+    font-size: clamp(0.65rem, 5.5cqw, 1.092rem);
+  }
+  .lab-screen-messages .withdraw-lockin-note {
+    font-size: clamp(0.55rem, 4.2cqw, 0.828rem);
+  }
+
   .result {
-    margin-top: 1.9rem;
+    margin-top: 0.5rem;
     min-height: 1.4rem;
-    font-size: 0.85rem;
+    font-size: 0.977rem;
     color: var(--text-dim);
     text-align: center;
     padding: 0.5rem 1.1rem;
@@ -762,45 +1810,136 @@
   }
   .result strong { color: var(--blue); }
 
+  /* Pixel-art button - same flat-fill/hard-bevel/pressed-ledge pattern as
+     .booth-buy, just blue instead of green. Text size bumped less than
+     .booth-buy's, since this one class covers everything from short labels
+     ("Close round") to the long anti-spoiler one ("Check round #4 - see if
+     you won!") - .round-action-btn-compact dials that long one back down
+     so it doesn't wrap/overflow its narrow column. */
   .round-action-btn {
     margin-top: 2.2rem;
-    background: linear-gradient(180deg, var(--blue), var(--blue-deep));
+    background: var(--blue);
     color: #fff;
-    border: 1px solid #7fb0ff;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
     font-weight: 800;
-    font-size: 0.92rem;
+    font-size: 1.2rem;
     letter-spacing: 0.02em;
     text-transform: uppercase;
     padding: 0.85rem 2.4rem;
-    border-radius: 999px;
     cursor: pointer;
-    box-shadow: 0 10px 28px -8px rgba(84,146,247,0.6), inset 0 1px 0 rgba(255,255,255,0.25);
+    box-shadow:
+      inset 3px 3px 0 rgba(157,192,255,0.9),
+      inset -3px -3px 0 rgba(11,58,158,0.9),
+      0 4px 0 var(--blue-deep);
+  }
+  .round-action-btn:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 0 rgba(11,58,158,0.9),
+      inset -3px -3px 0 rgba(157,192,255,0.5);
+    transform: translateY(4px);
   }
   .round-action-btn:disabled {
     opacity: 0.5;
     cursor: default;
     box-shadow: none;
   }
+  .round-action-btn-compact {
+    font-size: 1.12rem;
+    text-transform: none;
+    padding: 0.85rem 1.6rem;
+  }
+  /* When this is the only action showing (round open, nothing else eligible
+     yet), it used to just sit at the top of the column, leaving the rest of
+     it empty below (the column is stretched to match .cabinet-actions-right
+     - see .cabinet-actions - even when its own content is short). Auto
+     top/bottom margins center it in that leftover vertical space instead,
+     without touching .cabinet-actions-left's shared justify-content (which
+     would also shift every other, multi-button state that already reads
+     fine anchored to the top). A bit bigger too, since it's carrying the
+     column on its own in this state. */
+  /* Same specificity as .cabinet-actions .round-action-btn (which sets
+     margin-top:0) so this actually wins instead of losing to it silently -
+     a plain .round-action-btn-view-previous selector was getting its
+     margin-top overridden back to 0, leaving only margin-bottom:auto in
+     effect (pushes the leftover space below instead of splitting it, so
+     the button stayed pinned to the top - only wasn't obvious on narrow
+     cards, where .cabinet-actions-right isn't tall enough to leave much
+     leftover space to begin with). */
+  .cabinet-actions .round-action-btn-view-previous {
+    margin-top: auto;
+    margin-bottom: auto;
+    font-size: 1.3rem;
+    padding: 1.1rem 2rem;
+  }
+  .round-action-btn-icon {
+    width: 1.3em;
+    height: 1.3em;
+    vertical-align: -0.3em;
+    margin-right: 0.35em;
+    image-rendering: pixelated;
+  }
   /* Leaving-the-round action (withdraw) - deliberately less prominent than
-     the primary blue flow buttons, so it doesn't compete with them. */
+     the primary blue flow buttons, so it doesn't compete with them. Still
+     pixel-square/no-blur, just an outline instead of a filled bevel. */
   .round-action-btn-secondary {
     margin-top: 0.8rem;
     background: transparent;
     color: var(--text-dim);
-    border: 1px solid var(--border-bright);
+    border: 3px solid var(--border-bright);
     box-shadow: none;
   }
+  .round-action-btn-secondary:active:not(:disabled) { transform: translateY(2px); }
   .round-action-btn-secondary:hover { color: var(--text); }
+  /* Redeem prize - same flat-fill/hard-bevel pattern as .round-action-btn,
+     in green (matching .booth-buy) instead of blue, so it reads as the
+     "cash out" action distinct from Continue's blue "keep playing" one. */
+  .redeem-open-btn {
+    /* Stretched to the column's full width (same margin both sides) at any
+       width, not just right-aligned with its own natural content width -
+       same treatment as .continue-top-btn in wide mode. */
+    align-self: stretch;
+    background: #2fb968;
+    box-shadow:
+      inset 3px 3px 0 rgba(168,240,192,0.9),
+      inset -3px -3px 0 rgba(26,122,65,0.9),
+      0 4px 0 #1a7a41;
+  }
+  .redeem-open-btn:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 0 rgba(26,122,65,0.9),
+      inset -3px -3px 0 rgba(168,240,192,0.5);
+  }
+  /* Continue, in the top slot Redeem would otherwise sit in - only appears
+     when there's no Redeem button (round revealed but this wallet has no
+     unclaimed prize here), so the scientist+Verify row below it never has
+     to shift up to fill that gap. Already blue via .round-action-btn, just
+     needs Redeem's same right-alignment. */
+  .continue-top-btn {
+    align-self: flex-end;
+  }
+  /* Wide cards only: right-aligned (like Redeem) reads fine narrow, where
+     this button's own natural width nearly fills the column anyway - but on
+     a wide card the column keeps growing while this button's width doesn't,
+     leaving it an island that's off-center from Verify+the scientist below
+     it (see .verify-continue-row-solo). Stretching it to the column's full
+     width (same width Redeem effectively fills) instead of anchoring it to
+     one edge keeps everything under it reading as centered, at any width. */
+  @media (min-width: 981px) {
+    .continue-top-btn {
+      align-self: stretch;
+    }
+  }
   .withdraw-lockin-note {
     margin: 0.5rem 0 0;
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     color: var(--text-dim);
     text-align: center;
   }
   .round-status-note {
-    margin-top: 2.2rem;
-    font-size: 0.95rem;
+    margin-top: 0.5rem;
+    font-size: 1.092rem;
     font-weight: 700;
     color: var(--text);
     text-align: center;
@@ -812,37 +1951,131 @@
   }
   .round-action-error {
     margin-top: 0.6rem;
-    font-size: 0.78rem;
+    font-size: 0.897rem;
     color: var(--crimson-bright);
     text-align: center;
   }
+  /* Narrow (<= 980px): centered text against the left border-left column
+     reads oddly once wrapped to 2 lines - left-align instead. */
+  @media (max-width: 980px) {
+    .cabinet-actions .round-status-note {
+      text-align: left;
+    }
+  }
 
   /* ---------- Redeem amount confirmation ---------- */
-  .redeem-box {
+  /* Thin white pixel-stepped border only (no second color band) - a plain
+     1px rounded outline was the last un-pixelated frame inside the
+     unclaimed-prizes card, but a full red/white double frame nested this
+     deep would be too much next to .my-winnings-border/-highlight already
+     wrapping the whole card. */
+  .redeem-box-outline {
     margin-top: 1.2rem;
+    padding: 2px;
+    background: #fff;
+  }
+  .redeem-box {
     padding: 1rem 1.1rem;
     background: var(--bg-card);
-    border: 1px solid var(--border-bright);
-    border-radius: 12px;
     text-align: center;
   }
-  /* ---------- History popup ---------- */
-  .history-open-btn {
-    background: transparent;
-    color: var(--text-dim);
-    border: 1px solid var(--border-bright);
-    font-family: var(--body);
-    font-size: 0.78rem;
-    font-weight: 700;
-    padding: 0.4rem 0.8rem;
-    border-radius: 999px;
+  /* Same collapsed-by-default disclosure idiom as .faq-item (arrow flips,
+     text hidden until opened) but without its own card chrome (background/
+     border) - .redeem-box is already a card, a card-inside-a-card-inside-a-
+     pill was the actual clutter being cut here, not just the pill's own
+     rounded/shadowed look. Closed by default so the explanation doesn't
+     take up room until a wallet actually wants to read it. */
+  .redeem-hint {
+    margin: 0 0 0.6rem;
+  }
+  .redeem-hint summary {
     cursor: pointer;
+    font-size: 0.897rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    list-style: none;
+  }
+  .redeem-hint summary::-webkit-details-marker { display: none; }
+  .redeem-hint summary::before {
+    content: "▸ ";
+    color: var(--gold);
+  }
+  .redeem-hint[open] summary::before {
+    content: "▾ ";
+  }
+  .redeem-hint p {
+    margin: 0.5rem 0 0;
+    color: var(--text-dim);
+    font-size: 0.897rem;
+    line-height: 1.5;
+    text-align: left;
+  }
+  /* ---------- History popup ---------- */
+  /* Same flat-fill/hard-bevel pattern as the other pixel buttons, just in a
+     muted dark gray instead of a bright color - reads as a quiet/secondary
+     action, not a CTA, while still having real pixel-art texture instead
+     of a plain flat rectangle. Shared by Feedback, round History, and
+     Expired prizes - all 3 get the same treatment as the same trigger-
+     button pattern. */
+  .history-open-btn {
+    /* Was laid out inline (icon nudged via vertical-align, no explicit
+       height) unlike the other wallet-bar buttons, which are all
+       inline-flex with a shared fixed height - see that height below for
+       why. */
+    display: inline-flex;
+    align-items: center;
+    height: 2.2rem;
+    background: #6b7280;
+    color: #fff;
+    border: none;
+    border-radius: 0;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    padding: 0 0.8rem;
+    cursor: pointer;
+    box-shadow:
+      inset 3px 3px 0 rgba(199,204,214,0.9),
+      inset -3px -3px 0 rgba(38,42,52,0.9),
+      0 4px 0 #3f434e;
+  }
+  .history-open-btn:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(38,42,52,0.9),
+      inset -3px -3px 0 rgba(199,204,214,0.5);
+    transform: translateY(4px);
   }
   .history-open-btn:hover { color: var(--text); }
+  /* Narrow phones only: icon-only (no "History"/"My Bag" text label) - the
+     wallet-bar already has Games/Creators plus Connect Keplr competing for
+     room here, and once Keplr is connected it also grows (address chip +
+     Disconnect), so text labels on every button push it to 2-3 wrapped
+     rows. The icon alone is still a recognizable, tappable target. */
+  @media (max-width: 720px) {
+    .history-open-btn-label,
+    .bag-toggle-label {
+      display: none;
+    }
+    .history-open-btn,
+    .bag-toggle-btn {
+      padding: 0.35rem;
+    }
+    .history-open-btn .round-action-btn-icon,
+    .bag-toggle-btn .bag-toggle-icon {
+      width: 1.1em;
+      height: 1.1em;
+      margin-right: 0;
+    }
+    /* "Games" alone reads fine without the open/closed arrow - wide cards
+       keep it (already confirmed fine there), this is narrow-only. */
+    .game-nav-toggle-arrow {
+      display: none;
+    }
+  }
   .feedback-textarea, .feedback-email-input {
     width: 100%;
     font-family: var(--body);
-    font-size: 0.9rem;
+    font-size: 1.035rem;
     color: var(--text);
     background: var(--bg-raised);
     border: 1px solid var(--border-bright);
@@ -881,7 +2114,7 @@
   .history-modal-title {
     font-family: var(--display);
     font-weight: 400;
-    font-size: 1.05rem;
+    font-size: 1.208rem;
     color: var(--gold);
     margin: 0;
   }
@@ -889,7 +2122,7 @@
     background: transparent;
     border: none;
     color: var(--text-dim);
-    font-size: 1.1rem;
+    font-size: 1.265rem;
     cursor: pointer;
     line-height: 1;
     padding: 0.2rem;
@@ -907,7 +2140,7 @@
     gap: 0.6rem;
     padding: 0.6rem 0;
     border-top: 1px dashed var(--border-bright);
-    font-size: 0.82rem;
+    font-size: 0.943rem;
   }
   .history-entry:first-child { border-top: none; }
   .history-entry-round {
@@ -927,14 +2160,14 @@
 
   .redeem-balance-note {
     margin-top: 0.5rem;
-    font-size: 0.78rem;
+    font-size: 0.897rem;
     font-weight: 700;
     color: var(--text-dim);
   }
   .redeem-amount-label {
     display: block;
     margin-top: 0.6rem;
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     font-weight: 700;
     color: var(--text-dim);
     text-transform: uppercase;
@@ -942,88 +2175,147 @@
   }
   .redeem-amount-row {
     display: flex;
+    align-items: stretch;
     gap: 0.5rem;
     margin-top: 0.5rem;
   }
-  .redeem-amount-input {
+  /* Wrap gives the "USTC" unit label somewhere to sit inside the input's
+     own box (see .redeem-amount-unit) - the contract only ever accepts
+     USTC here, but that wasn't explicit in the box itself, just in the
+     label above it. */
+  .redeem-amount-input-wrap {
+    position: relative;
     flex: 1;
     min-width: 0;
-    font-family: var(--mono);
-    font-size: 1rem;
-    font-weight: 700;
+  }
+  /* Pixel-art "well" instead of a soft rounded outline - same flat-fill,
+     no-border-radius idea as .wallet-chip up in the header, but pressed IN
+     (dark shadow top-left, faint light edge bottom-right) rather than
+     raised, since this reads as a slot you type into, not a button. */
+  .redeem-amount-input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 2.4rem;
+    font-family: var(--display);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    font-size: 1.15rem;
     color: var(--text);
     background: var(--bg-raised);
-    border: 1px solid var(--border-bright);
-    border-radius: 8px;
-    padding: 0.5rem 0.7rem;
+    border: none;
+    border-radius: 0;
+    /* Extra right padding clears .redeem-amount-unit so a long typed value
+       never runs under it. */
+    padding: 0 3.2rem 0 0.7rem;
+    box-shadow:
+      inset 3px 3px 0 var(--black),
+      inset -2px -2px 0 rgba(199,204,214,0.2);
   }
+  .redeem-amount-unit {
+    position: absolute;
+    right: 0.7rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--body);
+    font-size: 0.897rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+  /* Same gold flat-fill/hard-bevel pattern as .game-nav-creators ("Create"
+     in the header), scaled down to a compact 2px bevel like
+     .wallet-disconnect - a real pixel button instead of a thin rounded
+     outline. */
   .redeem-max-btn {
-    background: var(--bg-raised);
-    color: var(--gold);
-    border: 1px solid var(--gold-dim);
-    border-radius: 8px;
+    background: var(--gold-dim);
+    color: #2a1c05;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
     font-weight: 800;
-    font-size: 0.8rem;
-    padding: 0.5rem 0.9rem;
+    font-size: 0.92rem;
+    padding: 0 0.9rem;
     cursor: pointer;
+    box-shadow:
+      inset 2px 2px 0 rgba(255,224,153,0.9),
+      inset -2px -2px 0 rgba(90,60,10,0.9),
+      0 3px 0 #5a3c0a;
+  }
+  .redeem-max-btn:active {
+    box-shadow:
+      inset 2px 2px 0 rgba(90,60,10,0.9),
+      inset -2px -2px 0 rgba(255,224,153,0.5);
+    transform: translateY(3px);
   }
   .redeem-receive-note {
     margin: 0.6rem 0 0;
-    font-size: 0.8rem;
+    font-size: 0.92rem;
     color: var(--text);
   }
 
   /* ---------- Ticket-stub entrant panel ---------- */
-  .panel {
-    position: relative;
+  /* Same 2-layer red/white pixel frame as .ticket-booth-* - replaces the
+     old candy-stripe ::before flourish, which was a stand-in for a proper
+     border and would just look redundant next to a real one now. */
+  .panel-border {
     max-width: 340px;
     margin: 0 auto 1.4rem;
+    padding: 5px;
+    background: var(--crimson);
+  }
+  .panel-highlight {
+    padding: 2px;
+    background: #fff;
+  }
+  .panel {
+    position: relative;
     background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 16px;
     padding: 1.4rem 1.25rem 1.25rem;
     overflow: hidden;
   }
-  .panel::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 5px;
-    background: repeating-linear-gradient(45deg, var(--crimson) 0 8px, #fff 8px 16px);
-  }
   .panel-title {
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-dim);
     margin: 0 0 1rem;
   }
-  .ticket {
+  /* Outline+fill pair (same reasoning as .host-guide-bubble-outline-*) - a
+     plain border+clip-path leaves the deeper step corners with no border
+     color at all, so the border is a separate layer behind the fill,
+     offset by its own 2px padding, both clipped with the identical small
+     staircase polygon. */
+  .ticket-outline {
     position: relative;
+    padding: 2px;
+    margin-bottom: 0.55rem;
+    background: var(--border-bright);
+  }
+  .ticket-outline:last-child { margin-bottom: 0; }
+  .ticket {
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 0.7rem;
     padding: 0.6rem 0.85rem;
-    margin-bottom: 0.55rem;
     background: linear-gradient(120deg, rgba(255,209,102,0.05), transparent 55%), var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 9px;
   }
-  .ticket:last-child { margin-bottom: 0; }
-  .ticket::before, .ticket::after {
+  /* Ticket-stub perforation notches - square now instead of round, so this
+     isn't the one smooth curve left in an otherwise all-pixel set. Sit on
+     .ticket-outline (the true outer edge) rather than .ticket itself, same
+     relationship as before the outline/fill split. */
+  .ticket-outline::before, .ticket-outline::after {
     content: "";
     position: absolute;
     top: 50%;
-    width: 11px; height: 11px;
+    width: 10px; height: 10px;
     background: var(--bg-raised);
-    border-radius: 50%;
     transform: translateY(-50%);
   }
-  .ticket::before { left: -6px; box-shadow: inset -1px 0 0 var(--border); }
-  .ticket::after { right: -6px; box-shadow: inset 1px 0 0 var(--border); }
+  .ticket-outline::before { left: -5px; box-shadow: inset -1px 0 0 var(--border-bright); }
+  .ticket-outline::after { right: -5px; box-shadow: inset 1px 0 0 var(--border-bright); }
   .swatch {
     width: 10px;
     height: 10px;
@@ -1032,7 +2324,7 @@
     border: 1px solid var(--black);
   }
   .entrant-name {
-    font-size: 0.85rem;
+    font-size: 0.977rem;
     font-weight: 700;
     flex: 1;
     min-width: 0;
@@ -1043,9 +2335,9 @@
     padding-left: 0.7rem;
   }
   .entrant-meta {
-    font-family: var(--mono);
+    font-family: var(--body);
     font-variant-numeric: tabular-nums;
-    font-size: 0.76rem;
+    font-size: 0.874rem;
     color: var(--text-dim);
     text-align: right;
     border-left: 1px dashed var(--border-bright);
@@ -1059,7 +2351,7 @@
   .disclaimer {
     max-width: 760px;
     margin: 1.5rem auto 0;
-    font-size: 0.76rem;
+    font-size: 1.049rem;
     color: var(--text-dim);
     border-top: 1px solid var(--border);
     padding-top: 1rem;
@@ -1067,33 +2359,230 @@
   }
 
   /* ---------- Verify-this-round panel ---------- */
-  .verify-panel {
-    margin-top: 1.4rem;
-    padding: 0.9rem 1rem;
-    background: rgba(5,6,10,0.6);
-    border: 1px solid var(--border-bright);
-    border-radius: 12px;
-    font-size: 0.82rem;
+  /* Opens the popup below - styled as a modest secondary button, it lives
+     inline in the status-text column so it shouldn't compete visually with
+     the real action button on the other side. */
+  /* Same flat-fill/hard-bevel/pressed-ledge pattern as .round-action-btn,
+     in the modal's own blue-violet instead of the game-action blue/red -
+     reads as "opens something else" rather than a primary game action.
+     Now lives in .cabinet-actions-left with the other action buttons
+     (moved from the status-text side, which was lopsided with 3 stacked
+     text elements against just 1 button). */
+  .verify-open-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: clamp(56px, 30cqw, 100px);
+    padding: clamp(0.3rem, 3cqw, 0.5rem) clamp(0.6rem, 8cqw, 1.4rem);
+    background: #6b7280;
+    color: #fff;
+    border: none;
+    border-radius: 0;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: clamp(0.65rem, 6cqw, 1.1rem);
+    line-height: 1.35;
+    text-align: center;
+    cursor: pointer;
+    box-shadow:
+      inset 3px 3px 0 rgba(199,204,214,0.9),
+      inset -3px -3px 0 rgba(38,42,52,0.9),
+      0 4px 0 #3f434e;
+  }
+  .verify-open-btn:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(38,42,52,0.9),
+      inset -3px -3px 0 rgba(199,204,214,0.5);
+    transform: translateY(4px);
+  }
+  /* Continue reuses .verify-open-btn's exact size/shape (same clamp height,
+     same 3-line-capable column layout) so the two buttons match, just in
+     the game's usual blue instead of Verify's violet. */
+  .continue-next-btn {
+    background: var(--blue);
+    box-shadow:
+      inset 3px 3px 0 rgba(157,192,255,0.9),
+      inset -3px -3px 0 rgba(11,58,158,0.9),
+      0 4px 0 var(--blue-deep);
+  }
+  .continue-next-btn:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(11,58,158,0.9),
+      inset -3px -3px 0 rgba(157,192,255,0.5);
+    transform: translateY(4px);
+  }
+  /* Verify (scientist+button) and Continue sit in the same row, sized to
+     match - wraps on narrow cards instead of overflowing. Right-aligned so
+     Continue's right edge is the shared reference the two buttons line up
+     against, matching Redeem right above them (only used together with
+     Continue - see .verify-continue-row-solo for when Verify is alone). */
+  .verify-continue-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    align-self: flex-end;
+    /* The scientist overflows past this row's own left edge (it's
+       absolutely positioned, see .verify-scientist below) - without this,
+       centering a row this wide pushes that overflow past the card's own
+       left edge, clipping the scientist. */
+    margin-left: clamp(55px, 30cqw, 90px);
+  }
+  /* Verify alone (no Continue beside it - see .continue-top-btn, which
+     takes the top slot in that case instead). Can't stay right-aligned like
+     the default above: with only Verify in it, the row is much narrower, so
+     right-aligning it would drag the scientist+Verify sideways to hug the
+     same edge Continue used to share with it - the exact bug this class
+     exists to avoid (see WheelCard.tsx for when it's applied). Left-aligned
+     instead, a fixed anchor point independent of the row's own width, with
+     a bit more margin (same clamp bounds +20px, including on the preferred
+     value, not just the min/max) than the default - needed once flex-start
+     replaces the "centering" flex-end normally gives the scientist's speech
+     bubble, whose text bleeds further left than the scientist himself and
+     was getting clipped by the card's own left edge otherwise. */
+  .verify-continue-row-solo {
+    align-self: flex-start;
+    margin-left: clamp(75px, calc(30cqw + 20px), 110px);
+  }
+  /* The scientist stands to the left of the button, in the card itself (not
+     the modal, and not inside the button either) - room left for a speech
+     bubble to be added here later, same idea as the Host's over the wheel. */
+  .verify-scientist-wrap {
+    position: relative;
+  }
+  .verify-scientist {
+    position: absolute;
+    right: calc(100% + 0.5rem - 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    height: clamp(56px, 30cqw, 100px);
+    width: auto;
+    image-rendering: pixelated;
+  }
+  /* Speech bubble, still inside the card (unlike the earlier attempt to
+     make it fly above the frame, which hit an unexplained CSS bug and got
+     reverted) - sits further left than the scientist so it doesn't cover
+     the buttons below. globo-horizontal.png's tail is baked in at the
+     bottom-LEFT - mirrored with scaleX(-1) so it points bottom-RIGHT
+     instead, toward the scientist. The text is counter-mirrored so it
+     still reads normally. */
+  .verify-speech-bubble-wrap {
+    position: absolute;
+    right: calc(100% + 4.2cqw + 5px);
+    bottom: calc(100% - 12cqw);
+    width: clamp(90px, 40cqw, 135px);
+    z-index: 4;
+    pointer-events: none;
+  }
+  .verify-speech-bubble-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    transform: scaleX(-1);
+    image-rendering: pixelated;
+  }
+  .verify-speech-bubble-text {
+    position: absolute;
+    left: 18%;
+    right: 17%;
+    top: 28%;
+    bottom: 43%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #17140f;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: clamp(0.6rem, 5cqw, 0.85rem);
+    line-height: 0.95;
+  }
+  .verify-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(5,6,10,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 50;
+  }
+  /* Same 3-layer pixel frame as .cabinet-actions-*, in the same cool blue/
+     indigo palette since this popup opens from right next to that card. */
+  .verify-modal-outline {
+    max-width: 480px;
+    width: 100%;
+    max-height: 85vh;
+    padding: 2px;
+    background: #0d0e1f;
+  }
+  .verify-modal-border {
+    padding: 4px;
+    background: #6a6a94;
+  }
+  .verify-modal-highlight {
+    padding: 2px;
+    background: #8bd3e2;
+  }
+  .verify-modal {
+    position: relative;
+    max-height: calc(85vh - 16px);
+    overflow-y: auto;
+    background: var(--bg-card);
+    padding: 1.5rem 1.2rem 1.2rem;
+    font-size: 0.943rem;
     text-align: left;
   }
-  .verify-summary {
+  .verify-modal-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.6rem;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.6rem;
+    line-height: 1;
     cursor: pointer;
-    font-weight: 800;
-    color: var(--text);
-    list-style: none;
+    padding: 0.2rem 0.4rem;
   }
-  .verify-summary::-webkit-details-marker { display: none; }
-  .verify-summary::before {
-    content: "▸ ";
-    color: var(--gold);
+  .verify-modal-close:hover { color: var(--text); }
+  /* Bleeds to the modal's own frame edges via negative margins matching
+     its padding (1.5rem top, 1.2rem sides) - same technique as the wheel
+     card's lab-screen - so it reads as a banner built into the popup
+     rather than a floating image with padding around it. The modal's own
+     clip-path (pixel-stepped-corners) crops its corners to match. The
+     wrap (not the img) carries the bleed, so the lab bubble below can be
+     positioned as a percentage of the image's own on-screen size. */
+  .verify-modal-header-wrap {
+    position: relative;
+    margin: -1.5rem -1.2rem 1rem;
   }
-  .verify-panel[open] .verify-summary::before {
-    content: "▾ ";
+  .verify-modal-header {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
   }
-  .verify-body {
-    margin-top: 0.8rem;
+  /* Rotating one-liners from the alien, who stands roughly centered in
+     verify-lab-panel.png - positioned as a % of the image so it stays put
+     regardless of the modal's actual rendered width. */
+  .verify-lab-bubble-wrap {
+    position: absolute;
+    left: 45%;
+    top: 4%;
+    width: 48%;
+    z-index: 2;
+  }
+  .verify-lab-bubble-wrap .host-guide-bubble {
+    font-size: 0.7rem;
+  }
+  .verify-modal-body {
     padding: 0.9rem 1rem;
-    background: var(--bg-card);
+    background: rgba(5,6,10,0.4);
     border: 1px solid var(--border);
     border-radius: 10px;
   }
@@ -1117,7 +2606,7 @@
     border-radius: 999px;
     font-family: var(--body);
     font-weight: 700;
-    font-size: 0.76rem;
+    font-size: 0.874rem;
     padding: 0.35rem 0.9rem;
     cursor: pointer;
   }
@@ -1148,7 +2637,7 @@
     margin: 0;
     font-family: var(--mono);
     font-weight: 400;
-    font-size: 0.74rem;
+    font-size: 0.851rem;
     color: var(--text);
     display: grid;
     grid-template-columns: auto 1fr;
@@ -1160,21 +2649,21 @@
     margin: 0 0 0.9rem;
     color: var(--text-dim);
     line-height: 1.5;
-    font-size: 0.76rem;
+    font-size: 0.874rem;
   }
   .verify-raw-link {
     display: block;
     margin-top: 0.6rem;
     color: var(--blue);
     font-weight: 700;
-    font-size: 0.74rem;
+    font-size: 0.851rem;
     text-decoration: none;
   }
   .verify-raw-link:hover { text-decoration: underline; }
   .verify-raw-caption {
     margin: 0.3rem 0 0;
     color: var(--text-dim);
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     line-height: 1.5;
     font-style: italic;
   }
@@ -1184,7 +2673,7 @@
     margin-top: 0.7rem;
     padding-top: 0.7rem;
     border-top: 1px dashed var(--border);
-    font-size: 0.78rem;
+    font-size: 0.897rem;
   }
   .verify-advanced summary {
     cursor: pointer;
@@ -1200,7 +2689,7 @@
     margin: 0.8rem 0 0.35rem;
     color: var(--text-dim);
     font-weight: 700;
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
@@ -1209,7 +2698,7 @@
     padding: 0;
     list-style: none;
     font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.828rem;
     max-height: 160px;
     overflow-y: auto;
     background: var(--bg-raised);
@@ -1239,6 +2728,26 @@
     text-align: center;
   }
 
+  /* ---------- Feedback prompt - was in the sticky wallet-bar, moved down
+     here (above the FAQ on Wheel of Repeg, alone near the end on Weekly
+     Round) to free up room in that bar on narrow cards. ---------- */
+  .feedback-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: 760px;
+    margin: 2rem auto;
+    text-align: center;
+  }
+  .feedback-section-prompt {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 1.1rem;
+    color: var(--text);
+  }
+
   /* ---------- FAQ ---------- */
   .faq-section {
     max-width: 760px;
@@ -1247,16 +2756,38 @@
   .faq-title {
     font-family: var(--display);
     font-weight: 400;
-    font-size: 1.1rem;
+    font-size: 1.265rem;
     color: var(--text);
     margin: 0 0 0.9rem;
   }
+  /* Same ticket-stub treatment as .ticket-outline/.ticket in the
+     Participants list - outline+fill pair with the small staircase corner
+     (open corners otherwise) and square perforation notches, so the FAQ
+     reads as the same kind of "ticket" whether collapsed (just the
+     question) or expanded (question + answer). Notches stay vertically
+     centered on the box's own current height (top:50%, same as
+     .ticket-outline) - re-centering as <details> grows taller on open
+     keeps it looking like one proportional ticket at either height,
+     instead of a fixed offset that would look top-heavy once expanded. */
+  .faq-item-outline {
+    position: relative;
+    padding: 2px;
+    margin-bottom: 0.6rem;
+    background: var(--border-bright);
+  }
+  .faq-item-outline::before, .faq-item-outline::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 10px; height: 10px;
+    background: var(--bg);
+    transform: translateY(-50%);
+  }
+  .faq-item-outline::before { left: -5px; box-shadow: inset -1px 0 0 var(--border-bright); }
+  .faq-item-outline::after { right: -5px; box-shadow: inset 1px 0 0 var(--border-bright); }
   .faq-item {
     background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 10px;
     padding: 0.8rem 1rem;
-    margin-bottom: 0.6rem;
   }
   .faq-item summary {
     cursor: pointer;
@@ -1275,7 +2806,7 @@
   .faq-item p {
     margin: 0.6rem 0 0;
     color: var(--text-dim);
-    font-size: 0.85rem;
+    font-size: 0.977rem;
     line-height: 1.55;
   }
 
@@ -1296,13 +2827,16 @@
   }
 
   /* ---------- Entrance reveal ---------- */
-  .hero-sign, .ticket-booth, .wheel-card, .panel {
+  .hero-sign-outline, .ticket-booth-border, .wheel-card, .panel-border,
+  .my-winnings-border, .lifetime-stats-border {
     animation: rise-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
-  .hero-sign { animation-delay: 0s; }
-  .ticket-booth { animation-delay: 0.08s; }
+  .hero-sign-outline { animation-delay: 0s; }
+  .ticket-booth-border { animation-delay: 0.08s; }
   .wheel-card { animation-delay: 0.16s; }
-  .panel { animation-delay: 0.26s; }
+  .panel-border { animation-delay: 0.26s; }
+  .my-winnings-border { animation-delay: 0.34s; }
+  .lifetime-stats-border { animation-delay: 0.42s; }
   @keyframes rise-in {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1310,7 +2844,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .bulb, .bulb-mini { animation: none; opacity: 1; }
-    .hero-sign, .ticket-booth, .wheel-card, .panel { animation: none; opacity: 1; transform: none; }
+    .hero-sign-outline, .ticket-booth-border, .wheel-card, .panel-border,
+    .my-winnings-border, .lifetime-stats-border { animation: none; opacity: 1; transform: none; }
     .tier-tab-wheel-icon { animation: none; }
   }
 
@@ -1334,7 +2869,7 @@
     border-radius: 14px;
     font-family: var(--display);
     font-weight: 400;
-    font-size: 0.8rem;
+    font-size: 0.92rem;
     color: var(--text-dim);
     cursor: pointer;
     transition: transform 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -1372,7 +2907,7 @@
   .tier-tab-price { text-transform: uppercase; letter-spacing: 0.01em; }
   .tier-tab-badge {
     font-family: var(--body);
-    font-size: 0.62rem;
+    font-size: 0.713rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1385,7 +2920,10 @@
     top: 0;
     z-index: 40;
     display: flex;
-    justify-content: flex-end;
+    /* Two groups now instead of one right-aligned row: .game-nav on the
+       left, everything wallet-related on the right (see .wallet-bar-right)
+       - space-between keeps them pinned to opposite edges at any width. */
+    justify-content: space-between;
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
@@ -1393,75 +2931,332 @@
     margin-bottom: 1rem;
     background: linear-gradient(180deg, var(--bg) 65%, transparent);
   }
-  .wallet-balance {
-    font-family: var(--mono);
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--text-dim);
-    padding: 0.4rem 0.8rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 999px;
+  .wallet-bar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    /* Once .wallet-bar's own flex-wrap drops this onto its own line (narrow
+       cards, or .game-nav + this together not fitting side by side), plain
+       space-between on .wallet-bar has nothing left to "space" on a line
+       with only one item on it, so it defaults to that item's start (left)
+       instead - pulling Connect Keplr/Feedback/etc. over to the left edge.
+       margin-left:auto keeps this group pinned to the right on its own
+       line too, not just when sharing a line with .game-nav. */
+    margin-left: auto;
   }
-  .wallet-connect-btn {
-    background: linear-gradient(180deg, var(--blue), var(--blue-deep));
+  /* ---------- Game nav (Games dropdown + Creators) - left side of the
+     sticky wallet-bar, same spot on every game page. Was its own row of
+     flat chips below the hero sign; moved up here so it's reachable while
+     scrolling, same as Connect Keplr/History/My Bag. */
+  .game-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .game-nav-wrap {
+    position: relative;
+  }
+  /* Same flat-fill/hard-bevel pattern as .bag-toggle-btn, blue instead of
+     gold - a navigation action, not a wallet one. */
+  .game-nav-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    /* Shared fixed height across every wallet-bar button (see
+       .history-open-btn/.bag-toggle-btn/.game-nav-creators/.wallet-chip) -
+       plain padding alone made icon-bearing buttons taller than text-only
+       ones (the flex line sizes to its tallest child), so heights drifted
+       out of sync from button to button. */
+    height: 2.2rem;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
     color: #fff;
-    border: 1px solid #7fb0ff;
+    padding: 0 0.8rem;
+    background: var(--blue);
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    box-shadow:
+      inset 3px 3px 0 rgba(157,192,255,0.9),
+      inset -3px -3px 0 rgba(11,58,158,0.9),
+      0 4px 0 var(--blue-deep);
+  }
+  .game-nav-toggle-btn:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(11,58,158,0.9),
+      inset -3px -3px 0 rgba(157,192,255,0.5);
+    transform: translateY(4px);
+  }
+  .game-nav-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-raised);
+    border: 1px solid var(--gold-dim);
+    border-radius: 10px;
+    padding: 0.4rem;
+    z-index: 50;
+  }
+  .game-nav-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .game-nav-item:hover {
+    background: rgba(255,255,255,0.06);
+  }
+  .game-nav-item.active {
+    color: var(--gold);
+    cursor: default;
+  }
+  .game-nav-item-icon {
+    width: 1.4em;
+    height: 1.4em;
+    margin-right: 0.5em;
+    image-rendering: pixelated;
+  }
+  /* Separate from the Games dropdown - Create Your Own Luck isn't a game to
+     switch into, it's the creator tooling, so it reads as its own
+     destination rather than a 3rd item buried in that menu. Same flat-fill
+     pattern as .game-nav-toggle-btn, gold instead of blue so the two don't
+     read as the same kind of control. */
+  .game-nav-creators {
+    display: inline-flex;
+    align-items: center;
+    /* Same fixed height as the rest of the wallet-bar buttons - see
+       .game-nav-toggle-btn. Without it this was the tallest button in the
+       bar (icon at 1.3em is taller than its own text's line-height, and the
+       flex line sizes to that). */
+    height: 2.2rem;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #2a1c05;
+    /* Less on the left than the right - the clover icon has its own visual
+       weight/glow, so it reads fine closer to the button's edge, and this
+       is one of the harder-pressed elements for room in the sticky
+       wallet-bar (see .game-nav/.wallet-bar-right). */
+    padding: 0 0.8rem 0 0.5rem;
+    background: var(--gold-dim);
+    text-decoration: none;
+    box-shadow:
+      inset 3px 3px 0 rgba(255,224,153,0.9),
+      inset -3px -3px 0 rgba(90,60,10,0.9),
+      0 4px 0 #5a3c0a;
+  }
+  .game-nav-creators:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(90,60,10,0.9),
+      inset -3px -3px 0 rgba(255,224,153,0.5);
+    transform: translateY(4px);
+  }
+  .game-nav-creators.active {
+    background: var(--gold);
+    cursor: default;
+  }
+  .game-nav-creators-icon {
+    width: 1.3em;
+    height: 1.3em;
+    margin-right: 0.35em;
+    image-rendering: pixelated;
+  }
+  .bag-wrap {
+    position: relative;
+  }
+  /* Same flat-fill/hard-bevel pattern as .history-open-btn, in a gold tone
+     matching .bag-panel's own border - was still a rounded pill capsule. */
+  .bag-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    /* Same fixed height as the rest of the wallet-bar buttons - see
+       .game-nav-toggle-btn. */
+    height: 2.2rem;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #2a1c05;
+    padding: 0 0.8rem;
+    background: var(--gold-dim);
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    box-shadow:
+      inset 3px 3px 0 rgba(255,224,153,0.9),
+      inset -3px -3px 0 rgba(90,60,10,0.9),
+      0 4px 0 #5a3c0a;
+  }
+  .bag-toggle-btn:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(90,60,10,0.9),
+      inset -3px -3px 0 rgba(255,224,153,0.5);
+    transform: translateY(4px);
+  }
+  .bag-toggle-btn:hover {
+    background: var(--gold);
+  }
+  .bag-toggle-icon {
+    width: 1.3em;
+    height: 1.3em;
+    vertical-align: -0.3em;
+    margin-right: 0.35em;
+    image-rendering: pixelated;
+  }
+  .bag-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 160px;
+    background: var(--bg-raised);
+    border: 1px solid var(--gold-dim);
+    border-radius: 10px;
+    padding: 0.5rem 0.7rem;
+    z-index: 50;
+  }
+  .bag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3rem 0;
+    font-family: var(--body);
+    font-size: 1.05rem;
+  }
+  .bag-row-label {
+    color: var(--text-dim);
+    font-weight: 700;
+  }
+  .bag-row-amount {
+    color: var(--text);
+  }
+  /* Same flat-fill/hard-bevel/pressed-ledge pattern as .round-action-btn -
+     this was still a soft rounded gradient pill, the last un-pixelated
+     button in the header. */
+  .wallet-connect-btn {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
     font-weight: 800;
-    font-size: 0.85rem;
+    font-size: 1.05rem;
     letter-spacing: 0.02em;
     padding: 0.6rem 1.3rem;
-    border-radius: 999px;
     cursor: pointer;
     text-decoration: none;
     display: inline-block;
-    box-shadow: 0 10px 22px -10px rgba(84,146,247,0.55), inset 0 1px 0 rgba(255,255,255,0.25);
+    box-shadow:
+      inset 3px 3px 0 rgba(157,192,255,0.9),
+      inset -3px -3px 0 rgba(11,58,158,0.9),
+      0 4px 0 var(--blue-deep);
+  }
+  .wallet-connect-btn:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 0 rgba(11,58,158,0.9),
+      inset -3px -3px 0 rgba(157,192,255,0.5);
+    transform: translateY(4px);
   }
   .wallet-connect-btn:disabled {
     opacity: 0.6;
     cursor: default;
+    box-shadow: none;
   }
+  /* Square frame, not a rounded pill - matches the rest of the header now
+     that .wallet-connect-btn is pixel-square too. */
   .wallet-chip {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.5rem 0.6rem 0.5rem 0.9rem;
+    /* Same fixed height as the rest of the wallet-bar buttons (see
+       .game-nav-toggle-btn) - box-sizing:border-box (global reset) means
+       the padding comes out of that same height, instead of adding to it
+       like before. */
+    height: 2.2rem;
+    padding: 0 0.6rem 0 0.9rem;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 999px;
+    border: none;
+    border-radius: 0;
+    /* Same thick flat-fill/hard-bevel pattern as the other wallet-bar
+       buttons (.history-open-btn etc) instead of a thin 1px outline - full
+       green bevel now (top/left highlight, right edge, bottom ledge),
+       reusing the exact same green family as .redeem-open-btn's own bevel
+       (rgba(168,240,192,0.9) highlight / #1a7a41 shadow-ledge) since this
+       chip is a dark-navy-filled version of the same "connected/green"
+       idea as .wallet-dot, not the neutral gray/black used elsewhere in
+       the bar. */
+    box-shadow:
+      inset 3px 3px 0 rgba(168,240,192,0.9),
+      inset -3px 0 0 #1a7a41,
+      inset 0 -3px 0 var(--black),
+      0 4px 0 #1a7a41;
   }
   .wallet-dot {
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: 0;
     background: #3ddc84;
     box-shadow: 0 0 6px 1.5px rgba(61,220,132,0.65);
     flex-shrink: 0;
   }
-  .wallet-address {
-    font-family: var(--mono);
-    font-size: 0.82rem;
+  .wallet-address-full,
+  .wallet-address-short {
+    font-family: var(--body);
+    font-size: 1.1rem;
     color: var(--text);
   }
+  /* Narrow phones show the short form (last 4 chars only) instead of the
+     full 17-char truncated address - see .wallet-address-short in
+     ConnectWalletButton.tsx. */
+  .wallet-address-short {
+    display: none;
+  }
+  @media (max-width: 720px) {
+    .wallet-address-full {
+      display: none;
+    }
+    .wallet-address-short {
+      display: inline;
+    }
+  }
+  /* Same flat-fill/hard-bevel pattern as .history-open-btn - was still a
+     rounded outline pill. */
   .wallet-disconnect {
-    background: transparent;
-    color: var(--text-dim);
-    border: 1px solid var(--border-bright);
+    background: #6b7280;
+    color: #fff;
+    border: none;
+    border-radius: 0;
     font-family: var(--body);
-    font-size: 0.72rem;
+    font-size: 0.95rem;
     font-weight: 700;
     padding: 0.3rem 0.6rem;
-    border-radius: 999px;
     cursor: pointer;
+    box-shadow:
+      inset 2px 2px 0 rgba(199,204,214,0.9),
+      inset -2px -2px 0 rgba(38,42,52,0.9),
+      0 3px 0 #3f434e;
   }
-  .wallet-disconnect:hover { color: var(--text); }
+  .wallet-disconnect:active {
+    box-shadow:
+      inset 2px 2px 0 rgba(38,42,52,0.9),
+      inset -2px -2px 0 rgba(199,204,214,0.5);
+    transform: translateY(3px);
+  }
   .wallet-chip-error {
-    border-radius: 12px;
+    border-radius: 0;
     flex-wrap: wrap;
     gap: 0.7rem;
   }
   .wallet-error-msg {
-    font-size: 0.82rem;
+    font-size: 0.943rem;
     color: var(--crimson-bright);
   }
