@@ -336,12 +336,19 @@
      relationship as .booth-host-bubble against .booth-art-wrap. Anchored to
      the wrap's own bottom-left corner; bleeds past its left edge on purpose
      (same idea as before), cropped only by .lead's own clip-path if he pokes
-     out past the visible frame. */
+     out past the visible frame.
+     height/left are % of the wrap, not fixed px - the wrap shrinks with the
+     viewport below 981px (see .lead-text above), and a fixed height stayed
+     the character's full desktop-tuned size regardless, so on a narrow phone
+     he no longer fit and got clipped top and bottom instead of scaling down
+     with the rest of the card. 90.5%/-7.3% reproduce the old 192px/-33px
+     exactly at the width they were tuned against, then shrink proportionally
+     below it, same idea as .lead-text's font-size fix. */
   .lead-professor {
     position: absolute;
-    left: -33px;
+    left: -7.3%;
     bottom: 0;
-    height: 192px;
+    height: 90.5%;
     width: auto;
     image-rendering: pixelated;
     pointer-events: none;
