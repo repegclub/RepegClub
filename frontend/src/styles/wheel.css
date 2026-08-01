@@ -1085,10 +1085,10 @@
       font-size: clamp(0.689rem, 7cqw, 1.3rem);
     }
     .host-guide-bubble-nube p {
-      /* Less upward shift than the -0.88em above (5% smaller magnitude) -
-         gives the top line more clearance from the cloud's own upper
-         edge. */
-      transform: translate(-0.82em, -0.836em);
+      /* -0.88em (desktop) -> -0.836em -> -0.794em, each step 5% less
+         upward shift than the last - user-requested increment, mobile
+         only. */
+      transform: translate(-0.82em, -0.794em);
     }
   }
 
