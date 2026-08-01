@@ -45,15 +45,24 @@ export function drawPixelWheel(ctx: CanvasRenderingContext2D, rotation: number, 
   //
   // A flat fraction of `size` (the fixed 340px buffer), not a target
   // screen-px converted through the canvas's measured clientWidth - the
-  // clientWidth version overshot in Responsively's iPhone 12/iPad presets
-  // (both still narrower than 981px) while looking correct on a real
-  // iPhone at the same logical width, pointing at clientWidth being read
-  // before layout had fully settled in one of those environments and not
-  // the other. Reading `size` instead of the DOM removes that timing
+  // clientWidth version overshot in Responsively App's iPhone 12/iPad
+  // presets (both still narrower than 981px) while looking correct on a
+  // real iPhone at the same logical width, pointing at clientWidth being
+  // read before layout had fully settled in one of those environments and
+  // not the other. Reading `size` instead of the DOM removes that timing
   // dependency entirely - it's a compile-time constant, never wrong to
   // measure early.
+  //
+  // Calibrated against the real iPhone and a real desktop browser, not
+  // Responsively App - a real iPhone and Responsively's "iPhone 12 Pro"
+  // preset (an emulated viewport inside Chromium on the Mac, not real
+  // WebKit) share the same 390px logical width but needed different
+  // amounts of nudge to look right, which a pure function of width can
+  // never resolve (same input, two different desired outputs). Emulators
+  // are an approximation; real devices are what players actually use, so
+  // this is tuned for those and may look slightly off in a simulator.
   const isMobileLayout = window.innerWidth < 981;
-  const MOBILE_NUDGE_FRACTION = 0.012;
+  const MOBILE_NUDGE_FRACTION = 0.045;
   const cy = size / 2 + (isMobileLayout ? size * MOBILE_NUDGE_FRACTION : 0);
 
   ctx.clearRect(0, 0, size, size);
