@@ -248,7 +248,12 @@ export function WeeklyWheelCard({
   // this guard the row rendered empty whenever the week was open but
   // neither condition held, and .weekly-actions-left's flex gap still
   // applied around that empty item, adding stray vertical spacing).
-  const showExpireWeek = loaded && weekState.week.status === "open" && !closeEligible && expireEligible;
+  const showExpireWeek =
+    loaded &&
+    weekState.week.status === "open" &&
+    !closeEligible &&
+    expireEligible &&
+    walletState.status === "connected";
   const showWithdrawTicket =
     loaded &&
     weekState.week.status === "open" &&
