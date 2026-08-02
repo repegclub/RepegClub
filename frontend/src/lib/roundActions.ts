@@ -11,27 +11,33 @@ import { WHEEL_MANAGER_ADDRESS, WEEKLY_ROUND_ADDRESS } from "./deployment";
 // own wallet/CLI isn't covered.
 const MEMO = "REPEG CLUB";
 
+// Base primitive - broadcasts any number of messages as one signed
+// transaction. Factored out of execute() (below) so buyTickets/
+// buyWeeklyTickets (further down) can reuse the exact same broadcast/
+// error-handling path for a multi-message batch, same split as
+// cyolActions.ts's own broadcast()/execute().
+async function broadcast(wallet: ConnectedWallet, msgs: MsgExecuteContract<object>[]) {
+  const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });
+  if (res.txResponse.code !== 0) {
+    throw new Error(res.txResponse.rawLog || "Transaction failed.");
+  }
+  return res;
+}
+
 async function execute(
   wallet: ConnectedWallet,
   contractAddress: string,
   msg: object,
   funds: { denom: string; amount: string }[] = []
 ) {
-  const res = await wallet.broadcastTxSync({
-    msgs: [
-      new MsgExecuteContract({
-        sender: wallet.address,
-        contract: contractAddress,
-        msg,
-        funds,
-      }),
-    ],
-    memo: MEMO,
-  });
-  if (res.txResponse.code !== 0) {
-    throw new Error(res.txResponse.rawLog || "Transaction failed.");
-  }
-  return res;
+  return broadcast(wallet, [
+    new MsgExecuteContract({
+      sender: wallet.address,
+      contract: contractAddress,
+      msg,
+      funds,
+    }),
+  ]);
 }
 
 export function buyTicket(
@@ -43,6 +49,35 @@ export function buyTicket(
   return execute(wallet, contractAddress, { buy_ticket: {} }, [
     { denom: ticketDenom, amount: ticketPriceAmount },
   ]);
+}
+
+// Buys `quantity` tickets in one signature instead of one tx per ticket -
+// same batching approach as CYOL's own buyTickets (cyolActions.ts):
+// BuyTicket has no quantity field on the contract side, so this just packs
+// `quantity` copies of the same message into one broadcast, executed in
+// order against the state the previous one left. Atomic - if a later
+// ticket in the batch would fail (cap exceeded, round sells out mid-batch),
+// the whole batch reverts instead of buying a partial amount, so the
+// caller is expected to keep `quantity` within availableTickets (see
+// lib/ticketAvailability.ts) to avoid that in practice.
+export function buyTickets(
+  wallet: ConnectedWallet,
+  ticketDenom: string,
+  ticketPriceAmount: string,
+  quantity: number,
+  contractAddress: string = WHEEL_MANAGER_ADDRESS
+) {
+  const msgs = Array.from(
+    { length: quantity },
+    () =>
+      new MsgExecuteContract({
+        sender: wallet.address,
+        contract: contractAddress,
+        msg: { buy_ticket: {} },
+        funds: [{ denom: ticketDenom, amount: ticketPriceAmount }],
+      })
+  );
+  return broadcast(wallet, msgs);
 }
 
 // Both permissionless per the contract design - any connected wallet can
@@ -125,6 +160,29 @@ export function buyWeeklyTicket(
   return execute(wallet, contractAddress, { buy_weekly_ticket: {} }, [
     { denom: ticketDenom, amount: priceAmount },
   ]);
+}
+
+// Same batching as buyTickets above, for BuyWeeklyTicket - each ticket in
+// the batch pays that same day's price (ticketPriceAmount), since the
+// day-based ramp only changes once every 24h, not mid-purchase.
+export function buyWeeklyTickets(
+  wallet: ConnectedWallet,
+  ticketDenom: string,
+  ticketPriceAmount: string,
+  quantity: number,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  const msgs = Array.from(
+    { length: quantity },
+    () =>
+      new MsgExecuteContract({
+        sender: wallet.address,
+        contract: contractAddress,
+        msg: { buy_weekly_ticket: {} },
+        funds: [{ denom: ticketDenom, amount: ticketPriceAmount }],
+      })
+  );
+  return broadcast(wallet, msgs);
 }
 
 export function closeWeek(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {

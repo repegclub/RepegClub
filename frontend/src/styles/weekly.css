@@ -12,27 +12,108 @@
   position: relative;
 }
 
-/* .stage's shared middle column caps out at 480px, sized for the classic
-   340px wheel - too narrow for the weekly wheel (460px + card padding),
-   leaving unused space in the side columns on wide screens. Widen just
-   this page's stage - but only above the 980px breakpoint, where
-   wheel.css's own .stage rule still uses the 3-column grid; below it,
-   .stage switches to a single stacked column, and this override (higher
-   specificity than plain .stage) would otherwise win there too and break
-   that stacking. */
+/* ---------- Weekly cabinet: named-areas grid (mirrors Wheel of Repeg's own
+   .wheel-cabinet in wheel.css exactly, see there for the reference pattern)
+   -------------------------------------------------------------------------
+   Replaces the old .stage 3-column grid, which could only reorder its
+   exactly-3 direct children as whole blocks and couldn't interleave the
+   ticket booth between the header and the wheel at narrow widths (reported
+   live: the booth was landing below the whole prize+wheel+actions column
+   instead of above the wheel, right under "grand prize" where it belongs).
+   WeeklyWheelCard.tsx's 3 pieces (header/wheel/actions) are direct grid
+   items here too now, not nested inside one wrapper - see its own
+   .weekly-cabinet-header/-wheel/-actions classes.
+   Column widths (480px base, 654px wide) are unchanged from the old .stage
+   override - kept as-is since they were already measured/approved live,
+   only the reordering mechanism changed.
+   Mobile-first on purpose (stacked layout is the unconditional default,
+   wide is the only override behind a media query) - not just the narrow
+   breakpoint block wheel.css's own .wheel-cabinet uses. A base rule that
+   only defines the "header" area, with booth/wheel/actions/participants
+   defined solely inside @media(min-width:981px)/@media(max-width:980px),
+   leaves a real gap: a fractional viewport width between 980px and 981px
+   (reachable at non-100% zoom or a fractional device-pixel-ratio) matches
+   NEITHER query, so those 4 elements' grid-area would reference names
+   absent from the active grid-template-areas and fall back to auto-
+   placement (CodeRabbit finding, confirmed against the areas actually
+   defined in each block below). Making the stacked layout the base rule
+   removes that gap by construction - there's no width left that matches
+   neither rule. */
+.weekly-cabinet {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "header"
+    "booth"
+    "wheel"
+    "actions"
+    "participants";
+  gap: 2.4rem;
+  align-items: start;
+  justify-content: stretch;
+}
+.weekly-cabinet-header { grid-area: header; }
+.weekly-cabinet-booth { grid-area: booth; }
+.weekly-cabinet-wheel { grid-area: wheel; }
+.weekly-cabinet-actions { grid-area: actions; }
+.weekly-cabinet-participants { grid-area: participants; }
+
+/* Same reset as Wheel of Repeg's own .cabinet-participants rule in
+   wheel.css (there, scoped to .cabinet-participants specifically) -
+   .panel-border/.my-winnings-border/.lifetime-stats-border's 340px cap
+   only makes sense in the real 3-column sidebar (>= 981px, see below); in
+   the stacked layout that's now the default here, booth/wheel/actions
+   already stretch to fill the column, so participants/stats should too
+   instead of sitting narrower and off-center (reported live - the exact
+   same bug Wheel of Repeg already fixed, just missed here since Weekly
+   uses its own .weekly-cabinet-participants class, not
+   .cabinet-participants). Un-done again below, >= 981px only, where the
+   real 3-column sidebar brings the 340px cap back. */
+.weekly-cabinet-participants .panel-border,
+.weekly-cabinet-participants .my-winnings-border,
+.weekly-cabinet-participants .lifetime-stats-border {
+  max-width: none;
+}
+
 @media (min-width: 981px) {
-  .weekly-page .stage {
-    grid-template-columns: minmax(220px, 1fr) minmax(0, 560px) minmax(260px, 1fr);
+  .weekly-cabinet {
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 654px) minmax(260px, 1fr);
+    justify-content: center;
+    grid-template-areas:
+      "header  header  header"
+      "booth   wheel   participants"
+      "booth   actions participants";
+  }
+  .weekly-cabinet-participants .panel-border,
+  .weekly-cabinet-participants .my-winnings-border,
+  .weekly-cabinet-participants .lifetime-stats-border {
+    max-width: 340px;
   }
 }
 
-/* ---------- Hero ---------- */
+/* ---------- Hero ----------
+   .weekly-hero-sign-grid no longer forces a single centered column - now
+   that the 2 marquee signs are wired in (cartel1/cartel2, "Are you V.I.P.
+   enough?"/"Do you dare to repeg?"), it falls back to the shared
+   .hero-sign-grid's own 3-column layout (1fr 1.7fr 1fr), same as Wheel of
+   Repeg's title+2-hooks composition. The subtitle paragraph is gone
+   entirely (dropped per direct request, in favor of just title + 2 signs -
+   .weekly-hero-subtitle's own rule went with it, nothing renders that
+   class anymore). */
 .weekly-hero-sign {
   border-color: var(--gold-dim);
 }
-.weekly-hero-sign-grid {
-  grid-template-columns: 1fr;
-  text-align: center;
+/* Scoped to .weekly-hero-sign-outline (this card only) - .hero-sign-inner
+   is the shared innermost fill layer (Wheel of Repeg's own blue/crimson
+   gradient over var(--bg-card)); overriding it bare would repaint Wheel of
+   Repeg's hero too. Your velvet damask texture replaces that gradient
+   entirely (card-suit filigree already carries plenty of its own texture/
+   depth - stacking Wheel of Repeg's blue/crimson glow on top of it read as
+   two unrelated palettes fighting, not a highlight), background-size:cover
+   so the 1024x1024 source crops in at whatever aspect the card renders at
+   without stretching. */
+.weekly-hero-sign-outline .hero-sign-inner {
+  background: url("/weekly-pixel/velvet-bg.png") center / cover, var(--bg-card);
 }
 .weekly-hero-title {
   font-family: var(--display);
@@ -40,26 +121,47 @@
   color: var(--gold);
   text-shadow: 0 0 24px rgba(255,209,102,0.35);
   margin: 0.2rem 0 0.5rem;
+  text-align: center;
 }
-.weekly-hero-subtitle {
-  max-width: 640px;
-  margin: 0 auto;
-  color: var(--text-dim);
-  font-size: 0.95rem;
-  line-height: 1.5;
+/* cartel1/cartel2 (610x410 native, cropped to their own content bbox) are a
+   much taller/squarer shape than Wheel of Repeg's own marquee-left/right.png
+   (233x100, wide and short) - .hero-sign-hook's shared aspect-ratio:233/100
+   would squash these badly, so Weekly's hooks get their own ratio instead
+   (449x341 / 449x334 after cropping, ~449/338 splits the ~2% difference
+   between the two - imperceptible at this size). */
+.weekly-hero-sign-grid .hero-sign-hook {
+  max-width: 180px;
+  aspect-ratio: 449 / 338;
+}
+/* Below 720px, the shared .hero-sign-hook switches to position:absolute,
+   tucked bottom:-3.2rem under the title (see wheel.css) - that offset was
+   tuned against Wheel of Repeg's own signs, which are short/wide (ratio
+   ~0.43). At the same width, this scoped rule's max-width:180px (higher
+   specificity, so it was winning over the shared mobile rule's own
+   max-width:150px) combined with cartel1/cartel2's much taller ratio
+   (~0.75, see the comment above) meant these signs rendered way taller
+   than Wheel of Repeg's ever did at that width, so the SAME bottom offset
+   left them climbing much further up over the title - confirmed live with
+   a screenshot, title nearly fully covered. Scaled the mobile max-width
+   down so the resulting rendered HEIGHT lands at the same ~64px Wheel of
+   Repeg's own 150px-wide/0.43-ratio signs reach (150 * 100/233 ≈ 64.4px) -
+   same visual overlap-into-the-title Wheel of Repeg's own tuning produces,
+   not the same raw pixel width, since the source images aren't the same
+   shape. First-pass math, not yet checked live - nudge further if it still
+   overlaps. */
+@media (max-width: 720px) {
+  .weekly-hero-sign-grid .hero-sign-hook {
+    /* +20% over the 85px first pass, per direct request - still worth
+       watching for renewed overlap into the title if pushed further. */
+    max-width: 102px;
+  }
 }
 
-/* ---------- Pool breakdown - the "this is the big one" proof ---------- */
-.weekly-pool-banner {
-  max-width: 560px;
-  margin: 0 auto 1.8rem;
-  padding: 1.2rem 1.5rem;
-  border-radius: 14px;
-  border: 1px solid var(--gold-dim);
-  background:
-    linear-gradient(160deg, rgba(255,209,102,0.10), rgba(255,209,102,0.02)),
-    var(--bg-card);
-}
+/* ---------- Pool breakdown - the "this is the big one" proof ----------
+   No standalone .weekly-pool-banner box anymore - WeeklyPoolBanner.tsx now
+   renders these inside the lead card's magic-screen glass (see
+   .weekly-pool-lead-text further down), not its own bordered card. The
+   sub-classes below still style that content directly. */
 .weekly-pool-banner-title {
   margin: 0 0 0.7rem;
   font-size: 0.78rem;
@@ -96,44 +198,411 @@
   font-size: 1.05rem;
 }
 
-/* ---------- Marbled, regal backdrop for the card behind the wheel itself -
-   overrides .wheel-card's red/white/blue harlequin quilt (shared with Wheel
-   of Repeg) with a real (free-use) marble photo instead - procedural SVG
-   veining looked too flat/artificial to read as actual stone. */
-.weekly-wheel-card {
-  background:
-    radial-gradient(ellipse 420px 260px at 50% 0%, rgba(255,209,102,0.08), transparent 70%),
-    url("/marble-weekly.jpg") center/cover no-repeat,
-    #111219;
+/* ---------- Pool breakdown inside the lead card's magic-screen glass area
+   (see WeeklyPoolBanner.tsx) - reuses .lead-text's own measured inset
+   (left/right/top/bottom, same glass area as Wheel of Repeg's single-line
+   tagline) but overrides its centered single-line layout for a 3-row
+   breakdown instead: left-aligned rows, smaller vw-based clamps (same
+   convention as .lead-text's own font-size, not cqw - .lead has no
+   container-type) so 3 rows + a title fit without overflowing the glass.
+   First pass, not yet checked against the real rendered amounts - shrink
+   further if a row wraps or the total spills past the glass edge. */
+/* 10% bigger than Wheel of Repeg's shared .lead-display-wrap (scoped here,
+   not touching the shared rule in wheel.css, so Wheel of Repeg's own lead
+   card is untouched) - the card has enough surrounding margin to absorb a
+   bigger display. Every term in the original width/margin formula (padding-
+   cancelling part included) scaled by 1.1 uniformly, so the image grows
+   while staying centered - .lead-professor/.lead-text position off this
+   wrap's own box via %, so they scale with it automatically. */
+.weekly-pool-lead .lead-display-wrap {
+  width: calc(110% + 3.3rem + 33px);
+  margin: calc(-0.99rem - 16.5px) calc(-1.65rem - 16.5px);
+  /* No container-type here - see .lead-text's own comment a few hundred
+     lines up in this same cascade (wheel.css): .lead sits inside a flex
+     column ancestor chain (.stats-lead-row), and giving any element in
+     that chain size containment collapses it to its padding-only width
+     (a real engine quirk, already hit and documented once before on this
+     exact card). Stick to .lead-text's proven vw-based clamp() technique
+     instead - see below. */
 }
 
-/* ---------- The wheel itself, bigger + chrome-toned frame/glow -----------
-   Sized off its own container (not vw) so it scales up on wide desktop
-   screens instead of plateauing at a fixed 460px, and shrinks correctly
-   inside the card's own padding on narrow screens instead of a raw 90vw
-   guess that could out-grow the card and push the bulb ring past its edge. */
-.weekly-wheel-wrap {
-  width: 100%;
-  max-width: 460px;
-  min-width: 220px;
-  /* aspect-ratio only fills in a dimension left auto - the shared
-     .wheel-wrap rule sets a fixed height:340px (matching the classic
-     wheel), which without this override would win and squash the circle
-     into a 620x340 oval. */
-  height: auto;
-  aspect-ratio: 1;
+.weekly-pool-lead-text {
+  text-align: left;
+  justify-content: center;
+  gap: 0.35vw;
+  /* Narrows the text itself (not the box's own position) so it stops
+     almost touching the display's glass edge - padding shrinks the inner
+     content area by 5px total while .lead-text's own left/right inset
+     stays exactly where it was measured. */
+  padding: 0 2.5px;
 }
-canvas#weekly-wheel {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
+/* Each clamp() below is .lead-text's own formula (clamp(0.5rem, calc(2.94vw
+   - 1.2px), 0.83rem)) scaled by a constant factor R = target-ceiling /
+   0.83rem, not re-derived from scratch - scaling every term (min, vw
+   coefficient, px offset, max) by the same R keeps the crossover viewport
+   width where each hits its ceiling identical to .lead-text's own (algebra:
+   R cancels out of `2.94R*vw - 1.2R = 0.83R*16px`), so these 3 rows shrink
+   in lockstep with the box exactly like the original tagline always has,
+   instead of hitting their own floor at a different width and leaving
+   empty space (the bug reported live - happened because the vw
+   coefficients before this were guessed round numbers, not scaled from the
+   proven formula). Ceilings bumped ~15-20% over the first pass per
+   feedback ("un poco mayor letra ayudaria"). */
+.weekly-pool-lead-text .weekly-pool-banner-title {
+  margin: 0 0 0.2vw;
+  font-size: clamp(0.361rem, calc(2.126vw - 0.867px), 0.6rem);
+  text-align: center;
+}
+.weekly-pool-lead-text .weekly-pool-banner-rows {
+  gap: 0.2vw;
+}
+.weekly-pool-lead-text .weekly-pool-banner-row {
+  font-size: clamp(0.331rem, calc(1.948vw - 0.795px), 0.55rem);
+  gap: 0.4vw;
+  /* The wheel-contributions row's label has a literal \n (see en.json's
+     poolBreakdownWheelContributions) breaking it after "Repeg" so "played
+     this week" wraps to its own line instead of running into the amount -
+     pre-line respects that \n; the other rows have none, so this is a
+     no-op for them. */
+  white-space: pre-line;
+  line-height: 1.25;
+}
+.weekly-pool-lead-text .weekly-pool-banner-total {
+  margin-top: 0.2vw;
+  padding-top: 0.25vw;
+}
+.weekly-pool-lead-text .weekly-pool-banner-total .weekly-pool-banner-amount {
+  font-size: clamp(0.38rem, calc(2.232vw - 0.911px), 0.63rem);
+}
+
+/* ---------- Backdrop for the card behind the wheel itself - overrides
+   .wheel-card's red/white/blue harlequin quilt (shared with Wheel of Repeg,
+   old carnival theme) with a plain dark pixel-art-era background instead of
+   the marble photo this used to have - a placeholder until the wheel booth
+   scene image (see Wheel of Repeg's cabinet-wheel-bg.png) gets its Weekly
+   Round equivalent wired in. */
+/* ---------- Wheel visual frame - same 3-layer pixel-stepped-corners
+   pattern as Wheel of Repeg's .cabinet-wheel-outline/-border/-highlight
+   (2px/4px/2px padding), not .wheel-card at all - Wheel of Repeg's own
+   cabinet wheel dropped .wheel-card entirely for this exact reason (its
+   rounded border + padding is what the earlier negative-margin bleed hack
+   on .wheel-booth-slot had to fight; removing .wheel-card outright, like
+   Wheel of Repeg does, is the real fix - see WeeklyWheelCard.tsx). Weekly's
+   own palette instead of Wheel of Repeg's blue/indigo one: a burgundy
+   sampled straight from booth-bg.png's own floor carpet (mean RGB over a
+   clean patch, #610026) on the thick middle layer, gold only on the thin
+   INNER line - same dark-outer/bright-inner convention as the rest of the
+   site's own gold frames (.lead-outline/-border/-highlight is black/
+   gold-dim/gold, .hero-sign the same idea) instead of gold on both thin
+   lines, which read as too much yellow overall once seen live next to the
+   header (reported directly - first pass had gold-dim on the outer line
+   too). */
+.weekly-wheel-outline {
+  padding: 2px;
+  margin-bottom: 1.6rem;
+  background: var(--black);
+}
+.weekly-wheel-border {
+  padding: 4px;
+  background: #610026;
+}
+.weekly-wheel-highlight {
+  padding: 2px;
+  background: var(--gold);
+}
+
+/* Same burgundy/gold palette on the wheel-status actions card (see
+   WeeklyWheelCard.tsx) - only overrides background on the shared
+   .cabinet-actions-outline/-border/-highlight, their padding/grid-area
+   stay whatever wheel.css already set. */
+.weekly-actions-outline {
+  background: var(--black);
+}
+.weekly-actions-border {
+  background: #610026;
+}
+.weekly-actions-highlight {
+  background: var(--gold);
+}
+/* On .weekly-actions (the whole row, not just the left column) - putting it
+   only on .weekly-actions-left left .cabinet-actions's OWN padding
+   (1.5rem 0 1.5rem 1.5rem, around the left column on 3 sides) still
+   showing its plain var(--bg-card), so the velvet only ever covered part
+   of the card (reported live, twice). Painting it on the outer row instead
+   means every uncovered pixel - that padding included - shows velvet, and
+   the right column still reads as filled since .lab-screen's own image
+   sits opaquely on top of it either way. */
+.weekly-actions {
+  background: url("/weekly-pixel/velvet-bg.png") center / cover;
+}
+/* .round-action-btn-secondary (Withdraw ticket) is a deliberate outline/
+   ghost button in the shared style (background:transparent, just a plain
+   3px border) - reads fine against a flat dark card, but against the
+   velvet texture the pattern shows straight through it, looking broken
+   next to the solid-filled buttons beside it (reported live with a
+   screenshot: "se ve sin fondo, solo el borde y las letras"). Now matches
+   .round-action-btn's own blue fill + hard pixel bevel exactly (same 2
+   box-shadow values, same :active state) instead of the plain outline -
+   per direct request ("mismo color azul... mismo borde con textura que
+   los otros botones"), scoped to Weekly only, not touching the shared
+   outline style Wheel of Repeg's own Withdraw button still uses. */
+.weekly-actions-left .round-action-btn-secondary {
+  background: var(--blue);
+  color: #fff;
+  border: none;
   box-shadow:
-    0 0 0 3px var(--black),
-    0 0 0 5px var(--gold),
-    0 26px 70px -14px rgba(255,209,102,0.4);
+    inset 3px 3px 0 rgba(157,192,255,0.9),
+    inset -3px -3px 0 rgba(11,58,158,0.9),
+    0 4px 0 var(--blue-deep);
 }
-.weekly-wheel-card .prize-label { color: var(--gold); }
+.weekly-actions-left .round-action-btn-secondary:active:not(:disabled) {
+  box-shadow:
+    inset 3px 3px 0 rgba(11,58,158,0.9),
+    inset -3px -3px 0 rgba(157,192,255,0.5);
+  transform: translateY(4px);
+}
+.weekly-actions-left .round-action-btn-secondary:hover {
+  color: #fff;
+}
+/* Check-previous-week + Withdraw ticket share one row (see
+   WeeklyWheelCard.tsx) instead of each stacking on its own - caps this
+   column at 2 rows total instead of 3 when both show, per direct request.
+   flex-wrap so 2 buttons still stack instead of overflowing if a card ends
+   up narrow enough that side-by-side stops fitting even at the smaller
+   size below. */
+.weekly-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  /* This gap is horizontal (Withdraw/Expire sit side by side, not
+     stacked), so widening it costs zero card height - free to bump per
+     direct request ("los botones entre sí... más padding") without any
+     compensation needed, unlike the vertical gap below. */
+  gap: 0.6rem;
+  width: 100%;
+}
+/* Smaller than the default .round-action-btn/.round-action-btn-compact
+   chrome (1.2rem/1.12rem font, 2.4rem/1.6rem horizontal padding) - 2
+   buttons side by side need to actually fit the column's own width, not
+   just look thinner. flex:1 so both share the row evenly regardless of
+   their own text length. Vertical padding cut hard (0.6rem -> 0.35rem) -
+   per direct request, the buttons' own padding is what pushes this
+   column's height (and so the whole card, and the gap that leaves under
+   the screen on the right) taller than it needs to be. */
+.weekly-actions-row-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  white-space: normal;
+}
+/* "EXPIRE ROUND" (12 uppercase chars, .round-action-btn uppercases its
+   text) is the longest label sharing this half-width row - a bit smaller
+   than .weekly-actions-row-btn's own 0.85rem so it doesn't wrap or crowd
+   the edges, per direct request. */
+.weekly-expire-btn {
+  font-size: 0.72rem;
+}
+/* The "Check week #N results" top button (.round-action-btn-compact) kept
+   its full default vertical padding (0.85rem) and 1.12rem font - same
+   height-pressure problem as the row above, scoped down here too. Only
+   inside .weekly-actions-left, not the shared class itself - Wheel of
+   Repeg's own .round-action-btn-compact usage (narrow "view previous
+   round" button) is untouched. */
+.weekly-actions-left .round-action-btn-compact {
+  font-size: 0.95rem;
+  /* Vertical padding traded 1:1 against the +0.15rem added to
+     .weekly-actions-left's own gap below (0.45 -> 0.30) - the row-to-row
+     spacing grows without the column's total height changing at all,
+     per direct request ("no quiero que separarlos haga que la tarjeta se
+     estire. compensemos"). */
+  padding: 0.3rem 1.2rem;
+}
+/* Shared .cabinet-actions-left sets gap:0.6rem between its stacked rows -
+   tightened here for the same reason as the button padding cuts above.
+   +0.15rem back (0.35 -> 0.5) per direct request for more breathing room
+   between the 2 rows - taken back out of .round-action-btn-compact's own
+   padding above so the net column height is unchanged. */
+.weekly-actions-left {
+  gap: 0.5rem;
+  /* No-op in narrow mode (buttons already fill the column there, nothing
+     to redistribute) - matters once the wide-mode rule below can leave
+     real leftover height, so the buttons sit in the middle of it instead
+     of clumping at the top with all the slack dumped below them (reported
+     live with a screenshot, wide mode only). */
+  justify-content: center;
+}
+/* Wide mode only (>=981px, same breakpoint as .stage's own 3-column
+   layout) - .lab-screen's natural aspect-ratio height at this column's
+   real rendered width ends up taller than the narrow-mode button sizing
+   needs, leaving empty space below the (correctly non-deformed) buttons.
+   Scaled back up partway between the original 1.2rem/1.12rem chrome (too
+   tall - that's what caused the card to outgrow the screen in the first
+   place) and the narrow-mode cut (0.85rem/0.72rem, 0.35rem padding - too
+   thin to look intentional once there's real room to fill), per direct
+   request ("los botones podrían crecer... llenen más el espacio"). First
+   pass, not checked live - nudge further if there's still visible slack
+   or if it grows enough to deform the screen again. */
+@media (min-width: 981px) {
+  .weekly-actions-row-btn {
+    font-size: 1rem;
+    padding: 0.6rem 1.1rem;
+  }
+  .weekly-expire-btn {
+    font-size: 0.85rem;
+  }
+  .weekly-actions-left .round-action-btn-compact {
+    font-size: 1.08rem;
+    /* Same 0.15rem traded to .weekly-actions-left's gap as the narrow-mode
+       version above (0.65 -> 0.50) - same compensation, wide mode included
+       per direct request ("tanto en modo ancho como estrecho"). */
+    padding: 0.5rem 1.6rem;
+  }
+}
+
+/* Reverted the align-self:flex-start/center experiment - per direct
+   feedback, the screen has to fill the card edge to edge with zero margin
+   (exactly like Wheel of Repeg's own, which uses plain align-items:stretch,
+   untouched, no override needed here at all now). The real fix is keeping
+   .weekly-actions-left's own content short enough that the row's height
+   stays close to .lab-screen's own natural aspect-ratio height in the
+   first place - see the padding/gap reductions on the button classes
+   below - not decoupling the screen from the row's height. */
+
+/* Same velvet texture on the ticket booth's own card - .ticket-booth is
+   shared with Wheel of Repeg, but Wheel of Repeg no longer renders it
+   inside a .stage-left/.weekly-cabinet-booth wrapper at all (moved to
+   .wheel-cabinet's own .cabinet-ticket-booth), so this is Weekly-only in
+   practice; scoped through .weekly-page anyway to say that explicitly
+   rather than lean on that fact staying true. */
+.weekly-page .weekly-cabinet-booth .ticket-booth {
+  background: url("/weekly-pixel/velvet-bg.png") center / cover;
+}
+
+/* Same velvet, on the participants rail (Entrants/My Winnings/Lifetime
+   Stats) - all 3 share the same red/white 2-layer pixel frame as
+   .ticket-booth-* (.panel-border, .my-winnings-border, .lifetime-stats-
+   border), so painting their innermost content layer (.panel,
+   .my-winnings-panel, .lifetime-stats-panel - same layer .weekly-actions
+   painted for the actions card, not the border/highlight frame layers,
+   which are solid colors not textures) makes the whole Weekly play area
+   read as one consistent felt-lined cabinet instead of the booth/actions
+   being velvet and this rail staying plain. Text colors here (gold values,
+   var(--text-dim) labels) are unchanged from Wheel of Repeg's own and
+   already read fine against the same velvet elsewhere on this page. */
+.weekly-page .weekly-cabinet-participants .panel,
+.weekly-page .weekly-cabinet-participants .my-winnings-panel,
+.weekly-page .weekly-cabinet-participants .lifetime-stats-panel {
+  background: url("/weekly-pixel/velvet-bg.png") center / cover;
+}
+
+
+/* ---------- Pixel-art jeweled wheel (PixelWheelCanvas with Weekly's own
+   frame - see drawWeeklyPixelWheel.ts) ----------
+   frame.png (640x742, crown-ornament-free at its center - the hub is baked
+   into palette.png instead, same split as Wheel of Repeg's frame/palette,
+   see drawPixelWheel.ts's file-level comment for why) isn't square, and
+   what matters for centering is the ring's INNER HOLE (where the disc shows
+   through), not the ring's outer silhouette. Measured via connected-
+   component analysis on the transparent hole region (the hole's own bbox
+   is unaffected by the small ornament notch at the very top where the
+   pointer connects, since that notch sits inside the bbox, not at its
+   edge): hole center (320, 377.5), radius ~276, both in native px, frame
+   displayed at 100% of the wrap's width (so the hole sits at ~43.1% of the
+   wrap) with drawWeeklyPixelWheel's targetRadiusPercent (45.7%) slightly
+   larger so the disc's edge tucks under the ring instead of exactly
+   matching it. First pass from direct measurement, not yet checked in the
+   browser - re-verify on localhost and nudge if a gap/seam shows at the
+   rim, same as Wheel of Repeg's own frame needed. */
+.weekly-pixel-wheel-frame {
+  position: absolute;
+  left: 0%;
+  top: -8.98%;
+  width: 100%;
+  height: 115.94%;
+  image-rendering: pixelated;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---------- Wheel booth (Weekly Round's own booth-bg.png, host+wheel scene,
+   703x740 native - same "real in-flow image, wheel/host overlaid via %"
+   pattern as Wheel of Repeg's .wheel-booth-slot/.wheel-booth-wrap/
+   .wheel-booth-bg, all reused as-is from wheel.css) ---------- */
+/* No padding-cancelling margin hack needed on .wheel-booth-slot anymore -
+   that was only there to bleed past .wheel-card's own 2.5rem/2rem padding,
+   and .wheel-card is gone now (see .weekly-wheel-outline/-border/-highlight
+   above) - .wheel-booth-slot's own plain width:100% (from wheel.css) fills
+   the new pixel frame's content box directly, same as Wheel of Repeg. */
+/* The decorative wheel drawn into booth-bg.png, measured by eye against a
+   px-gridded crop (color-threshold ring detection kept catching the
+   chandeliers/shelves' own gold trim instead of just the ring - the scene
+   is too visually busy for that to converge) - center ~(350, 286.5),
+   radius ~152 in the image's native 703x740px. The decorative ring reads
+   very slightly elliptical (radius_x ~152 vs radius_y ~132.5, likely the
+   scene's own perspective) - width-based sizing chosen (matches how
+   .wheel-booth-wheel already works: width=diameter, aspect-ratio:1/1
+   forces the functional overlay circular regardless), vertical center kept
+   at the ring's true center so the mismatch splits evenly top/bottom
+   instead of concentrating on one edge. First pass from direct
+   measurement, not checked live - nudge on localhost if the functional
+   wheel doesn't sit inside the decorative ring cleanly. */
+.weekly-booth-wheel {
+  position: absolute;
+  left: 28.17%;
+  top: 18.18%;
+  width: 43.24%;
+  aspect-ratio: 1 / 1;
+}
+/* Host's top hat sits roughly x:60-150 y:395-460 (native px). The bubble's
+   tail (.host-guide-bubble-tail-1/-2, see wheel.css) is fixed at the box's
+   own bottom-LEFT corner, pointing further down-left from there - so the
+   box has to sit to the head's RIGHT (tail then points back down-left at
+   the head), not to its left like the first pass had it (tail pointed
+   away from the head instead, reported live with a screenshot). Placed at
+   roughly hat-brim/face height rather than above the hat, since the
+   decorative ring's true bottom (radius_y ~132.5, not the wider radius_x
+   used for .weekly-booth-wheel's sizing - see that rule's own comment)
+   doesn't reach down this far, leaving this whole band clear of the wheel
+   even at a generous width. */
+.weekly-booth-host-bubble {
+  position: absolute;
+  left: 20%;
+  top: 48%;
+  width: 38%;
+  z-index: 3;
+  pointer-events: none;
+  container-type: inline-size;
+}
+/* The idle "hype line" thought bubble (no urgency, nothing to point at) -
+   was landing on the base position above (meant for the tail-pointing
+   "horizontal" type only), which put it over the counter/table instead of
+   the host, reported live with a screenshot ("esta en el medio de la
+   mesa"). Same override pattern as Wheel of Repeg's own
+   .wheel-booth-host-bubble-nube, but with this scene's own measurements:
+   directly above the host's top hat (hat top ~53.4% of the image height),
+   clear of the wheel (its left edge sits at a near-constant ~28-29% around
+   this height band - see .weekly-booth-wheel's own comment for the
+   measured center/radius this is derived from). */
+.weekly-booth-host-bubble-nube {
+  left: 0%;
+  top: 34%;
+  width: 30%;
+}
+/* Grows the cloud ART only, not the text - the text's font-size is cqw,
+   relative to .weekly-booth-host-bubble(-nube)'s own width above, so
+   widening THAT would grow the text right along with the cloud (not what
+   was asked: "agrandar la nube sin agrandar el texto"). Scoped to this
+   weekly instance only (.host-guide-bubble-nube itself is shared with
+   Wheel of Repeg's own nube bubble in wheel.css - not touched here) -
+   growing the pseudo-element's own box via inset (not transform:scale,
+   which the project's own notes flag as unreliable here) leaves
+   .host-guide-bubble-nube's own box, and everything sized off it
+   (including the text), exactly as before. -7.5% inset on all 4 sides
+   grows both width and height by 15% (2 x 7.5%), staying centered. */
+.weekly-booth-host-bubble-nube .host-guide-bubble-nube::before {
+  inset: -7.5%;
+}
 
 /* ---------- Hub: 6-division metallic pinwheel (rendered as an SVG, see
    HubSpiral.tsx, so each wedge can carry an embossed gold RePegClub
@@ -203,46 +672,21 @@ canvas#weekly-wheel {
   100%  { opacity: 0; left: 42%; top: 72%; }
 }
 
-/* Same diagonal "light glinting off gold trim" sweep as the elements below,
-   masked down to just the ring's line - a straight band of light crossing
-   a curved metal edge reads far more like a real reflection than a rotating
-   highlight does. */
-.weekly-wheel-wrap::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  background: linear-gradient(115deg,
-    transparent 40%,
-    rgba(255,244,214,0.35) 48%,
-    rgba(255,255,255,0.6) 50%,
-    rgba(255,244,214,0.35) 52%,
-    transparent 60%);
-  background-size: 250% 250%;
-  background-position: -130% -130%;
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px) calc(100% - 1px), transparent calc(100% - 1px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px) calc(100% - 1px), transparent calc(100% - 1px));
-  animation: gold-sweep 11s ease-in-out infinite;
-  animation-delay: 5.6s;
-  pointer-events: none;
-}
-
 /* ---------- Shared "light glinting off gold trim" sweep, applied to the
    page's other gold-bordered elements below - each on its own delay so
-   they don't all flash at once. ---------- */
+   they don't all flash at once. (The wheel-wrap's own ring version of this
+   sweep, and the .weekly-pool-banner/.weekly-wheel-card .prize-tag entries
+   below, are gone along with those elements - both replaced earlier in the
+   pixel-art migration.) ---------- */
 @keyframes gold-sweep {
   0%, 12% { background-position: -130% -130%; }
   32%, 100% { background-position: 130% 130%; }
 }
-.weekly-hero-sign,
-.weekly-pool-banner,
-.weekly-wheel-card .prize-tag {
+.weekly-hero-sign {
   position: relative;
   overflow: hidden;
 }
-.weekly-hero-sign::before,
-.weekly-pool-banner::before,
-.weekly-wheel-card .prize-tag::before {
+.weekly-hero-sign::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -257,5 +701,3 @@ canvas#weekly-wheel {
   animation: gold-sweep 8.5s ease-in-out infinite;
   pointer-events: none;
 }
-.weekly-pool-banner::before { animation-duration: 9.5s; animation-delay: 3.7s; }
-.weekly-wheel-card .prize-tag::before { animation-duration: 12s; animation-delay: 2.4s; }

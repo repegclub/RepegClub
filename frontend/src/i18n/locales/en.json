@@ -41,6 +41,9 @@
   "ticketBooth": {
     "label": "Ticket price",
     "buy": "Buy ticket",
+    "buyTickets": "Buy {{count}} tickets",
+    "quantityDecrease": "Buy fewer tickets",
+    "quantityIncrease": "Buy more tickets",
     "buying": "Buying…",
     "buyFailed": "Purchase failed.",
     "connectFirst": "Connect your wallet first.",
@@ -189,7 +192,7 @@
       },
       {
         "q": "What happens if a round never fills up?",
-        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — ticket money is never lost or stuck."
+        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -476,18 +479,76 @@
   },
   "weekly": {
     "heroTitle": "The Weekly Jackpot",
-    "heroSubtitle": "One grand prize, all week — fed by every Wheel of Repeg round on the platform, on top of its own rising-price ticket sales.",
-    "poolBreakdownTitle": "Where this pool comes from",
-    "poolBreakdownTicketSales": "🎟️ From today's ticket sales",
-    "poolBreakdownWheelContributions": "🎡 Contributed by every Wheel of Repeg round this week",
+    "bannerLeft": "Do you dare to repeg?",
+    "bannerRight": "Are you V.I.P. enough?",
+    "poolBreakdownTitle": "This pool is fed by",
+    "poolBreakdownTicketSales": "🎟️ Daily ticket sales",
+    "poolBreakdownWheelContributions": "🎡 Each Wheel of Repeg\nplayed this week",
     "poolBreakdownTotal": "Total pool",
     "weekBadge": "Week #{{weekId}}",
     "prizeLabel": "The grand prize",
     "todayPriceCaption": "today's ticket price: {{price}} — rises daily",
     "closeWeek": "Close week",
     "closesIn": "Closes in {{time}} unless someone buys another ticket",
-    "viewPreviousWeek": "🏆 Check week #{{weekId}} — see if you won!",
+    "viewPreviousWeek": "🏆 Week #{{weekId}} results",
     "continueNextWeek": "Continue to next week",
-    "initialResult": "{{count}} tickets sold — {{amount}} pool"
+    "initialResult": "{{count}} tickets sold — {{amount}} pool",
+    "closedWaitingDraw": "Week closed — no more tickets accepted. The draw unlocks in a few seconds.",
+    "continuePrompt": "Hit continue to next week to keep playing.",
+    "continueShort": "Next\nWeek",
+    "withdrawTicket": "Withdraw ticket(s)"
+  },
+  "faqWeekly": {
+    "title": "How does the weekly jackpot work?",
+    "items": [
+      {
+        "q": "How does the game work?",
+        "a": "Buy a ticket. Once enough players join (or time runs out), the week closes and a winner is drawn on-chain. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
+      },
+      {
+        "q": "How is the winner picked?",
+        "a": "Weighted by tickets: buying more improves your odds, but anyone with at least one ticket has a real chance. The pick happens entirely on-chain — the spinning wheel only reveals a result that's already decided, it never chooses it."
+      },
+      {
+        "q": "What does \"on-chain and verifiable\" mean?",
+        "a": "Anyone can independently recompute the exact same result from public blockchain data, without taking our word for it. See \"Verify this week\" below any drawn week."
+      },
+      {
+        "q": "How is the winner obtained safely and verifiably from the blockchain?",
+        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this week\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket that week has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the week, the block, and the ticket list together) that points to a single ticket. \"Verify this week\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
+      },
+      {
+        "q": "How do I know the app isn't just simulating the draw?",
+        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
+      },
+      {
+        "q": "What happens if a week never fills up?",
+        "a": "If the minimum number of players is never reached in time, the week expires and everyone who bought a ticket that week can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired week's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+      },
+      {
+        "q": "Can one wallet buy all the tickets?",
+        "a": "Every week has a fixed ticket cap per wallet: half of that week's maximum player capacity (minimum 1), no matter how many people actually end up joining. For example, a week that allows up to 10 players caps every wallet at 5 tickets. That's a hard ceiling on ticket count, not a live percentage guarantee — if only a couple of other players join, one wallet's tickets can still add up to more than half of that particular week's total (5 tickets out of 7 sold, say, if only two other wallets buy one each). The cap exists so nobody can buy an unlimited amount, not to promise an exact split. It cuts both ways, though: holding a bigger share means risking more of your own money on that week, and losing more if someone else wins — while a wallet with just one or two tickets risks very little and can multiply that small stake several times over if it wins. Bigger share, bigger risk; smaller share, bigger potential multiplier. That balance is what keeps the game fair even when a week doesn't fill evenly."
+      },
+      {
+        "q": "Does buying more tickets actually improve my odds, or does every wallet get the same chance?",
+        "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought that week (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a week with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this week\" on any drawn week and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
+      },
+      {
+        "q": "Why doesn't the countdown reset the way Wheel of Repeg's does?",
+        "a": "Weekly Round runs on one fixed countdown for the whole week (set the moment the week opens), not a rolling one that extends with every new ticket like Wheel of Repeg's rounds do. Once it hits zero, the week closes if enough players joined (or expires, with reclaimable tickets, if not) — buying late in the week doesn't buy anyone extra time."
+      },
+      {
+        "q": "Where does the weekly jackpot come from?",
+        "a": "Two sources, shown separately in the pool breakdown above: this week's own ticket sales (the price rises daily, see below), plus a share automatically contributed on-chain every time a Wheel of Repeg round finishes and draws a winner, from that round's own ticket pool."
+      },
+      {
+        "q": "Why does the ticket price go up every day?",
+        "a": "It rises by a fixed amount for each full day since the current week opened — not a percentage, a flat daily increment on top of the week's starting price. It resets back down to that starting price at the beginning of every new week."
+      },
+      {
+        "q": "If I buy a Wheel of Repeg ticket, am I automatically in the weekly jackpot too?",
+        "a": "No — the two are separate draws with separate ticket pools. Every Wheel of Repeg round contributes part of its own proceeds to the weekly jackpot's pool automatically, but that doesn't give wheel players an entry into the weekly draw. You need your own Weekly Round ticket for a chance at this prize."
+      }
+    ]
   }
 }
