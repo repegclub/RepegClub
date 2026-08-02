@@ -80,10 +80,18 @@ export function WeeklyWheelCard({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isRedeemOpen]);
 
+  // Also resets on wallet address change, not just purchaseVersion - without
+  // this, switching wallets in Keplr mid-session while staying on the same
+  // week (no remount, since WeeklyWheelCard is keyed on week_id only) could
+  // leave a previous wallet's justWithdrawn/justReclaimed stuck true, hiding
+  // the Withdraw/Reclaim button from a genuinely eligible new wallet
+  // (CodeRabbit finding, confirmed - same pre-existing gap exists in
+  // WheelCard.tsx too, left as-is there since it's outside this PR's scope).
+  const connectedAddress = walletState.status === "connected" ? walletState.address : null;
   useEffect(() => {
     setJustWithdrawn(false);
     setJustReclaimed(false);
-  }, [purchaseVersion]);
+  }, [purchaseVersion, connectedAddress]);
 
   const maxPlayers = weekState.status === "loaded" ? weekState.config.max_players : 10;
   const arcs = useMemo(
