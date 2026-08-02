@@ -15,7 +15,7 @@ export function HeroSign() {
         <div className="hero-sign-highlight">
           <div className="hero-sign-inner">
             <BulbStrip position="top" count={22} />
-            <div className="hero-sign-grid">
+            <div className="hero-sign-grid wor-hero-sign-grid">
               <img
                 src="/wheel-pixel/marquee-left.png"
                 alt={t("banners.left")}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
-import { buyTicket } from "../../lib/roundActions";
+import { buyTickets } from "../../lib/roundActions";
 import { HostGuide } from "./HostGuide";
 
 type TicketBoothProps = {
@@ -12,19 +12,25 @@ type TicketBoothProps = {
   contractAddress?: string;
   // null = round not open / not loaded yet, don't show anything. See
   // lib/ticketAvailability.ts for why this is personalized per viewer
-  // rather than a flat countdown.
+  // rather than a flat countdown - also doubles as the quantity stepper's
+  // own upper bound, since it already accounts for this wallet's own
+  // remaining per-wallet cap AND the round's own remaining capacity.
   availableTickets?: number | null;
   ticketCap?: number;
   onPurchased?: () => void;
-  // Defaults to Wheel Manager's buyTicket(). Weekly Round passes
-  // buyWeeklyTicket instead - everything else here (validation, error
-  // parsing, button state) is identical between the two.
+  // Defaults to Wheel Manager's buyTickets(). Weekly Round passes
+  // buyWeeklyTickets instead - everything else here (validation, error
+  // parsing, button state) is identical between the two. Takes a quantity
+  // now instead of always buying exactly one - see buyTickets/
+  // buyWeeklyTickets in roundActions.ts for how a multi-ticket purchase
+  // batches into one signed transaction.
   buyAction?: (
     wallet: ConnectedWallet,
     ticketDenom: string,
     ticketPriceAmount: string,
+    quantity: number,
     contractAddress?: string
-  ) => ReturnType<typeof buyTicket>;
+  ) => ReturnType<typeof buyTickets>;
 };
 
 export function TicketBooth({
@@ -35,12 +41,24 @@ export function TicketBooth({
   availableTickets,
   ticketCap,
   onPurchased,
-  buyAction = buyTicket,
+  buyAction = buyTickets,
 }: TicketBoothProps) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // How many tickets THIS purchase will buy - defaults to 1, capped to
+  // availableTickets (already personalized per wallet, see the prop's own
+  // comment above). Clamped reactively, not just on input: availableTickets
+  // can shrink out from under an already-chosen quantity (someone else buys
+  // in between renders), and a stale too-high quantity would otherwise sit
+  // there until the batched tx failed instead of being caught client-side.
+  const [quantity, setQuantity] = useState(1);
+  const maxBuyable = Math.max(1, availableTickets ?? 1);
+  useEffect(() => {
+    setQuantity((q) => Math.min(Math.max(1, q), maxBuyable));
+  }, [maxBuyable]);
 
   // Guarded, not trusted blindly - returnObjects falls back to the raw key
   // string (not an array) if ticketBooth.hostHype is ever missing from a
@@ -66,7 +84,8 @@ export function TicketBooth({
     setBuying(true);
     setError(null);
     try {
-      await buyAction(walletState.wallet, ticketDenom, ticketPriceAmount, contractAddress);
+      await buyAction(walletState.wallet, ticketDenom, ticketPriceAmount, quantity, contractAddress);
+      setQuantity(1);
       onPurchased?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -125,8 +144,41 @@ export function TicketBooth({
           disabled={!ready || buying}
           title={walletState.status !== "connected" ? t("ticketBooth.connectFirst") : undefined}
         >
-          {buying ? t("ticketBooth.buying") : t("ticketBooth.buy")}
+          {buying
+            ? t("ticketBooth.buying")
+            : quantity > 1
+              ? t("ticketBooth.buyTickets", { count: quantity })
+              : t("ticketBooth.buy")}
         </button>
+        {/* Hidden entirely below 2 (nothing to step between), same as CYOL's
+            own quantity selector - a stepper that can only ever show "1"
+            isn't useful, just clutter. +/- instead of a raw number input:
+            this whole card is otherwise button-driven, not text-input-
+            driven, and a stepper can't land on an invalid value by
+            mistyping. */}
+        {maxBuyable > 1 && (
+          <div className="booth-quantity-stepper">
+            <button
+              type="button"
+              className="booth-quantity-btn"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              disabled={quantity <= 1 || buying}
+              aria-label={t("ticketBooth.quantityDecrease")}
+            >
+              −
+            </button>
+            <span className="booth-quantity-value">{quantity}</span>
+            <button
+              type="button"
+              className="booth-quantity-btn"
+              onClick={() => setQuantity((q) => Math.min(maxBuyable, q + 1))}
+              disabled={quantity >= maxBuyable || buying}
+              aria-label={t("ticketBooth.quantityIncrease")}
+            >
+              +
+            </button>
+          </div>
+        )}
       </div>
     </div>
     </div>

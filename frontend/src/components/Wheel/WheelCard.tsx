@@ -269,6 +269,26 @@ export function WheelCard({
     roundState.round.winner === walletState.address &&
     roundState.round.prize_remaining !== "0";
 
+  // View-previous-round, Expire Round and Withdraw ticket can all be
+  // simultaneously eligible (a real state: round_id>1 is independent of
+  // !hasMinPlayers, and Expire/Withdraw both only need !hasMinPlayers) -
+  // stacked as 3 separate full-size buttons, the column grew taller than
+  // .cabinet-actions-right's own screen image, which then had to stretch to
+  // match and visibly deformed (reported live on Weekly Round, which shares
+  // this exact layout, then confirmed to be live on Wheel of Repeg's own
+  // production site too). Computed here so the JSX below can decide, per
+  // combination, when each button needs its compact treatment vs. when it
+  // can keep its original full-size solo styling.
+  const showViewPreviousRound = loaded && roundState.round.status === "open" && roundState.round.round_id > 1;
+  const showExpireRound = loaded && roundState.round.status === "open" && !closeEligible && expireEligible;
+  const showWithdrawTicket =
+    loaded &&
+    roundState.round.status === "open" &&
+    !hasMinPlayers &&
+    !justWithdrawn &&
+    walletState.status === "connected" &&
+    entrants.some((e) => e.address === walletState.address);
+
   function formatCountdown(totalSeconds: number): string {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
@@ -395,17 +415,18 @@ export function WheelCard({
           {actionBusy === "closing" ? t("wheel.closing") : t("wheel.closeRound")}
         </button>
       )}
-      {loaded && roundState.round.status === "open" && !closeEligible && expireEligible && (
-        <button
-          className="round-action-btn"
-          onClick={handleExpireRound}
-          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
-        >
-          {actionBusy === "expiring" ? t("wheel.expiring") : t("wheel.expireRound")}
-        </button>
-      )}
 
-      {loaded && roundState.round.status === "open" && roundState.round.round_id > 1 && (
+      {/* View Previous Round always gets its own row (never shares one with
+          Expire/Withdraw below) - full solo treatment (icon, 2-line text,
+          bigger font, auto-margin vertical centering - see
+          .cabinet-actions .round-action-btn-view-previous in wheel.css) only
+          when it's truly the sole thing in this column; the moment Expire
+          and/or Withdraw will ALSO render below it, it switches to the same
+          compact single-line sizing as .wheel-actions-row-btn so it doesn't
+          add to the height problem those 2 solve below. Close Round isn't
+          part of this check - Close+View-Previous is a pre-existing
+          combination this session didn't touch or get asked about. */}
+      {showViewPreviousRound && !showExpireRound && !showWithdrawTicket && (
         <button
           type="button"
           className="round-action-btn round-action-btn-compact round-action-btn-view-previous"
@@ -417,21 +438,51 @@ export function WheelCard({
           {t("wheel.viewPreviousRoundLine2")}
         </button>
       )}
+      {showViewPreviousRound && (showExpireRound || showWithdrawTicket) && (
+        <button
+          type="button"
+          className="round-action-btn round-action-btn-compact round-action-btn-view-previous wheel-actions-compact-btn"
+          onClick={() => onViewRound?.(roundState.round.round_id - 1)}
+        >
+          <img src="/wheel-pixel/wheel-emoji.png" alt="" className="round-action-btn-icon" />
+          {t("wheel.viewPreviousRoundLine1", { roundId: roundState.round.round_id - 1 })}
+        </button>
+      )}
 
-      {loaded &&
-        roundState.round.status === "open" &&
-        !hasMinPlayers &&
-        !justWithdrawn &&
-        walletState.status === "connected" &&
-        entrants.some((e) => e.address === walletState.address) && (
-          <button
-            className="round-action-btn round-action-btn-secondary"
-            onClick={handleWithdrawTicket}
-            disabled={actionBusy !== "idle"}
-          >
-            {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("wheel.withdrawTicket")}
-          </button>
-        )}
+      {/* Expire Round + Withdraw ticket - same combined-row treatment as
+          Weekly Round's own final version of this exact button cluster
+          (Withdraw + Expire share a row, View Previous stays separate
+          above it), not the View-Previous+Withdraw pairing this session
+          first tried here - that left Expire Round still at full size in
+          its own row above/below this one, which could reproduce the same
+          height/stretch problem this whole fix exists for whenever Expire,
+          View Previous AND Withdraw are all eligible at once (a real state:
+          Expire and Withdraw both only need !hasMinPlayers). Renders even
+          with just one of the two present, same as Weekly Round, for one
+          consistent compact treatment instead of a 3rd separate full-size
+          variant. */}
+      {(showExpireRound || showWithdrawTicket) && (
+        <div className="wheel-actions-row">
+          {showWithdrawTicket && (
+            <button
+              className="round-action-btn round-action-btn-secondary wheel-actions-row-btn"
+              onClick={handleWithdrawTicket}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("wheel.withdrawTicket")}
+            </button>
+          )}
+          {showExpireRound && (
+            <button
+              className="round-action-btn wheel-actions-row-btn"
+              onClick={handleExpireRound}
+              disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+            >
+              {actionBusy === "expiring" ? t("wheel.expiring") : t("wheel.expireRound")}
+            </button>
+          )}
+        </div>
+      )}
 
       {loaded && roundState.round.status === "closed" && (
         <button

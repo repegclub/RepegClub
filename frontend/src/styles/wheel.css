@@ -82,9 +82,21 @@
     background:
       radial-gradient(ellipse 1100px 680px at 50% 4%, rgba(84,146,247,0.20), transparent 62%),
       radial-gradient(ellipse 800px 460px at 50% 100%, rgba(208,30,67,0.10), transparent 60%),
-      repeating-conic-gradient(from -90deg at 50% -600px,
-        rgba(208,30,67,0.045) 0deg 9deg,
-        rgba(84,146,247,0.045) 9deg 18deg),
+      /* Site-wide "circus tent" stripe texture - was a repeating-conic-
+         gradient (mathematically smooth diagonal boundaries), which read as
+         a modern vector gradient, not pixel art, next to everything else on
+         the page (reported directly). Replaced with a small tileable SVG
+         instead of a raster asset, so it never stretches/blurs at any
+         viewport width - same reasoning as any pixel-art background: repeat
+         a small tile at its native size, never scale one big image to
+         cover the page. Each 8px cell is colored by (cellX+cellY)/3, giving
+         a diagonal band 3 cells thick with a genuine staircase edge (not a
+         straight line) - the same "small fixed-px steps" technique already
+         used for .hero-sign-outline's corners, just tiled across a 48x48
+         square instead of one card's border. Same colors/alpha (0.045) as
+         the gradient it replaces, so overall visual weight is unchanged -
+         only the boundary shape is different. */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='rgba(208,30,67,0.045)'/%3E%3Crect x='0' y='24' width='8' height='24' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='8' y='16' width='8' height='24' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='16' y='8' width='8' height='24' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='24' y='0' width='8' height='24' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='32' y='0' width='8' height='16' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='32' y='40' width='8' height='8' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='40' y='0' width='8' height='8' fill='rgba(84,146,247,0.045)'/%3E%3Crect x='40' y='32' width='8' height='16' fill='rgba(84,146,247,0.045)'/%3E%3C/svg%3E") 0 0/48px 48px repeat,
       var(--bg);
     color: var(--text);
     font-family: var(--body);
@@ -233,6 +245,23 @@
       right: -0.6rem;
       z-index: 2;
       transform: rotate(1.2deg);
+    }
+    /* .hero-sign-title's h1 font-size (elsewhere in this file) is vw-based,
+       not tied to this card's own rendered width - at a real phone width
+       it stays small enough that these hooks (max-width:150px above) clear
+       it fine, but at a wider "narrow browser window" still under this same
+       720px breakpoint, the same vw-based title renders noticeably bigger
+       while the hooks stay pinned to the same 150px/-3.2rem spot, so they
+       end up covering it - reported live ("en mi iPhone se ven bien, y en
+       modo ancho también, pero en modo estrecho tapan el texto"). Scoped to
+       Wheel of Repeg's own hero (.wor-hero-sign-grid) - Weekly Round's
+       already has its own separate override here, untouched. -20% across
+       this whole breakpoint (not a narrower sub-range) per direct request -
+       makes the phone case slightly smaller too, but that was already
+       reported fine, so a bit smaller there is a safe trade for fixing the
+       wider-narrow case. */
+    .wor-hero-sign-grid .hero-sign-hook {
+      max-width: 120px;
     }
   }
   .bulb-strip {
@@ -553,24 +582,6 @@
     color: #8fd66a;
     text-shadow: 0 0 6px rgba(143,214,106,0.45);
     font-size: clamp(0.68rem, 4.6cqw, 1.1rem);
-  }
-
-  /* Still used by Weekly Round (WeeklyRoundPage.tsx) and its weekly.css
-     overrides - Wheel of Repeg itself moved to .wheel-cabinet below and no
-     longer renders a .stage at all, but this has to stay for the other
-     page that still does. */
-  .stage {
-    display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(0, 480px) minmax(260px, 1fr);
-    gap: 2.4rem;
-    align-items: start;
-    justify-content: center;
-  }
-  @media (max-width: 980px) {
-    .stage { grid-template-columns: 1fr; justify-content: stretch; }
-    .wheel-card, .wheel-card-shell { order: 1; }
-    .stage-left { order: 2; }
-    .stage-right { order: 3; }
   }
 
   /* ---------- Wheel cabinet: one unified card, arcade-cabinet style -------
@@ -1408,6 +1419,56 @@
       inset -3px -3px 0 rgba(168,240,192,0.5);
     transform: translateY(4px);
   }
+  /* Multi-ticket quantity stepper, below the buy button (the narrow-mode
+     .booth-details rule further down already reserved this exact space for
+     it) - +/- buttons instead of a raw number input, matching this card's
+     own button-driven feel (see TicketBooth.tsx for why). Same gray
+     (#6b7280) and hard-bevel technique as .round-action-btn-secondary/
+     History's own secondary buttons elsewhere, not the green .booth-buy -
+     this isn't the primary action. */
+  .booth-quantity-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+  }
+  .booth-quantity-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    background: #6b7280;
+    color: #fff;
+    border: none;
+    border-radius: 0;
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow:
+      inset 2px 2px 0 rgba(255,255,255,0.35),
+      inset -2px -2px 0 rgba(0,0,0,0.35),
+      0 3px 0 #4b5563;
+  }
+  .booth-quantity-btn:active:not(:disabled) {
+    box-shadow:
+      inset 2px 2px 0 rgba(0,0,0,0.35),
+      inset -2px -2px 0 rgba(255,255,255,0.2);
+    transform: translateY(3px);
+  }
+  .booth-quantity-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+    box-shadow: none;
+  }
+  .booth-quantity-value {
+    min-width: 2.4rem;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text);
+  }
   /* Narrow (<= 980px): the wheel gets its own full-width row below (see
      .wheel-cabinet's mobile grid), so the booth becomes a horizontal card
      instead of shrinking to fit a half-width column - image flush left,
@@ -1437,7 +1498,8 @@
       display: flex;
       flex-direction: column;
       /* Pushed to the top, not vertically centered - leaves room below the
-         button for the upcoming multi-ticket quantity stepper. */
+         button for the multi-ticket quantity stepper (see
+         .booth-quantity-stepper above). */
       justify-content: flex-start;
       align-items: center;
       text-align: center;
@@ -1448,6 +1510,18 @@
     .booth-info { align-items: center; }
     .booth-price { font-size: 1.6rem; }
     .booth-buy { width: auto; padding: 0.4rem 1.4rem; }
+    /* Smaller than the default 2.2rem squares - this column is only half
+       the card's own width here, same reasoning as .booth-price/.booth-buy
+       shrinking on this same breakpoint. */
+    .booth-quantity-btn {
+      width: 1.8rem;
+      height: 1.8rem;
+      font-size: 1.1rem;
+    }
+    .booth-quantity-value {
+      min-width: 1.8rem;
+      font-size: 1.1rem;
+    }
   }
 
   /* ---------- Other active tickets (other tiers) - stacks under the booth ---------- */
@@ -1964,18 +2038,76 @@
     margin-right: 0.35em;
     image-rendering: pixelated;
   }
-  /* Leaving-the-round action (withdraw) - deliberately less prominent than
-     the primary blue flow buttons, so it doesn't compete with them. Still
-     pixel-square/no-blur, just an outline instead of a filled bevel. */
+  /* Leaving-the-round action (withdraw) - was a deliberate transparent/
+     outline style (less prominent than the primary blue buttons), but read
+     as "no background at all" once seen live in production - same solid
+     blue + hard pixel bevel as .round-action-btn now (same box-shadow
+     values, same :active state), per direct request. */
   .round-action-btn-secondary {
     margin-top: 0.8rem;
-    background: transparent;
-    color: var(--text-dim);
-    border: 3px solid var(--border-bright);
-    box-shadow: none;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    box-shadow:
+      inset 3px 3px 0 rgba(157,192,255,0.9),
+      inset -3px -3px 0 rgba(11,58,158,0.9),
+      0 4px 0 var(--blue-deep);
   }
-  .round-action-btn-secondary:active:not(:disabled) { transform: translateY(2px); }
-  .round-action-btn-secondary:hover { color: var(--text); }
+  .round-action-btn-secondary:active:not(:disabled) {
+    box-shadow:
+      inset 3px 3px 0 rgba(11,58,158,0.9),
+      inset -3px -3px 0 rgba(157,192,255,0.5);
+    transform: translateY(4px);
+  }
+  .round-action-btn-secondary:hover { color: #fff; }
+  /* Expire Round + Withdraw ticket share this row (see WheelCard.tsx's
+     showExpireRound/showWithdrawTicket - both only need !hasMinPlayers, a
+     real simultaneous state), same fix as Weekly Round's own final version
+     of this button cluster. Same specificity as the solo rules they
+     override (2 classes each), placed after them so source order wins the
+     tie. */
+  .wheel-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    width: 100%;
+  }
+  .wheel-actions-row-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: normal;
+    font-size: 0.95rem;
+    padding: 0.6rem 1rem;
+  }
+  .wheel-actions-row .round-action-btn-secondary {
+    margin-top: 0;
+  }
+  /* View Previous Round, when Expire and/or Withdraw will ALSO render below
+     it (see WheelCard.tsx) - same compact font/padding as
+     .wheel-actions-row-btn, but as its own standalone row, not a flex
+     item inside .wheel-actions-row - reusing .wheel-actions-row-btn
+     directly here would also inherit its flex:1 1 0/min-width:0, which
+     mean something completely different (vertical grow) on an element
+     that's actually a flex item of .cabinet-actions-left's own COLUMN
+     flex instead of .wheel-actions-row's ROW flex. Cancels the solo
+     rule's auto-margin centering too - not floating alone anymore. */
+  /* .round-action-btn-view-previous.wheel-actions-compact-btn (2 classes),
+     not .wheel-actions-compact-btn alone - needs to match
+     .cabinet-actions .round-action-btn-view-previous's own specificity
+     (also 2 classes) to actually win the override; a single-class version
+     here would silently lose that fight and the solo big/centered styling
+     would keep applying even when compact was intended. */
+  .round-action-btn-view-previous.wheel-actions-compact-btn {
+    margin-top: 0;
+    margin-bottom: 0;
+    font-size: 0.95rem;
+    padding: 0.6rem 1rem;
+  }
+  .wheel-actions-row .round-action-btn-icon,
+  .wheel-actions-compact-btn .round-action-btn-icon {
+    width: 1.1em;
+    height: 1.1em;
+  }
   /* Redeem prize - same flat-fill/hard-bevel pattern as .round-action-btn,
      in green (matching .booth-buy) instead of blue, so it reads as the
      "cash out" action distinct from Continue's blue "keep playing" one. */
@@ -3029,6 +3161,30 @@
        margin-left:auto keeps this group pinned to the right on its own
        line too, not just when sharing a line with .game-nav. */
     margin-left: auto;
+  }
+  /* Real phones (~375-430px, narrower than the 720px "modo estrecho"
+     breakpoint elsewhere in this file, which was tuned against a narrow
+     browser WINDOW, not an actual device - that gap never got tested)
+     don't leave room for My Bag + History next to the connected-wallet
+     chip, and letting .wallet-bar-right's own flex-wrap handle it wrapped
+     them individually wherever they happened to overflow instead of a
+     clean row - reported live with an iPhone screenshot. Below 481px,
+     flex-basis:100% forces this pair to always start a fresh line
+     together, right-aligned via justify-content; at 481px+ it resets to
+     auto so the pair sits inline like everything else in
+     .wallet-bar-right once there's real room for it (matches the already-
+     working wider layout, untouched). */
+  .wallet-bar-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    flex-basis: 100%;
+  }
+  @media (min-width: 481px) {
+    .wallet-bar-secondary {
+      flex-basis: auto;
+    }
   }
   /* ---------- Game nav (Games dropdown + Creators) - left side of the
      sticky wallet-bar, same spot on every game page. Was its own row of

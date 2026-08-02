@@ -115,8 +115,17 @@ export function WheelOfRepeg() {
         <GameNav current="/" />
         <div className="wallet-bar-right">
           <ConnectWalletButton />
-          <WalletBalance />
-          <HistoryButton tiers={tiers} />
+          {/* My Bag + History grouped so they can wrap onto their own line
+              together, right-aligned - on a real phone (narrower than the
+              "modo estrecho" breakpoint already fixed elsewhere), Games +
+              Create + the connected-wallet chip alone still don't leave
+              room for these two, and letting them wrap individually left
+              them scattered instead of a clean second row (reported live
+              with a screenshot). See .wallet-bar-secondary in wheel.css. */}
+          <div className="wallet-bar-secondary">
+            <WalletBalance />
+            <HistoryButton tiers={tiers} />
+          </div>
           <AdminSweepButton
             adminAddress={roundState.status === "loaded" ? roundState.config.admin : undefined}
             contractAddress={selectedTier ?? undefined}

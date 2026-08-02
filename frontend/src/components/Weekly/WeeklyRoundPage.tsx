@@ -8,7 +8,9 @@ import { WeeklyWheelCard } from "./WeeklyWheelCard";
 import { MyWeeklyWinningsPanel } from "./MyWeeklyWinningsPanel";
 import { EntrantsPanel } from "../Wheel/EntrantsPanel";
 import { FeedbackSection } from "../Shared/FeedbackSection";
+import { WeeklyFAQSection } from "./WeeklyFAQSection";
 import { LifetimeStatsPanel } from "../Wheel/LifetimeStatsPanel";
+import { PlatformRepeggedBanner } from "../Wheel/PlatformRepeggedBanner";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
@@ -17,10 +19,11 @@ import { useWallet } from "../../contexts/WalletContext";
 import { useWeeklyRound } from "../../hooks/useWeeklyRound";
 import { useWeeklyEntrants } from "../../hooks/useWeeklyEntrants";
 import { useLifetimeStats } from "../../hooks/useLifetimeStats";
+import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
 import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 import { formatUluna } from "../../lib/format";
-import { buyWeeklyTicket } from "../../lib/roundActions";
+import { buyWeeklyTickets } from "../../lib/roundActions";
 import { TicketBooth } from "../Wheel/TicketBooth";
 
 export function WeeklyRoundPage() {
@@ -34,6 +37,7 @@ export function WeeklyRoundPage() {
   const entrantsState = useWeeklyEntrants(weekId);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];
   const lifetimeStats = useLifetimeStats(address);
+  const platformRepegged = usePlatformRepegged();
 
   const [purchaseVersion, setPurchaseVersion] = useState(0);
   function handlePurchased() {
@@ -51,6 +55,7 @@ export function WeeklyRoundPage() {
   function handleRedeemed() {
     weekState.refetch();
     lifetimeStats.refetch();
+    platformRepegged.refetch();
   }
 
   function handleWithdrawn() {
@@ -72,7 +77,14 @@ export function WeeklyRoundPage() {
         <GameNav current="/weekly-round" />
         <div className="wallet-bar-right">
           <ConnectWalletButton />
-          <WalletBalance />
+          {/* Same .wallet-bar-secondary treatment as Wheel of Repeg's own
+              wallet-bar, for consistency - Weekly Round doesn't have a
+              History button to pair it with, but wrapping just My Bag
+              alone still keeps it right-aligned if it wraps to its own
+              line at real phone widths. */}
+          <div className="wallet-bar-secondary">
+            <WalletBalance />
+          </div>
           <AdminSweepButton
             adminAddress={weekState.status === "loaded" ? weekState.config.admin : undefined}
             contractAddress={WEEKLY_ROUND_ADDRESS}
@@ -83,16 +95,27 @@ export function WeeklyRoundPage() {
 
       <WeeklyHeroSign />
 
-      {weekState.status === "loaded" && (
-        <WeeklyPoolBanner
-          ticketSalesPool={weekState.week.ticket_sales_pool}
-          wheelContributions={weekState.week.wheel_contributions}
-          pool={weekState.week.pool}
-        />
-      )}
+      <div className="stats-lead-row">
+        <PlatformRepeggedBanner stats={platformRepegged} />
+        {weekState.status === "loaded" && (
+          <WeeklyPoolBanner
+            ticketSalesPool={weekState.week.ticket_sales_pool}
+            wheelContributions={weekState.week.wheel_contributions}
+            pool={weekState.week.pool}
+          />
+        )}
+      </div>
 
-      <div className="stage">
-        <div className="stage-left">
+      {/* .weekly-cabinet is a named-areas grid mirroring Wheel of Repeg's own
+          .wheel-cabinet exactly (see weekly.css) - replaces the old .stage
+          3-column grid, which could only reorder its exactly-3 direct
+          children as whole blocks and couldn't interleave the ticket booth
+          between the header and the wheel at narrow widths (reported live:
+          the booth was landing below the whole prize+wheel+actions column
+          instead). WeeklyWheelCard.tsx's 3 pieces (header/wheel/actions)
+          are now direct grid items here too, not nested inside one wrapper. */}
+      <div className="weekly-cabinet">
+        <div className="weekly-cabinet-booth">
           <TicketBooth
             priceDisplay={todayPriceDisplay}
             ticketDenom={weekState.status === "loaded" ? weekState.config.ticket_denom : undefined}
@@ -101,7 +124,7 @@ export function WeeklyRoundPage() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             onPurchased={handlePurchased}
-            buyAction={buyWeeklyTicket}
+            buyAction={buyWeeklyTickets}
           />
         </div>
 
@@ -120,7 +143,7 @@ export function WeeklyRoundPage() {
           onViewWeek={setViewWeekId}
         />
 
-        <div className="stage-right">
+        <div className="weekly-cabinet-participants">
           <EntrantsPanel entrants={entrants} />
           {weekState.status === "loaded" && (
             <MyWeeklyWinningsPanel
@@ -137,6 +160,7 @@ export function WeeklyRoundPage() {
       </div>
 
       <FeedbackSection />
+      <WeeklyFAQSection />
     </main>
   );
 }
