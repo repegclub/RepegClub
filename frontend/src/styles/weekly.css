@@ -25,14 +25,32 @@
    .weekly-cabinet-header/-wheel/-actions classes.
    Column widths (480px base, 654px wide) are unchanged from the old .stage
    override - kept as-is since they were already measured/approved live,
-   only the reordering mechanism changed. */
+   only the reordering mechanism changed.
+   Mobile-first on purpose (stacked layout is the unconditional default,
+   wide is the only override behind a media query) - not just the narrow
+   breakpoint block wheel.css's own .wheel-cabinet uses. A base rule that
+   only defines the "header" area, with booth/wheel/actions/participants
+   defined solely inside @media(min-width:981px)/@media(max-width:980px),
+   leaves a real gap: a fractional viewport width between 980px and 981px
+   (reachable at non-100% zoom or a fractional device-pixel-ratio) matches
+   NEITHER query, so those 4 elements' grid-area would reference names
+   absent from the active grid-template-areas and fall back to auto-
+   placement (CodeRabbit finding, confirmed against the areas actually
+   defined in each block below). Making the stacked layout the base rule
+   removes that gap by construction - there's no width left that matches
+   neither rule. */
 .weekly-cabinet {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 480px) minmax(260px, 1fr);
-  grid-template-areas: "header header header";
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "header"
+    "booth"
+    "wheel"
+    "actions"
+    "participants";
   gap: 2.4rem;
   align-items: start;
-  justify-content: center;
+  justify-content: stretch;
 }
 .weekly-cabinet-header { grid-area: header; }
 .weekly-cabinet-booth { grid-area: booth; }
@@ -40,43 +58,36 @@
 .weekly-cabinet-actions { grid-area: actions; }
 .weekly-cabinet-participants { grid-area: participants; }
 
+/* Same reset as Wheel of Repeg's own .cabinet-participants rule in
+   wheel.css (there, scoped to .cabinet-participants specifically) -
+   .panel-border/.my-winnings-border/.lifetime-stats-border's 340px cap
+   only makes sense in the real 3-column sidebar (>= 981px, see below); in
+   the stacked layout that's now the default here, booth/wheel/actions
+   already stretch to fill the column, so participants/stats should too
+   instead of sitting narrower and off-center (reported live - the exact
+   same bug Wheel of Repeg already fixed, just missed here since Weekly
+   uses its own .weekly-cabinet-participants class, not
+   .cabinet-participants). Un-done again below, >= 981px only, where the
+   real 3-column sidebar brings the 340px cap back. */
+.weekly-cabinet-participants .panel-border,
+.weekly-cabinet-participants .my-winnings-border,
+.weekly-cabinet-participants .lifetime-stats-border {
+  max-width: none;
+}
+
 @media (min-width: 981px) {
   .weekly-cabinet {
     grid-template-columns: minmax(220px, 1fr) minmax(0, 654px) minmax(260px, 1fr);
+    justify-content: center;
     grid-template-areas:
       "header  header  header"
       "booth   wheel   participants"
       "booth   actions participants";
   }
-}
-
-/* Narrow (<= 980px): booth now gets its own row between header and wheel
-   (the whole point of this migration), instead of .stage's old single
-   "everything stacks in DOM/order order" fallback. */
-@media (max-width: 980px) {
-  .weekly-cabinet {
-    grid-template-columns: 1fr;
-    justify-content: stretch;
-    grid-template-areas:
-      "header"
-      "booth"
-      "wheel"
-      "actions"
-      "participants";
-  }
-  /* Same reset as Wheel of Repeg's own .cabinet-participants rule in
-     wheel.css (there, scoped to .cabinet-participants specifically) -
-     .panel-border/.my-winnings-border/.lifetime-stats-border's 340px cap
-     only makes sense in the real 3-column sidebar (>= 981px); once the
-     cabinet collapses to one full-width column, booth/wheel/actions already
-     stretch to fill it, so participants/stats should too instead of
-     sitting narrower and off-center (reported live - the exact same bug
-     Wheel of Repeg already fixed, just missed here since Weekly uses its
-     own .weekly-cabinet-participants class, not .cabinet-participants). */
   .weekly-cabinet-participants .panel-border,
   .weekly-cabinet-participants .my-winnings-border,
   .weekly-cabinet-participants .lifetime-stats-border {
-    max-width: none;
+    max-width: 340px;
   }
 }
 

@@ -46,9 +46,11 @@ export type PixelWheelConfig = {
 export function createPixelWheelDraw(config: PixelWheelConfig) {
   let img: HTMLImageElement | null = null;
   let loaded = false;
+  let failed = false;
   const waiters: Array<() => void> = [];
 
   function getImage(onLoad?: () => void): HTMLImageElement | null {
+    if (failed) return null;
     if (!img) {
       img = new Image();
       img.src = config.imageSrc;
@@ -56,11 +58,15 @@ export function createPixelWheelDraw(config: PixelWheelConfig) {
         loaded = true;
         waiters.splice(0).forEach((cb) => cb());
       };
-      // Without this, a failed load (offline, bad deploy) would leave
-      // `loaded` false forever - every future redraw request just keeps
-      // pushing another callback onto `waiters` with nothing to ever drain
-      // it.
+      // Draining `waiters` here isn't enough on its own - `img` stays
+      // non-null and `loaded` stays false forever after a failed load (this
+      // Image object's onload/onerror never fire again), so every future
+      // draw() call would otherwise keep pushing a new callback onto
+      // `waiters` below with nothing left to ever drain it - an unbounded
+      // leak, since draw() runs on every animation frame while spinning
+      // (CodeRabbit finding, confirmed). `failed` short-circuits that.
       img.onerror = () => {
+        failed = true;
         waiters.splice(0);
       };
     }

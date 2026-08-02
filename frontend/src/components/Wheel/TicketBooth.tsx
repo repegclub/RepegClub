@@ -55,6 +55,14 @@ export function TicketBooth({
   // in between renders), and a stale too-high quantity would otherwise sit
   // there until the batched tx failed instead of being caught client-side.
   const [quantity, setQuantity] = useState(1);
+  // availableTickets === 0 is a real, distinct state (round/week already at
+  // capacity, or this wallet already at its per-wallet cap) - Math.max(1, 0)
+  // would otherwise silently coerce it to the same "1" fallback used for
+  // null/undefined ("not loaded yet"), leaving Buy enabled for a purchase
+  // the contract will reject (CodeRabbit finding, confirmed against
+  // ticketAvailability.ts's own computeAvailableTickets, which does return
+  // exactly 0 in the real "round already full" case).
+  const noneAvailable = availableTickets === 0;
   const maxBuyable = Math.max(1, availableTickets ?? 1);
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(1, q), maxBuyable));
@@ -77,7 +85,7 @@ export function TicketBooth({
     return () => clearInterval(id);
   }, [HYPE_LINES.length]);
 
-  const ready = walletState.status === "connected" && ticketDenom && ticketPriceAmount;
+  const ready = walletState.status === "connected" && ticketDenom && ticketPriceAmount && !noneAvailable;
 
   async function handleBuy() {
     if (walletState.status !== "connected" || !ticketDenom || !ticketPriceAmount) return;

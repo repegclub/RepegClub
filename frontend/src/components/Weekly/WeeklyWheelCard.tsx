@@ -242,6 +242,21 @@ export function WeeklyWheelCard({
     deadlineEstimate !== null &&
     nowSec >= deadlineEstimate + DEADLINE_SAFETY_BUFFER_SECONDS;
 
+  // Same showExpireRound/showWithdrawTicket pattern as WheelCard.tsx -
+  // computed once so .weekly-actions-row only renders when it will actually
+  // have a button inside it (CodeRabbit finding, confirmed live: without
+  // this guard the row rendered empty whenever the week was open but
+  // neither condition held, and .weekly-actions-left's flex gap still
+  // applied around that empty item, adding stray vertical spacing).
+  const showExpireWeek = loaded && weekState.week.status === "open" && !closeEligible && expireEligible;
+  const showWithdrawTicket =
+    loaded &&
+    weekState.week.status === "open" &&
+    !hasMinPlayers &&
+    !justWithdrawn &&
+    walletState.status === "connected" &&
+    entrants.some((e) => e.address === walletState.address);
+
   function formatCountdown(totalSeconds: number): string {
     const d = Math.floor(totalSeconds / 86400);
     const h = Math.floor((totalSeconds % 86400) / 3600);
@@ -287,14 +302,21 @@ export function WeeklyWheelCard({
       return { type: "horizontal", message: t("wheel.withdrawnNote") };
     }
     if (weekState.week.status === "open" && !closeEligible && !expireEligible) {
+      // Unlike Wheel of Repeg's round.deadline (which genuinely stays null
+      // until min_players is reached), Weekly's deadlineEstimate is always a
+      // number once loaded - seconds_remaining ticks from week open. So the
+      // "waiting for minimum players" state has to be gated on hasMinPlayers
+      // directly, not on secondsToDeadline === null (that branch never fires
+      // here - CodeRabbit finding, confirmed live: a week below min_players
+      // was showing a countdown instead of the waiting message).
+      if (!hasMinPlayers) {
+        return { type: "horizontal", message: t("wheel.waitingForMinPlayers", { min: weekState.config.min_players }) };
+      }
       if (secondsToDeadline !== null && secondsToDeadline <= 20) {
         return { type: "alarma", message: t("wheel.lastCallShort") };
       }
       if (secondsToDeadline !== null) {
         return { type: "horizontal", message: t("weekly.closesIn", { time: formatCountdown(secondsToDeadline) }) };
-      }
-      if (secondsToDeadline === null) {
-        return { type: "horizontal", message: t("wheel.waitingForMinPlayers", { min: weekState.config.min_players }) };
       }
     }
     if (weekState.week.status === "closed") {
@@ -441,21 +463,18 @@ export function WeeklyWheelCard({
           {t("weekly.viewPreviousWeek", { weekId: weekState.week.week_id - 1 })}
         </button>
       )}
-      {loaded && weekState.week.status === "open" && (
+      {(showWithdrawTicket || showExpireWeek) && (
         <div className="weekly-actions-row">
-          {!hasMinPlayers &&
-            !justWithdrawn &&
-            walletState.status === "connected" &&
-            entrants.some((e) => e.address === walletState.address) && (
-              <button
-                className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
-                onClick={handleWithdrawTicket}
-                disabled={actionBusy !== "idle"}
-              >
-                {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("weekly.withdrawTicket")}
-              </button>
-            )}
-          {!closeEligible && expireEligible && walletState.status === "connected" && (
+          {showWithdrawTicket && (
+            <button
+              className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
+              onClick={handleWithdrawTicket}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "withdrawing" ? t("wheel.withdrawing") : t("weekly.withdrawTicket")}
+            </button>
+          )}
+          {showExpireWeek && (
             <button
               className="round-action-btn weekly-actions-row-btn weekly-expire-btn"
               onClick={handleExpireWeek}
