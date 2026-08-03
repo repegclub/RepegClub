@@ -214,7 +214,11 @@
     }
     .hero-sign-title {
       position: relative;
-      z-index: 1;
+      /* Above the hooks (see .hero-sign-hook-left/-right below) so the
+         title text is never covered even if a hook's rendered height still
+         reaches into it - a hook overlapping the title's box is now just
+         hidden behind the letters instead of hiding them. */
+      z-index: 3;
       padding: 0;
     }
     /* A bit of extra bottom room in the card itself, just on mobile, so
@@ -229,21 +233,27 @@
        The gap from grid's bottom edge to the card's own bottom border is
        fixed (bulb strip + padding-bottom below, unaffected by title height),
        so a fixed bottom offset keeps the hooks clear of that border at any
-       title length instead of only at the one height this was measured against. */
+       title length instead of only at the one height this was measured against.
+       Nudged a bit lower (-3.2rem -> -3.4rem) per direct request, on top of
+       the title z-index above, as a real phone (not just a narrow browser
+       window) still showed the hooks reaching into the title, worst on
+       Weekly Round's taller cartel1/cartel2 hooks (see weekly.css). */
     .hero-sign-hook {
       position: absolute;
-      bottom: -3.2rem;
+      bottom: -3.4rem;
       width: 42%;
       max-width: 150px;
     }
     .hero-sign-hook-left {
-      left: -0.6rem;
-      z-index: 2;
+      /* -0.6rem -> -0.72rem (~20% further out) per direct request, so the
+         hook sits further from the centered title horizontally too. */
+      left: -0.72rem;
+      z-index: 1;
       transform: rotate(-1.2deg);
     }
     .hero-sign-hook-right {
-      right: -0.6rem;
-      z-index: 2;
+      right: -0.72rem;
+      z-index: 1;
       transform: rotate(1.2deg);
     }
     /* .hero-sign-title's h1 font-size (elsewhere in this file) is vw-based,
@@ -3184,6 +3194,35 @@
   @media (min-width: 481px) {
     .wallet-bar-secondary {
       flex-basis: auto;
+    }
+  }
+  /* Real phones (~375-430px): Games + Create + the connected chip are
+     borderline too wide to share the top line, so the chip wraps onto its
+     own line and My Bag/History (already forced to their own line above)
+     end up as a 3rd row instead of a 2nd. Tightening gaps/button padding
+     and letting the bar bleed past the page's usual side padding buys back
+     just enough width for Games + Create + chip to fit on one line, so
+     only My Bag/History wrap - back to 2 rows. */
+  @media (max-width: 480px) {
+    .wallet-bar {
+      gap: 0.4rem;
+      margin-left: -0.5rem;
+      margin-right: -0.5rem;
+    }
+    .game-nav {
+      gap: 0.4rem;
+    }
+    .game-nav-toggle-btn {
+      padding: 0 0.6rem;
+    }
+    .game-nav-creators {
+      padding: 0 0.6rem 0 0.45rem;
+    }
+    .wallet-chip {
+      padding: 0 0.5rem 0 0.75rem;
+    }
+    .wallet-disconnect {
+      padding: 0.3rem 0.5rem;
     }
   }
   /* ---------- Game nav (Games dropdown + Creators) - left side of the
