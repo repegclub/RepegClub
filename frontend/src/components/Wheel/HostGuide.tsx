@@ -12,9 +12,9 @@ type HostGuideProps = {
 // corners with no border color at all - "open" corners - so, same fix as
 // .hero-sign, the outline is its own layer behind the fill, both clipped
 // with the identical polygon so the gap between them is a uniform ring
-// everywhere, tail included); "alarma"/"nube" are fixed-size images with
-// spiky/scalloped silhouettes that can't be stretched without distorting -
-// used for short lines only, never long paragraphs.
+// everywhere); "alarma"/"nube" are fixed-size images with spiky/scalloped
+// silhouettes that can't be stretched without distorting - used for short
+// lines only, never long paragraphs.
 export function HostGuide({ message, bubbleType = "rectangulo" }: HostGuideProps) {
   // "\n" in a message forces a manual line break at an exact word (used by
   // the hostHype lines to guarantee at most 3 words on the first line) -
@@ -35,18 +35,6 @@ export function HostGuide({ message, bubbleType = "rectangulo" }: HostGuideProps
           </p>
         </div>
       </div>
-      {/* Baking the tail into the same clip-path polygon as the box turned
-          out unreliable (verified via the browser's own Computed clip-path -
-          it matched the source exactly, yet no visible tail rendered, at 2
-          different sizes) - 2 small plain bordered squares instead, no
-          clip-path/polygon math involved at all for these, just a normal
-          CSS border, so there's nothing subtle left to get wrong. */}
-      {bubbleType === "horizontal" && (
-        <>
-          <div className="host-guide-bubble-tail host-guide-bubble-tail-1" />
-          <div className="host-guide-bubble-tail host-guide-bubble-tail-2" />
-        </>
-      )}
     </div>
   );
 }

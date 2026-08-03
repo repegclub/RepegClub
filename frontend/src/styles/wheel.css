@@ -940,7 +940,11 @@
   /* z-index:1, one below the box's own z-index:2 - the tail sits BEHIND
      the box, tucked under its bottom-left corner (the box's border/fill
      paints over whatever part of the tail overlaps it), same as a normal
-     speech-bubble tail. */
+     speech-bubble tail. Only used by the Verify Round panels' lab bubble
+     now (VerifyRoundPanel.tsx/WeeklyVerifyRoundPanel.tsx) - the main
+     wheel/weekly host bubble (HostGuide.tsx) dropped its own tail per
+     direct request ("se ven horribles"), but this one stays - "es el
+     único lugar que quedan bien". */
   .host-guide-bubble-tail {
     position: absolute;
     z-index: 1;
