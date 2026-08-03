@@ -1395,7 +1395,10 @@
     animation: booth-urgent-pulse 1.6s ease-in-out infinite;
   }
   .booth-cap-note {
-    font-size: 0.759rem;
+    /* Was smaller than .booth-available (0.759rem vs 0.828rem) despite
+       being the same kind of info at the same importance level - reported
+       live as "demasiado pequeño" next to it. Matched. */
+    font-size: 0.828rem;
     color: var(--text-dim);
     opacity: 0.75;
     margin: 0.15rem 0 0;
@@ -1541,6 +1544,37 @@
     .booth-quantity-value {
       min-width: 1.8rem;
       font-size: 1.1rem;
+    }
+  }
+
+  /* Real phones only (pointer:coarse - same gap as the wallet-bar/weekly
+     card fixes elsewhere in this file: the 980px booth layout above was
+     tuned against a narrow browser WINDOW, which still has more width to
+     spare in this 50%-wide column than an actual ~375-430px phone does -
+     "10.00"/"USDC" fit on one line at "modo estrecho" but wrapped to 2 on
+     a real phone, reported live. Padding trimmed on both sides to buy back
+     width, for the price line and so .booth-available/.booth-cap-note also
+     have more room per line. */
+  @media (max-width: 480px) and (pointer: coarse) {
+    .booth-details {
+      padding: 0.6rem 0.5rem 1.1rem;
+    }
+    .booth-price {
+      font-size: 1.45rem;
+    }
+    /* .booth-art-wrap's height came from align-items:stretch matching
+       .booth-details' own height (see the 980px block above), which varies
+       with how much its text wraps - object-fit:cover then cropped
+       ticket-booth.png (703x590) to whatever odd box shape that produced,
+       worst on real phones where .booth-details runs taller (more text
+       wrapping at this width) than at "modo estrecho" - cropped the vendor
+       and clipped "REPEG CLUB" down to "EPEG CLU", reported live. Giving
+       the wrap the image's own aspect-ratio and pulling it out of stretch
+       (align-self) makes its box match the image exactly - cover then has
+       nothing to crop, at any .booth-details height. */
+    .booth-art-wrap {
+      aspect-ratio: 703 / 590;
+      align-self: flex-start;
     }
   }
 
