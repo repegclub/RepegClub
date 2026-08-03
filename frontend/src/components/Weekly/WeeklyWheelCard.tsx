@@ -650,8 +650,16 @@ export function WeeklyWheelCard({
       </div>
 
       <div className="lab-screen-stats">
-        {ticketCount !== null ? (
+        {loaded ? (
           <>
+            {/* The prize banner up top already carries this (see
+                .prize-round-badge/weekBadge in WeeklyWheelCard's own JSX
+                above), but it reads as decorative there and easy to miss -
+                reported live ("en ningun lado veo que ronda es actualmente
+                en weekly"). Repeating it here, next to the other per-week
+                numbers a player actually checks against, is where they
+                expect it. */}
+            <p>{t("weekly.weekBadge", { weekId: weekState.week.week_id })}</p>
             <p>{t("wheel.ticketsSoldLabel", { count: ticketCount })}</p>
             <p>{t("wheel.poolPrizeLabel", { amount: poolDisplay })}</p>
           </>

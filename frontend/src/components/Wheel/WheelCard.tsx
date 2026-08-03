@@ -643,8 +643,14 @@ export function WheelCard({
       </div>
 
       <div className="lab-screen-stats">
-        {ticketCount !== null ? (
+        {loaded ? (
           <>
+            {/* Same addition as Weekly Round's own lab-screen-stats, for
+                parity - the prize banner up top already carries this (see
+                .prize-round-badge above) but reads as decorative there and
+                is easy to miss; repeating it next to the other per-round
+                numbers a player actually checks is where they expect it. */}
+            <p>{t("wheel.roundBadge", { roundId: roundState.round.round_id })}</p>
             <p>{t("wheel.ticketsSoldLabel", { count: ticketCount })}</p>
             <p>{t("wheel.poolPrizeLabel", { amount: poolDisplay })}</p>
           </>
