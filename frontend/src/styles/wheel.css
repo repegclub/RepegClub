@@ -1558,9 +1558,22 @@
   @media (max-width: 480px) and (pointer: coarse) {
     .booth-details {
       padding: 0.6rem 0.5rem 1.1rem;
+      /* .booth-price below sizes itself off this box's own real width
+         (cqw), not the viewport's - the fixed 1.45rem guess still wrapped
+         to 2 lines on a real phone (reported live), meaning the column
+         ends up narrower than that guess assumed. Container query units
+         self-correct regardless of exactly how narrow, instead of a 3rd
+         guessed rem value. */
+      container-type: inline-size;
     }
     .booth-price {
-      font-size: 1.45rem;
+      /* nowrap so it can never wrap again even at the edges of the clamp;
+         the 8.5cqw term is tuned conservative (comfortable margin below
+         where "10.00 USDC" actually overflows), so this is the ceiling for
+         normal phone widths in practice, with the floor only kicking in on
+         something narrower than any real phone. */
+      font-size: clamp(0.6rem, 8.5cqw, 1.5rem);
+      white-space: nowrap;
     }
     /* .booth-art-wrap's height came from align-items:stretch matching
        .booth-details' own height (see the 980px block above), which varies
