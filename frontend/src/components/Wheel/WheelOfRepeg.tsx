@@ -108,6 +108,13 @@ export function WheelOfRepeg() {
       : null;
   const ticketCap =
     roundState.status === "loaded" ? maxTicketsPerWallet(roundState.config.max_players) : undefined;
+  // The round's fixed sellable ceiling - same computeAvailableTickets used
+  // for the personalized live countdown above, called with no entrants and
+  // no wallet so it returns the theoretical max from a fresh round instead
+  // of "how many are left right now" (see ticketAvailability.ts for why
+  // that's max_players*cap - (cap-1), not the naive product).
+  const maxTicketsPerRound =
+    roundState.status === "loaded" ? computeAvailableTickets([], roundState.config.max_players, null) : undefined;
 
   return (
     <main>
@@ -184,6 +191,7 @@ export function WheelOfRepeg() {
             contractAddress={selectedTier ?? undefined}
             availableTickets={availableTickets}
             ticketCap={ticketCap}
+            maxTicketsPerRound={maxTicketsPerRound}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />

@@ -1501,23 +1501,37 @@
      specificity that comes before it in source order, media query or not,
      which is why an earlier attempt at this silently did nothing. */
   @media (max-width: 980px) {
-    /* Exact 50/50 split, not an arbitrary fixed-px image size - padding
-       moves from the shared card to .booth-details only, so the left half
-       has nothing fighting it for space and can be a clean, true 50%. */
+    /* Exact 50/50 split, not an arbitrary fixed-px image size - grid
+       instead of flex-row so .booth-info and .booth-details (button +
+       stepper) can share the right column as 2 stacked rows while staying
+       2 separate elements (see TicketBooth.tsx - split apart on purpose so
+       mobile-only, further down, can put .booth-details in its own
+       full-width row instead). "art" repeats in both grid-template-areas
+       rows, which spans it across the full left column automatically. */
     .ticket-booth {
-      flex-direction: row;
-      align-items: stretch;
+      display: grid;
+      grid-template-columns: 50% 50%;
+      grid-template-areas:
+        "art info"
+        "art details";
       gap: 0;
       padding: 0;
     }
     .booth-art-wrap {
-      width: 50%;
+      grid-area: art;
+      width: auto;
       height: auto;
-      flex-shrink: 0;
       margin: 0;
     }
+    .booth-info {
+      grid-area: info;
+      align-items: center;
+      text-align: center;
+      min-width: 0;
+      padding: 0.6rem 1.1rem 0;
+    }
     .booth-details {
-      width: 50%;
+      grid-area: details;
       display: flex;
       flex-direction: column;
       /* Pushed to the top, not vertically centered - leaves room below the
@@ -1528,9 +1542,8 @@
       text-align: center;
       min-width: 0;
       gap: 0.35rem;
-      padding: 0.6rem 1.1rem 1.1rem;
+      padding: 0.35rem 1.1rem 1.1rem;
     }
-    .booth-info { align-items: center; }
     .booth-price { font-size: 1.6rem; }
     .booth-buy { width: auto; padding: 0.4rem 1.4rem; }
     /* Smaller than the default 2.2rem squares - this column is only half
@@ -1549,45 +1562,100 @@
 
   /* Real phones only (pointer:coarse - same gap as the wallet-bar/weekly
      card fixes elsewhere in this file: the 980px booth layout above was
-     tuned against a narrow browser WINDOW, which still has more width to
-     spare in this 50%-wide column than an actual ~375-430px phone does -
-     "10.00"/"USDC" fit on one line at "modo estrecho" but wrapped to 2 on
-     a real phone, reported live. Padding trimmed on both sides to buy back
-     width, for the price line and so .booth-available/.booth-cap-note also
-     have more room per line. */
+     tuned against a narrow browser WINDOW, which has more slack than an
+     actual ~375-430px phone. 3 areas instead of the 980px block's 2x2 -
+     .booth-details (button + stepper) drops to its own full-width row
+     below, instead of squeezed into the right half under .booth-info -
+     the vendor image is shorter now that it has a real aspect-ratio (see
+     below) instead of stretching to match that column's full height, so
+     the old 2-column split left empty space under him; reported live. */
   @media (max-width: 480px) and (pointer: coarse) {
-    .booth-details {
-      padding: 0.6rem 0.5rem 1.1rem;
+    .ticket-booth {
+      grid-template-areas:
+        "art info"
+        "button stepper";
+    }
+    .booth-info {
+      padding: 0.6rem 0.5rem 0.4rem;
       /* .booth-price below sizes itself off this box's own real width
-         (cqw), not the viewport's - the fixed 1.45rem guess still wrapped
-         to 2 lines on a real phone (reported live), meaning the column
-         ends up narrower than that guess assumed. Container query units
-         self-correct regardless of exactly how narrow, instead of a 3rd
-         guessed rem value. */
+         (cqw), not the viewport's - a fixed rem guess kept being wrong
+         (wrapped to 2 lines on a real phone even after shrinking it once
+         already, reported live). Container query units self-correct
+         regardless of exactly how narrow this column ends up. */
       container-type: inline-size;
     }
     .booth-price {
-      /* nowrap so it can never wrap again even at the edges of the clamp;
-         the 8.5cqw term is tuned conservative (comfortable margin below
-         where "10.00 USDC" actually overflows), so this is the ceiling for
-         normal phone widths in practice, with the floor only kicking in on
-         something narrower than any real phone. */
-      font-size: clamp(0.6rem, 8.5cqw, 1.5rem);
+      /* nowrap so it can never wrap again even at the edges of the clamp.
+         10.5cqw has real margin above where "10.00 USDC" (10 characters)
+         actually overflows - confirmed live, the previous 8.5cqw left
+         visible slack - but isn't maxed out against that slack, since
+         ticket price is USD-denominated and could grow to 3 figures before
+         the decimal later (e.g. "100.00 USDC", 1 character longer); this
+         still holds for that with some room left, not just for today's
+         2-figure tiers. */
+      font-size: clamp(0.6rem, 10.5cqw, 1.7rem);
       white-space: nowrap;
     }
-    /* .booth-art-wrap's height came from align-items:stretch matching
-       .booth-details' own height (see the 980px block above), which varies
-       with how much its text wraps - object-fit:cover then cropped
-       ticket-booth.png (703x590) to whatever odd box shape that produced,
-       worst on real phones where .booth-details runs taller (more text
-       wrapping at this width) than at "modo estrecho" - cropped the vendor
-       and clipped "REPEG CLUB" down to "EPEG CLU", reported live. Giving
-       the wrap the image's own aspect-ratio and pulling it out of stretch
-       (align-self) makes its box match the image exactly - cover then has
-       nothing to crop, at any .booth-details height. */
+    /* Symmetric with the row above instead of one merged full-width strip -
+       button under the vendor (left column), stepper under the price/texts
+       (right column), requested live. .booth-buy/.booth-quantity-stepper
+       need to be independent grid items to land in 2 different areas, but
+       both are DOM children of .booth-details (see TicketBooth.tsx) -
+       display:contents unwraps that box so they become direct grid items
+       of .ticket-booth instead, same technique as the wallet-bar mobile
+       fix elsewhere in this file. */
+    .booth-details {
+      display: contents;
+    }
+    .booth-buy {
+      grid-area: button;
+      justify-self: center;
+      align-self: start;
+      margin: 0.4rem 0 1.1rem;
+    }
+    /* Was spaced below the button via margin-top, sitting in
+       .booth-details' own flex column (stacked layout, 980px block above) -
+       now its own grid item in a separate column, so that top margin would
+       just add stray space above it instead of separating it from the
+       button. */
+    .booth-quantity-stepper {
+      grid-area: stepper;
+      justify-self: center;
+      align-self: start;
+      margin: 0.4rem 0 1.1rem;
+    }
+    /* .booth-art-wrap's height used to come from align-items:stretch
+       matching its row-mate's height (see the 980px block above), which
+       varied with how much text wrapped next to it - object-fit:cover then
+       cropped ticket-booth.png (703x590) to whatever odd box shape that
+       produced, worst on real phones - cropped the vendor and clipped
+       "REPEG CLUB" down to "EPEG CLU", reported live. Giving the wrap the
+       image's own aspect-ratio and pulling it out of stretch (align-self)
+       makes its box match the image exactly - cover then has nothing to
+       crop, regardless of its row-mate's height. */
     .booth-art-wrap {
       aspect-ratio: 703 / 590;
       align-self: flex-start;
+    }
+    /* top: calc(24% + 20px) (base rule above) was tuned against the old
+       stretched height, which matched its row-mate's (taller) height - now
+       that .booth-art-wrap is shorter (aspect-ratio, not stretch, see
+       above) AND the Buy button sits directly below it in its own grid row
+       (not off to the side, see .booth-buy above), that same offset lands
+       low enough to cover "Buy" - reported live. Raised. */
+    .booth-host-bubble {
+      top: calc(12% + 10px);
+    }
+    /* Matched to .booth-available's own weight/opacity (700, fully opaque)
+       instead of lighter/dimmer (default weight, 0.75 opacity) - same
+       font-size already, but read as less legible next to it. Mobile only,
+       per direct request - not touching the other modes. */
+    .booth-cap-note {
+      font-weight: 700;
+      opacity: 1;
+    }
+    .booth-label {
+      font-size: 0.95rem;
     }
   }
 

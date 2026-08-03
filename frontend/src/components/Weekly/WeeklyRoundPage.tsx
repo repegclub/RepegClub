@@ -68,6 +68,11 @@ export function WeeklyRoundPage() {
       : null;
   const ticketCap =
     weekState.status === "loaded" ? maxTicketsPerWallet(weekState.config.max_players) : undefined;
+  // Same fixed sellable ceiling as Wheel of Repeg's own (see
+  // WheelOfRepeg.tsx) - no entrants/wallet so it's the theoretical max from
+  // a fresh week, not this week's live remaining count.
+  const maxTicketsPerRound =
+    weekState.status === "loaded" ? computeAvailableTickets([], weekState.config.max_players, null) : undefined;
   const todayPriceDisplay =
     weekState.status === "loaded" ? formatUluna(weekState.week.today_price, "USDC") : t("wheel.loading");
 
@@ -123,6 +128,7 @@ export function WeeklyRoundPage() {
             contractAddress={WEEKLY_ROUND_ADDRESS}
             availableTickets={availableTickets}
             ticketCap={ticketCap}
+            maxTicketsPerRound={maxTicketsPerRound}
             onPurchased={handlePurchased}
             buyAction={buyWeeklyTickets}
           />

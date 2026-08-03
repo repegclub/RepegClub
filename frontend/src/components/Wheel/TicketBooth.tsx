@@ -17,6 +17,13 @@ type TicketBoothProps = {
   // remaining per-wallet cap AND the round's own remaining capacity.
   availableTickets?: number | null;
   ticketCap?: number;
+  // The round's fixed sellable ceiling (computeAvailableTickets(<no
+  // entrants>, maxPlayers, null) - see ticketAvailability.ts), shown next
+  // to availableTickets (which counts down as the round fills) for
+  // symmetry: one number that shrinks, one that doesn't, both in the same
+  // "🎟️ ..." format - requested live to add context availableTickets alone
+  // doesn't give.
+  maxTicketsPerRound?: number;
   onPurchased?: () => void;
   // Defaults to Wheel Manager's buyTickets(). Weekly Round passes
   // buyWeeklyTickets instead - everything else here (validation, error
@@ -40,6 +47,7 @@ export function TicketBooth({
   contractAddress,
   availableTickets,
   ticketCap,
+  maxTicketsPerRound,
   onPurchased,
   buyAction = buyTickets,
 }: TicketBoothProps) {
@@ -128,24 +136,35 @@ export function TicketBooth({
           {HYPE_LINES[hypeIndex] && <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />}
         </div>
       </div>
-      <div className="booth-details">
-        <div className="booth-info">
-          <div>
-            <p className="booth-label">{t("ticketBooth.label")}</p>
-            <p className="booth-price">{priceDisplay}</p>
-            {availableTickets !== null && availableTickets !== undefined && (
-              <p className={`booth-available${availableTickets === 1 ? " booth-available-urgent" : ""}`}>
-                {availableTickets === 1
-                  ? t("ticketBooth.availableLast")
-                  : t("ticketBooth.available", { count: availableTickets })}
-              </p>
-            )}
-            {ticketCap !== undefined && (
-              <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
-            )}
-            {error && <p className="booth-error">{error}</p>}
-          </div>
+      {/* Split out from .booth-details (which used to wrap this + the button/
+          stepper together) so mobile can grid them into 2 separate areas -
+          price/info top-right next to the vendor, button/stepper their own
+          full-width row below - without that empty gap under a shorter
+          vendor image (see .ticket-booth's grid-template-areas below).
+          Desktop/"modo estrecho" render identically either way: flex
+          layout stacks direct DOM children in order regardless of this
+          extra nesting level. */}
+      <div className="booth-info">
+        <div>
+          <p className="booth-label">{t("ticketBooth.label")}</p>
+          <p className="booth-price">{priceDisplay}</p>
+          {availableTickets !== null && availableTickets !== undefined && (
+            <p className={`booth-available${availableTickets === 1 ? " booth-available-urgent" : ""}`}>
+              {availableTickets === 1
+                ? t("ticketBooth.availableLast")
+                : t("ticketBooth.available", { count: availableTickets })}
+            </p>
+          )}
+          {ticketCap !== undefined && (
+            <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
+          )}
+          {maxTicketsPerRound !== undefined && (
+            <p className="booth-cap-note">{t("ticketBooth.maxPerRound", { max: maxTicketsPerRound })}</p>
+          )}
+          {error && <p className="booth-error">{error}</p>}
         </div>
+      </div>
+      <div className="booth-details">
         <button
           className="booth-buy"
           onClick={handleBuy}
