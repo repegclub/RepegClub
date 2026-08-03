@@ -52,17 +52,29 @@
   align-items: start;
   justify-content: stretch;
 }
-/* Real phones only (pointer:coarse, not a narrowed PC browser window at
-   the same width) - .weekly-cabinet's gap (2.4rem) never matched
-   .wheel-cabinet's own gap (1.6rem, wheel.css) between its equivalent
-   stacked cards, even though this grid was built to mirror that one
-   exactly (see the comment above) - the gap value itself just wasn't
-   carried over. Scoped to mobile only per direct request, not touching
-   the unconditional 2.4rem above (still used everywhere else, including
-   desktop and a narrowed desktop browser window). */
-@media (max-width: 980px) and (pointer: coarse) {
+/* Stacked layout only (both real phones and a narrowed PC browser window
+   at the same width - unlike this file's other mobile-only fixes, this
+   one's a plain layout/spacing mismatch, not a device-specific rendering
+   quirk, so it's not gated on pointer:coarse) - .weekly-cabinet's gap
+   (2.4rem) never matched .wheel-cabinet's own gap (1.6rem, wheel.css)
+   between its equivalent stacked cards, even though this grid was built
+   to mirror that one exactly (see the comment above) - the gap value
+   itself just wasn't carried over. Not touching the unconditional 2.4rem
+   above (still used at wide desktop, >= 981px). */
+@media (max-width: 980px) {
   .weekly-cabinet {
     gap: 1.6rem;
+  }
+  /* Same stacked-layout scope: .weekly-wheel-outline's own margin-bottom
+     (below) stacked ON TOP of this gap, doubling the space between the
+     wheel-visual and actions/status cards to 3.2rem total - reported
+     live as still bigger than Wheel of Repeg's equivalent even after the
+     gap fix above. .cabinet-wheel-outline (wheel.css) has no margin of
+     its own at all; spacing there comes purely from the grid gap. Zeroing
+     it here only in the stacked layout matches that exactly, without
+     touching whatever role it plays in the wide 3-column layout. */
+  .weekly-wheel-outline {
+    margin-bottom: 0;
   }
 }
 .weekly-cabinet-header { grid-area: header; }
@@ -589,6 +601,25 @@
   pointer-events: none;
   container-type: inline-size;
 }
+/* Real phones only (pointer:coarse - see .weekly-cabinet's gap override
+   above for the same pattern) - the "rectangulo"/"horizontal" bubble
+   types (no aspect-ratio of their own, unlike -nube - see wheel.css)
+   were rendering nearly square here, growing taller with each wrapped
+   line instead of staying a short wide strip like the reference art
+   ("cuña artesanal" tail shape implies wide+short) - reported live.
+   :not(-nube) so this doesn't fight that variant's own narrower 30%
+   override below (same specificity - excluding here is more robust than
+   relying on source order). Widening (not the -nube one, which is
+   already tuned against the host's hat) gives it room to stay ~1-2
+   lines instead of growing vertically for longer status strings
+   (closesIn, waitingForMinPlayers, etc). First-pass width, not yet
+   checked live - the base rule's own comment claims room to the wheel
+   at "a generous width" already. */
+@media (max-width: 980px) and (pointer: coarse) {
+  .weekly-booth-host-bubble:not(.weekly-booth-host-bubble-nube) {
+    width: 48%;
+  }
+}
 /* The idle "hype line" thought bubble (no urgency, nothing to point at) -
    was landing on the base position above (meant for the tail-pointing
    "horizontal" type only), which put it over the counter/table instead of
@@ -637,9 +668,29 @@
   }
   .weekly-booth-host-bubble-nube .host-guide-bubble-nube {
     font-size: clamp(0.6rem, 7cqw, 1.3rem);
+    /* Reported live: the cloud graphic itself visibly shifts up a few px
+       when a longer phrase comes in, then drops back on the next one -
+       there's no transition/animation coded on this box anywhere, and
+       its own height is purely aspect-ratio x width (fixed, content-
+       independent) so the box itself shouldn't move. The likely real
+       cause: this text sits inside .wheel-booth-slot's overflow:hidden
+       (wheel.css) - when a phrase's rendered text height changes, mobile
+       browsers' scroll anchoring can nudge the page's scroll position to
+       compensate for the (invisible, clipped) content-size change nearby,
+       reading as the whole scene shifting. overflow-anchor:none opts this
+       node out of being used as a scroll anchor. */
+    overflow-anchor: none;
   }
   .weekly-booth-host-bubble-nube .host-guide-bubble-nube p {
     max-width: 92%;
+    /* Some hostHype phrases were wrapping with a single orphan word
+       eating a whole line (e.g. "...favors the" / "ticket holder!" -
+       "the" alone) - text-wrap:balance redistributes a wrapped block's
+       own line lengths to avoid exactly that, instead of only breaking
+       whenever the next word doesn't fit. Unsupported in an older
+       embedded webview just falls back to normal wrapping (no error,
+       no visual regression) - safe no-op there. */
+    text-wrap: balance;
   }
 }
 
