@@ -151,11 +151,11 @@
    overlaps. */
 @media (max-width: 720px) {
   .weekly-hero-sign-grid .hero-sign-hook {
-    /* 85px -> 102px (+20%) -> 97px (-5%) per direct request, alongside the
-       repositioning/z-index changes in wheel.css - still legible at this
-       size, title no longer at risk either way now that it renders above
-       the hooks. */
-    max-width: 97px;
+    /* 85px -> 102px (+20%) -> 97px (-5%) -> 92px (-5%) per direct request,
+       alongside the repositioning/z-index changes in wheel.css - still
+       legible at this size, title no longer at risk either way now that
+       it renders above the hooks. */
+    max-width: 92px;
   }
 }
 

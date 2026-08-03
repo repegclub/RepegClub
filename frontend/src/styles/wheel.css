@@ -248,15 +248,15 @@
       max-width: 150px;
     }
     .hero-sign-hook-left {
-      /* -0.6rem -> -0.72rem -> -0.83rem (~15% further still) per direct
-         request, so the hook sits further from the centered title
-         horizontally too - fine if the card's edge clips it. */
-      left: -0.83rem;
+      /* -0.6rem -> -0.72rem -> -0.83rem -> -0.95rem (~15% further still)
+         per direct request, so the hook sits further from the centered
+         title horizontally too - fine if the card's edge clips it. */
+      left: -0.95rem;
       z-index: 1;
       transform: rotate(-1.2deg);
     }
     .hero-sign-hook-right {
-      right: -0.83rem;
+      right: -0.95rem;
       z-index: 1;
       transform: rotate(1.2deg);
     }
