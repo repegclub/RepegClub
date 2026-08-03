@@ -151,9 +151,11 @@
    overlaps. */
 @media (max-width: 720px) {
   .weekly-hero-sign-grid .hero-sign-hook {
-    /* +20% over the 85px first pass, per direct request - still worth
-       watching for renewed overlap into the title if pushed further. */
-    max-width: 102px;
+    /* 85px -> 102px (+20%) -> 97px (-5%) per direct request, alongside the
+       repositioning/z-index changes in wheel.css - still legible at this
+       size, title no longer at risk either way now that it renders above
+       the hooks. */
+    max-width: 97px;
   }
 }
 

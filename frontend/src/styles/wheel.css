@@ -234,25 +234,29 @@
        fixed (bulb strip + padding-bottom below, unaffected by title height),
        so a fixed bottom offset keeps the hooks clear of that border at any
        title length instead of only at the one height this was measured against.
-       Nudged a bit lower (-3.2rem -> -3.4rem) per direct request, on top of
-       the title z-index above, as a real phone (not just a narrow browser
-       window) still showed the hooks reaching into the title, worst on
-       Weekly Round's taller cartel1/cartel2 hooks (see weekly.css). */
+       Nudged lower twice now (-3.2rem -> -3.4rem -> -3.57rem, +5% the 2nd
+       time) per direct request, on top of the title z-index above, as a
+       real phone (not just a narrow browser window) still showed the
+       hooks reaching into the title, worst on Weekly Round's taller
+       cartel1/cartel2 hooks (see weekly.css). OK for the card's own edge
+       to clip them now - the title staying clear is what matters, not
+       the hooks staying whole. */
     .hero-sign-hook {
       position: absolute;
-      bottom: -3.4rem;
+      bottom: -3.57rem;
       width: 42%;
       max-width: 150px;
     }
     .hero-sign-hook-left {
-      /* -0.6rem -> -0.72rem (~20% further out) per direct request, so the
-         hook sits further from the centered title horizontally too. */
-      left: -0.72rem;
+      /* -0.6rem -> -0.72rem -> -0.83rem (~15% further still) per direct
+         request, so the hook sits further from the centered title
+         horizontally too - fine if the card's edge clips it. */
+      left: -0.83rem;
       z-index: 1;
       transform: rotate(-1.2deg);
     }
     .hero-sign-hook-right {
-      right: -0.72rem;
+      right: -0.83rem;
       z-index: 1;
       transform: rotate(1.2deg);
     }
@@ -3208,6 +3212,30 @@
       gap: 0.4rem;
       margin-left: -0.5rem;
       margin-right: -0.5rem;
+    }
+    /* Even with room to spare, .wallet-bar-right was still dropping to its
+       own line before the chip: as a nested flex container, its own
+       intrinsic width (used by .wallet-bar to decide what fits on line 1)
+       counts chip + the bag/history group's full width together, ignoring
+       that the bag/history group is forced onto its own line inside it
+       (flex-basis:100% below) - so the browser never considered "just the
+       chip" as a candidate for sharing line 1 with Games/Create. display:
+       contents removes .wallet-bar-right's own box so its children (chip,
+       .wallet-bar-secondary) become direct items of .wallet-bar instead,
+       each wrapping on its own real size - confirmed live, was still 3
+       rows despite visible slack on row 1. margin-left:auto moves here
+       from .wallet-bar-right (whose margin no longer applies once it has
+       no box) so .wallet-bar-secondary still pins right when it lands
+       alone on its own line, same as before. */
+    .wallet-bar-right {
+      display: contents;
+    }
+    .wallet-bar-secondary {
+      margin-left: auto;
+    }
+    .wallet-chip,
+    .wallet-connect-btn {
+      margin-left: auto;
     }
     .game-nav {
       gap: 0.4rem;
