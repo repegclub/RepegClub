@@ -265,7 +265,12 @@
    proven formula). Ceilings bumped ~15-20% over the first pass per
    feedback ("un poco mayor letra ayudaria"). */
 .weekly-pool-lead-text .weekly-pool-banner-title {
-  margin: 0 0 0.2vw;
+  /* 0.2vw is a couple px at most at these widths - too tight to read as a
+     title separate from the rows below it. Fixed rem gap instead of the
+     vw-scaled system the rest of this card uses, since the point here is a
+     real, viewport-independent gap, not something that should shrink away
+     on narrow phones. */
+  margin: 0 0 0.6rem;
   font-size: clamp(0.361rem, calc(2.126vw - 0.867px), 0.6rem);
   text-align: center;
 }
@@ -273,7 +278,11 @@
   gap: 0.2vw;
 }
 .weekly-pool-lead-text .weekly-pool-banner-row {
-  font-size: clamp(0.331rem, calc(1.948vw - 0.795px), 0.55rem);
+  /* Ceiling bumped ~15% (0.55rem -> 0.633rem, same R-scaling technique as
+     the comment above) now that shorter copy ("Daily sales" instead of
+     "Daily ticket sales", "Wheels of Repeg" instead of "Each Wheel of
+     Repeg") leaves room to grow without overflowing the display at 320px. */
+  font-size: clamp(0.381rem, calc(2.242vw - 0.915px), 0.633rem);
   gap: 0.4vw;
   /* The wheel-contributions row's label has a literal \n (see en.json's
      poolBreakdownWheelContributions) breaking it after "Repeg" so "played
