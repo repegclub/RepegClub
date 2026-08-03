@@ -52,6 +52,19 @@
   align-items: start;
   justify-content: stretch;
 }
+/* Real phones only (pointer:coarse, not a narrowed PC browser window at
+   the same width) - .weekly-cabinet's gap (2.4rem) never matched
+   .wheel-cabinet's own gap (1.6rem, wheel.css) between its equivalent
+   stacked cards, even though this grid was built to mirror that one
+   exactly (see the comment above) - the gap value itself just wasn't
+   carried over. Scoped to mobile only per direct request, not touching
+   the unconditional 2.4rem above (still used everywhere else, including
+   desktop and a narrowed desktop browser window). */
+@media (max-width: 980px) and (pointer: coarse) {
+  .weekly-cabinet {
+    gap: 1.6rem;
+  }
+}
 .weekly-cabinet-header { grid-area: header; }
 .weekly-cabinet-booth { grid-area: booth; }
 .weekly-cabinet-wheel { grid-area: wheel; }
@@ -604,6 +617,30 @@
    grows both width and height by 15% (2 x 7.5%), staying centered. */
 .weekly-booth-host-bubble-nube .host-guide-bubble-nube::before {
   inset: -7.5%;
+}
+/* Real phones only (not a narrowed PC browser window - see .weekly-cabinet's
+   own mobile-only gap override further down for the same pointer:coarse
+   pattern): a 4-line hostHype phrase was still overflowing past the
+   cloud's own drawn edge here even after wheel.css's shared 2-/3-line
+   overflow fix (font-size floor + upward nudge) - that fix only had
+   headroom for 2-3 lines, not 4. Rather than shrink the font floor again
+   (already fought once, diminishing returns), grow the cloud ART further
+   via this box's own inset (doesn't move .host-guide-bubble-nube's own
+   box or the text's centering/max-width, which are both still based on
+   the UN-grown box below - so this can't introduce new overlap with the
+   host/wheel, only gives the same text more visible cloud around it),
+   plus a further font floor / wider text column as a second safety net
+   for the most extreme phrases. */
+@media (max-width: 980px) and (pointer: coarse) {
+  .weekly-booth-host-bubble-nube .host-guide-bubble-nube::before {
+    inset: -16%;
+  }
+  .weekly-booth-host-bubble-nube .host-guide-bubble-nube {
+    font-size: clamp(0.6rem, 7cqw, 1.3rem);
+  }
+  .weekly-booth-host-bubble-nube .host-guide-bubble-nube p {
+    max-width: 92%;
+  }
 }
 
 /* ---------- Hub: 6-division metallic pinwheel (rendered as an SVG, see
