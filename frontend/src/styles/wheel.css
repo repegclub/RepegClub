@@ -3219,6 +3219,19 @@
       margin-left: -0.5rem;
       margin-right: -0.5rem;
     }
+    /* Create Your Own Luck's own .cyol-page wrapper adds its own 1rem side
+       padding on top of the body's - Wheel of Repeg/Weekly Round have none
+       of their own, just the body's, which is what the -0.5rem bleed above
+       was measured against. Without this, CYOL is left with 1rem less
+       usable width than the other two pages at this breakpoint, so Games +
+       Create + the chip miss fitting on one line here even though they do
+       everywhere else - reported live, still 3 rows on CYOL only. Extra
+       -1rem cancels that page's own padding too, matching the same net
+       bleed as Wheel of Repeg/Weekly Round. */
+    .cyol-page .wallet-bar {
+      margin-left: -1.5rem;
+      margin-right: -1.5rem;
+    }
     /* Even with room to spare, .wallet-bar-right was still dropping to its
        own line before the chip: as a nested flex container, its own
        intrinsic width (used by .wallet-bar to decide what fits on line 1)
