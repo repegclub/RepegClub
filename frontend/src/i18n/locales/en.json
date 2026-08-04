@@ -166,6 +166,7 @@
     "left": "The only f*cking REPEG you'll ever get!!!",
     "right": "Feeling lucky?"
   },
+  "brandPresents": "Repeg Club presents",
   "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (draw block height/time + ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
   "faq": {
     "feedbackPrompt": "Any feedback? We hear you!",

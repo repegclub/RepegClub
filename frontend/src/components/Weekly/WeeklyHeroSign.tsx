@@ -24,6 +24,7 @@ export function WeeklyHeroSign() {
                 className="hero-sign-hook hero-sign-hook-left"
               />
               <div className="hero-sign-title">
+                <p className="eyebrow hero-sign-eyebrow">{t("brandPresents")}</p>
                 <h1 className="weekly-hero-title">{t("weekly.heroTitle")}</h1>
               </div>
               <img

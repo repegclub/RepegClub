@@ -129,6 +129,12 @@
 .weekly-hero-sign-outline .hero-sign-inner {
   background: url("/weekly-pixel/velvet-bg.png") center / cover, var(--bg-card);
 }
+/* .eyebrow's shared default is Wheel of Repeg's blue - Weekly's own hero
+   is gold/burgundy (see .weekly-hero-title just below), so the "Repeg Club
+   presents" kicker gets the same gold instead of clashing with it. */
+.weekly-hero-sign-outline .hero-sign-eyebrow {
+  color: var(--gold-dim);
+}
 .weekly-hero-title {
   font-family: var(--display);
   font-size: clamp(2rem, 4.5vw, 3.2rem);

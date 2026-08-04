@@ -22,6 +22,7 @@ export function HeroSign() {
                 className="hero-sign-hook hero-sign-hook-left"
               />
               <div className="hero-sign-title">
+                <p className="eyebrow hero-sign-eyebrow">{t("brandPresents")}</p>
                 <h1>Wheel of Repeg</h1>
               </div>
               <img
