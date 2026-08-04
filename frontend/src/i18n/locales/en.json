@@ -169,7 +169,9 @@
   "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (draw block height/time + ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
   "faq": {
     "feedbackPrompt": "Any feedback? We hear you!",
-    "title": "How does it work?",
+    "title": "F.A.Q. - How does it work?",
+    "screenPrompt": "Ask away",
+    "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
     "items": [
       {
         "q": "How does the game work?",
@@ -180,11 +182,19 @@
         "a": "Weighted by tickets: buying more improves your odds, but anyone with at least one ticket has a real chance. The pick happens entirely on-chain — the spinning wheel only reveals a result that's already decided, it never chooses it."
       },
       {
+        "q": "What happens if a round never fills up?",
+        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+      },
+      {
+        "q": "Why does the countdown keep resetting?",
+        "a": "Once the minimum number of players joins, every new ticket purchase extends the countdown a bit — like a live auction, so nobody gets shut out by a split-second timer. It can't extend forever though; there's a hard cap."
+      },
+      {
         "q": "What does \"on-chain and verifiable\" mean?",
         "a": "Anyone can independently recompute the exact same result from public blockchain data, without taking our word for it. See \"Verify this round\" below any drawn round."
       },
       {
-        "q": "How is the winner obtained safely and verifiably from the blockchain?",
+        "q": "How is the winner obtained and verified on-chain?",
         "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this round\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the round, the block, and the ticket list together) that points to a single ticket. \"Verify this round\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
       },
       {
@@ -192,20 +202,16 @@
         "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
       },
       {
-        "q": "What happens if a round never fills up?",
-        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+        "q": "Is this actually decentralized, or could the team control the outcome?",
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this round\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. The one thing that still involves a team-held key is a limited admin power to move long-unclaimed funds to the treasury after a long timeout, so a forgotten prize or an abandoned round's pool doesn't sit lost forever inside the contract — it can never be redirected anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
       },
       {
         "q": "Can one wallet buy all the tickets?",
         "a": "Every round has a fixed ticket cap per wallet: half of that round's maximum player capacity (minimum 1), no matter how many people actually end up joining. For example, a round that allows up to 10 players caps every wallet at 5 tickets. That's a hard ceiling on ticket count, not a live percentage guarantee — if only a couple of other players join, one wallet's tickets can still add up to more than half of that particular round's total (5 tickets out of 7 sold, say, if only two other wallets buy one each). The cap exists so nobody can buy an unlimited amount, not to promise an exact split. It cuts both ways, though: holding a bigger share means risking more of your own money on that round, and losing more if someone else wins — while a wallet with just one or two tickets risks very little and can multiply that small stake several times over if it wins. Bigger share, bigger risk; smaller share, bigger potential multiplier. That balance is what keeps the game fair even when a round doesn't fill evenly."
       },
       {
-        "q": "Does buying more tickets actually improve my odds, or does every wallet get the same chance?",
+        "q": "Does buying more tickets actually improve my odds?",
         "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a round with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this round\" on any drawn round and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
-      },
-      {
-        "q": "Why does the countdown keep resetting?",
-        "a": "Once the minimum number of players joins, every new ticket purchase extends the countdown a bit — like a live auction, so nobody gets shut out by a split-second timer. It can't extend forever though; there's a hard cap."
       }
     ]
   },
@@ -500,7 +506,9 @@
     "withdrawTicket": "Withdraw ticket(s)"
   },
   "faqWeekly": {
-    "title": "How does the weekly jackpot work?",
+    "title": "F.A.Q. - How does the weekly jackpot work?",
+    "screenPrompt": "Ask away",
+    "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
     "items": [
       {
         "q": "How does the game work?",
@@ -511,28 +519,8 @@
         "a": "Weighted by tickets: buying more improves your odds, but anyone with at least one ticket has a real chance. The pick happens entirely on-chain — the spinning wheel only reveals a result that's already decided, it never chooses it."
       },
       {
-        "q": "What does \"on-chain and verifiable\" mean?",
-        "a": "Anyone can independently recompute the exact same result from public blockchain data, without taking our word for it. See \"Verify this week\" below any drawn week."
-      },
-      {
-        "q": "How is the winner obtained safely and verifiably from the blockchain?",
-        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this week\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket that week has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the week, the block, and the ticket list together) that points to a single ticket. \"Verify this week\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
-      },
-      {
-        "q": "How do I know the app isn't just simulating the draw?",
-        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
-      },
-      {
         "q": "What happens if a week never fills up?",
         "a": "If the minimum number of players is never reached in time, the week expires and everyone who bought a ticket that week can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired week's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
-      },
-      {
-        "q": "Can one wallet buy all the tickets?",
-        "a": "Every week has a fixed ticket cap per wallet: half of that week's maximum player capacity (minimum 1), no matter how many people actually end up joining. For example, a week that allows up to 10 players caps every wallet at 5 tickets. That's a hard ceiling on ticket count, not a live percentage guarantee — if only a couple of other players join, one wallet's tickets can still add up to more than half of that particular week's total (5 tickets out of 7 sold, say, if only two other wallets buy one each). The cap exists so nobody can buy an unlimited amount, not to promise an exact split. It cuts both ways, though: holding a bigger share means risking more of your own money on that week, and losing more if someone else wins — while a wallet with just one or two tickets risks very little and can multiply that small stake several times over if it wins. Bigger share, bigger risk; smaller share, bigger potential multiplier. That balance is what keeps the game fair even when a week doesn't fill evenly."
-      },
-      {
-        "q": "Does buying more tickets actually improve my odds, or does every wallet get the same chance?",
-        "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought that week (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a week with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this week\" on any drawn week and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
       },
       {
         "q": "Why doesn't the countdown reset the way Wheel of Repeg's does?",
@@ -549,6 +537,30 @@
       {
         "q": "If I buy a Wheel of Repeg ticket, am I automatically in the weekly jackpot too?",
         "a": "No — the two are separate draws with separate ticket pools. Every Wheel of Repeg round contributes part of its own proceeds to the weekly jackpot's pool automatically, but that doesn't give wheel players an entry into the weekly draw. You need your own Weekly Round ticket for a chance at this prize."
+      },
+      {
+        "q": "What does \"on-chain and verifiable\" mean?",
+        "a": "Anyone can independently recompute the exact same result from public blockchain data, without taking our word for it. See \"Verify this week\" below any drawn week."
+      },
+      {
+        "q": "How is the winner obtained and verified on-chain?",
+        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this week\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket that week has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the week, the block, and the ticket list together) that points to a single ticket. \"Verify this week\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
+      },
+      {
+        "q": "How do I know the app isn't just simulating the draw?",
+        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
+      },
+      {
+        "q": "Is this actually decentralized, or could the team control the outcome?",
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this week\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. The one thing that still involves a team-held key is a limited admin power to move long-unclaimed funds to the treasury after a long timeout, so a forgotten prize or an abandoned week's pool doesn't sit lost forever inside the contract — it can never be redirected anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
+      },
+      {
+        "q": "Can one wallet buy all the tickets?",
+        "a": "Every week has a fixed ticket cap per wallet: half of that week's maximum player capacity (minimum 1), no matter how many people actually end up joining. For example, a week that allows up to 10 players caps every wallet at 5 tickets. That's a hard ceiling on ticket count, not a live percentage guarantee — if only a couple of other players join, one wallet's tickets can still add up to more than half of that particular week's total (5 tickets out of 7 sold, say, if only two other wallets buy one each). The cap exists so nobody can buy an unlimited amount, not to promise an exact split. It cuts both ways, though: holding a bigger share means risking more of your own money on that week, and losing more if someone else wins — while a wallet with just one or two tickets risks very little and can multiply that small stake several times over if it wins. Bigger share, bigger risk; smaller share, bigger potential multiplier. That balance is what keeps the game fair even when a week doesn't fill evenly."
+      },
+      {
+        "q": "Does buying more tickets actually improve my odds?",
+        "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought that week (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a week with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this week\" on any drawn week and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
       }
     ]
   }
