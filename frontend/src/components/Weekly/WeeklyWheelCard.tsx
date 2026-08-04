@@ -399,6 +399,7 @@ export function WeeklyWheelCard({
       <div className="wheel-booth-slot pixel-stepped-corners">
         <div className="wheel-booth-wrap">
           <img src="/weekly-pixel/booth-bg.png" alt="" className="wheel-booth-bg" />
+          <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo" />
           <div className="weekly-booth-wheel">
             <PixelWheelCanvas
               canvasRef={canvasRef}

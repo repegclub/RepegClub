@@ -383,6 +383,7 @@ export function WheelCard({
       <div className="wheel-booth-slot pixel-stepped-corners">
           <div className="wheel-booth-wrap">
             <img src="/wheel-pixel/cabinet-wheel-bg.png" alt="" className="wheel-booth-bg" />
+            <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo" />
             <div className="wheel-booth-wheel">
               <PixelWheelCanvas canvasRef={canvasRef} />
             </div>

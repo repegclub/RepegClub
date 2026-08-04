@@ -40,6 +40,7 @@ export function GameNav({ current }: { current: string }) {
 
   return (
     <nav className="game-nav">
+      <img src="/brand/isotipo-pixel-art.png" alt="Repeg Club" className="game-nav-logo" />
       <div className="game-nav-wrap" ref={wrapRef}>
         <button
           type="button"

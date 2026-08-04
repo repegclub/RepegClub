@@ -33,6 +33,7 @@ export function FAQClassroomPanel({
       <div className="faq-classroom-highlight pixel-stepped-corners">
       <div className="faq-classroom pixel-stepped-corners">
         <img src="/characters/faq-classroom.png" alt="" />
+        <img src="/brand/isotipo-pixel-art.png" alt="" className="faq-classroom-logo" />
         <div className="faq-screen">
           <p className="faq-screen-title">{active ? active.q : screenPrompt}</p>
           <div className="faq-screen-body" ref={bodyRef}>
