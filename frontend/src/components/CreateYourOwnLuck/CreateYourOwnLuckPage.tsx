@@ -4,6 +4,7 @@ import "../../styles/wheel.css";
 import "../../styles/cyol.css";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
+import { WalletBalance } from "../Wallet/WalletBalance";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffles } from "../../hooks/useCyolRaffles";
 import { useCyolRaffleSummaries, type CyolRaffleListEntry } from "../../hooks/useCyolRaffleSummaries";
@@ -52,6 +53,14 @@ export function CreateYourOwnLuckPage() {
         <GameNav current="/create-your-own-luck" />
         <div className="wallet-bar-right">
           <ConnectWalletButton />
+          {/* Wallet balance, not game data - belongs on every page, same as
+              Wheel of Repeg/Weekly Round (see .wallet-bar-secondary there).
+              CYOL had no History button to pair it with, same as Weekly
+              Round, so it wraps to its own line alone at real phone widths
+              same as WalletBalance already does there. */}
+          <div className="wallet-bar-secondary">
+            <WalletBalance />
+          </div>
         </div>
       </div>
 

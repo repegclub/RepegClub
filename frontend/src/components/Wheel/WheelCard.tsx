@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { buildArcs, buildPlaceholderArcs, type Entrant } from "../../lib/wheelData";
@@ -217,6 +217,15 @@ export function WheelCard({
 
   // Prize/pool/ticket-price come from the live round query.
   const loaded = roundState.status === "loaded";
+  // Same scroll-reset pattern as FAQClassroomPanel's screen body - without
+  // it, scrolling down to read a long message (wheel.expiredNote) and then
+  // the round moving on to a new state would leave the next message
+  // scrolled to wherever the old one left off instead of starting at top.
+  const messageScreenRef = useRef<HTMLDivElement>(null);
+  const messageScreenKey = loaded ? `${roundState.round.round_id}-${roundState.round.status}` : "loading";
+  useEffect(() => {
+    if (messageScreenRef.current) messageScreenRef.current.scrollTop = 0;
+  }, [messageScreenKey]);
   const prizeUluna = loaded
     ? (BigInt(roundState.round.pool) * BigInt(Math.round(PRIZE_SHARE * 100))) / 100n
     : null;
@@ -596,7 +605,7 @@ export function WheelCard({
       <div className="lab-screen-messages">
       <p className="lab-screen-title">{t("wheel.screenTitle")}</p>
 
-      <div className="lab-screen-message">
+      <div className="lab-screen-message" ref={messageScreenRef}>
       {/* Neither branch has card text here anymore - the Host already
           covers both (alarma for the urgent countdown, horizontal for the
           normal one), same pattern as the other skipped notes above. */}

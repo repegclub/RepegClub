@@ -4,10 +4,18 @@ import { useWallet } from "../../contexts/WalletContext";
 import { useWalletHistory } from "../../hooks/useWalletHistory";
 import { ulunaToDisplayNumber } from "../../lib/format";
 import type { TierInfo } from "../../hooks/useWheelTiers";
+import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
 
 type HistoryButtonProps = {
-  // For labeling which tier each entry belongs to - round_ids repeat across
-  // tiers, so "#1" alone is ambiguous once history spans more than one.
+  // For labeling which Wheel Manager tier each entry belongs to - round_ids
+  // repeat across tiers, so "#1" alone is ambiguous once history spans more
+  // than one. History itself is account-level (see useWalletHistory), not
+  // scoped to whichever game's page this button lives on, so it always
+  // includes Weekly Round entries too - those are labeled from
+  // WEEKLY_ROUND_ADDRESS below, not from this prop. Pages with no Wheel
+  // Manager tiers of their own (Weekly Round's page) can pass [] here;
+  // wheel entries then fall back to a generic label instead of an exact
+  // price.
   tiers: TierInfo[];
 };
 
@@ -22,8 +30,9 @@ export function HistoryButton({ tiers }: HistoryButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   function tierLabel(contractAddress: string): string {
+    if (contractAddress === WEEKLY_ROUND_ADDRESS) return t("history.weeklyRoundLabel");
     const tier = tiers.find((t) => t.address === contractAddress);
-    return tier ? `${ulunaToDisplayNumber(tier.ticketPrice).toFixed(2)} USDC` : "";
+    return tier ? `${ulunaToDisplayNumber(tier.ticketPrice).toFixed(2)} USDC` : t("history.wheelOfRepegLabel");
   }
 
   if (!address) return null;

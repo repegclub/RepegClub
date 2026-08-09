@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { buildArcs, buildPlaceholderArcs, type Entrant } from "../../lib/wheelData";
@@ -217,6 +217,15 @@ export function WeeklyWheelCard({
   }
 
   const loaded = weekState.status === "loaded";
+  // Same scroll-reset pattern as FAQClassroomPanel's screen body/WheelCard's
+  // own copy of this - without it, scrolling down to read a long message
+  // and then the week moving on to a new state would leave the next
+  // message scrolled to wherever the old one left off instead of the top.
+  const messageScreenRef = useRef<HTMLDivElement>(null);
+  const messageScreenKey = loaded ? `${weekState.week.week_id}-${weekState.week.status}` : "loading";
+  useEffect(() => {
+    if (messageScreenRef.current) messageScreenRef.current.scrollTop = 0;
+  }, [messageScreenKey]);
   const prizeUluna = loaded
     ? (BigInt(weekState.week.pool) * BigInt(Math.round(WEEKLY_PRIZE_SHARE * 100))) / 100n
     : null;
@@ -612,7 +621,7 @@ export function WeeklyWheelCard({
       <div className="lab-screen-messages">
       <p className="lab-screen-title">{t("wheel.screenTitle")}</p>
 
-      <div className="lab-screen-message">
+      <div className="lab-screen-message" ref={messageScreenRef}>
       {loaded &&
         weekState.week.status === "open" &&
         !hasMinPlayers &&

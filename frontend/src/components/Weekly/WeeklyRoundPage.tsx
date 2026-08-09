@@ -14,6 +14,7 @@ import { PlatformRepeggedBanner } from "../Wheel/PlatformRepeggedBanner";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { WalletBalance } from "../Wallet/WalletBalance";
+import { HistoryButton } from "../Wheel/HistoryButton";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useWeeklyRound } from "../../hooks/useWeeklyRound";
@@ -83,12 +84,15 @@ export function WeeklyRoundPage() {
         <div className="wallet-bar-right">
           <ConnectWalletButton />
           {/* Same .wallet-bar-secondary treatment as Wheel of Repeg's own
-              wallet-bar, for consistency - Weekly Round doesn't have a
-              History button to pair it with, but wrapping just My Bag
-              alone still keeps it right-aligned if it wraps to its own
-              line at real phone widths. */}
+              wallet-bar, for consistency. History is account-level, not
+              scoped to whichever game's page is open (useWalletHistory
+              already combines every Wheel Manager tier + Weekly Round) -
+              tiers={[]} since this page has no Wheel Manager tier data of
+              its own; HistoryButton falls back to a generic "Wheel of
+              Repeg" label for those entries instead of an exact price. */}
           <div className="wallet-bar-secondary">
             <WalletBalance />
+            <HistoryButton tiers={[]} />
           </div>
           <AdminSweepButton
             adminAddress={weekState.status === "loaded" ? weekState.config.admin : undefined}

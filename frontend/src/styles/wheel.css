@@ -2059,16 +2059,38 @@
   /* Takes the middle space and centers whatever message is showing (or
      nothing at all, between states) - the stats block below is pushed to
      the bottom via margin-top: auto instead, so an overflowing message
-     shrinks first instead of displacing the title or the stats. */
+     shrinks first instead of displacing the title or the stats. min-
+     height:0 lets this box actually shrink below the message's natural
+     text height when there isn't room (real phones, a long message like
+     wheel.expiredNote). Without overflow-y:auto+scroll here (same pattern
+     as .faq-screen-body), that excess text doesn't get contained, it just
+     keeps painting past this box's own edges into the title above and the
+     stats below, reading as garbled overlapping letters (reported live,
+     illegible below ~454px) - a plain overflow:hidden stopped the overlap
+     but then just as illegibly clipped most of the message instead (also
+     reported live). justify-content: safe center keeps short messages
+     centered like before, but falls back to start-aligned once a message
+     needs scrolling, so its first line is always the initial scroll
+     position instead of being cut off above the visible area. Scroll
+     position itself resets on every new message via WheelCard/
+     WeeklyWheelCard's own ref+effect (mirrors FAQClassroomPanel's
+     bodyRef), so a long message read all the way down doesn't leave the
+     next, shorter message pre-scrolled. */
   .lab-screen-message {
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: safe center;
     align-items: center;
     gap: 0.3rem;
     min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #3ea86a #0e1a2c;
   }
+  .lab-screen-message::-webkit-scrollbar { width: 6px; }
+  .lab-screen-message::-webkit-scrollbar-track { background: #0e1a2c; }
+  .lab-screen-message::-webkit-scrollbar-thumb { background: #3ea86a; }
   /* Low-third readout - always visible, separate from the contextual
      message above it. Left-aligned/uppercase, unlike everything else on
      the screen which stays centered. */
@@ -3412,7 +3434,10 @@
      together, right-aligned via justify-content; at 481px+ it resets to
      auto so the pair sits inline like everything else in
      .wallet-bar-right once there's real room for it (matches the already-
-     working wider layout, untouched). */
+     working wider layout, untouched). Below 480px specifically, the
+     flex-basis:100% default set here gets overridden back to auto again -
+     see the @media (max-width: 480px) block below, which needs this pair
+     sharing line 1 with .game-nav instead of owning its own line. */
   .wallet-bar-secondary {
     display: flex;
     align-items: center;
@@ -3425,13 +3450,11 @@
       flex-basis: auto;
     }
   }
-  /* Real phones (~375-430px): Games + Create + the connected chip are
-     borderline too wide to share the top line, so the chip wraps onto its
-     own line and My Bag/History (already forced to their own line above)
-     end up as a 3rd row instead of a 2nd. Tightening gaps/button padding
-     and letting the bar bleed past the page's usual side padding buys back
-     just enough width for Games + Create + chip to fit on one line, so
-     only My Bag/History wrap - back to 2 rows. */
+  /* Real phones (~375-430px): line 1 is Games + Create + My Bag + History,
+     line 2 is the connected-wallet chip (or Connect Keplr) alone - see the
+     .wallet-bar-secondary/.wallet-chip overrides below for the reorder.
+     Tightening gaps/button padding and letting the bar bleed past the
+     page's usual side padding buys back width on top of that. */
   @media (max-width: 480px) {
     .wallet-bar {
       gap: 0.4rem;
@@ -3451,29 +3474,48 @@
       margin-left: -1.5rem;
       margin-right: -1.5rem;
     }
-    /* Even with room to spare, .wallet-bar-right was still dropping to its
-       own line before the chip: as a nested flex container, its own
-       intrinsic width (used by .wallet-bar to decide what fits on line 1)
-       counts chip + the bag/history group's full width together, ignoring
-       that the bag/history group is forced onto its own line inside it
-       (flex-basis:100% below) - so the browser never considered "just the
-       chip" as a candidate for sharing line 1 with Games/Create. display:
-       contents removes .wallet-bar-right's own box so its children (chip,
-       .wallet-bar-secondary) become direct items of .wallet-bar instead,
-       each wrapping on its own real size - confirmed live, was still 3
-       rows despite visible slack on row 1. margin-left:auto moves here
-       from .wallet-bar-right (whose margin no longer applies once it has
-       no box) so .wallet-bar-secondary still pins right when it lands
-       alone on its own line, same as before. */
+    /* display:contents removes .wallet-bar-right's own box so its children
+       (chip/Connect Keplr, .wallet-bar-secondary) become direct items of
+       .wallet-bar instead of a nested flex container - lets each wrap/
+       reorder on its own real size instead of as a group. */
     .wallet-bar-right {
       display: contents;
     }
+    /* Reordered (2026-08-09): adding the isotipo to .game-nav left too
+       little room for Games + Create + the chip to share line 1 anymore,
+       back to 3 rows. Rather than fight for the chip's spot on line 1,
+       give it to My Bag/History instead (flex-basis reset to auto so it
+       sizes to content and shares the line with .game-nav) and force the
+       chip/Connect Keplr button onto its own line 2 below, at its own
+       natural width (not stretched full-width - a full-width chip/button
+       read as an empty/broken section, reported live). The forced-wrap
+       is a zero-height ::before spacer with flex-basis:100% sitting
+       between the two groups in order, not flex-basis:100% on the chip
+       itself - the usual flexbox line-break trick, so the chip keeps its
+       intrinsic size and .wallet-chip/.wallet-connect-btn's existing
+       margin-left:auto (below) still pins it to the right on that line,
+       same as when it was the sole item there before this reorder.
+       :has(.wallet-bar-secondary) scopes the chip/connect-btn/spacer part
+       to Wheel of Repeg/Weekly Round only - Create Your Own Luck has no
+       My Bag/History pair competing for line 1, so its game-nav+chip
+       pairing (and the cyol-page bleed fix above) is untouched. */
     .wallet-bar-secondary {
-      margin-left: auto;
+      order: 1;
+      flex-basis: auto;
     }
     .wallet-chip,
     .wallet-connect-btn {
       margin-left: auto;
+    }
+    .wallet-bar:has(.wallet-bar-secondary)::before {
+      content: "";
+      order: 2;
+      flex-basis: 100%;
+      height: 0;
+    }
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-chip,
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-connect-btn {
+      order: 3;
     }
     .game-nav {
       gap: 0.4rem;
@@ -3492,6 +3534,20 @@
     }
     .wallet-disconnect {
       padding: 0.3rem 0.5rem;
+    }
+    /* History regains its text label now that the chip moved off line 1
+       freed up room for it - unlike My Bag's bag icon, a bare scroll icon
+       doesn't read as "history" on its own. Padding/icon-margin restored
+       to the same values used above the 720px icon-only breakpoint (see
+       .history-open-btn/.round-action-btn-icon there). */
+    .history-open-btn-label {
+      display: inline;
+    }
+    .history-open-btn {
+      padding: 0 0.6rem;
+    }
+    .history-open-btn .round-action-btn-icon {
+      margin-right: 0.35em;
     }
   }
   /* ---------- Game nav (Games dropdown + Creators) - left side of the
@@ -3785,6 +3841,19 @@
     }
     .wallet-address-short {
       display: inline;
+    }
+  }
+  /* Below 480px on Wheel of Repeg/Weekly Round, the chip now has its own
+     full line (see the .wallet-bar reorder above) instead of squeezing
+     next to Games + Create + My Bag/History - room enough to show the
+     full truncated address again, not just the last-4-chars short form
+     the 720px rule above falls back to. */
+  @media (max-width: 480px) {
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-address-full {
+      display: inline;
+    }
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-address-short {
+      display: none;
     }
   }
   /* Same flat-fill/hard-bevel pattern as .history-open-btn - was still a

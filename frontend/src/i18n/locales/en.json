@@ -36,7 +36,9 @@
     "loadMore": "Load older rounds",
     "won": "🏆 Won — {{amount}} USDC",
     "lost": "Didn't win",
-    "expired": "Round expired"
+    "expired": "Round expired",
+    "weeklyRoundLabel": "Weekly Round",
+    "wheelOfRepegLabel": "Wheel of Repeg"
   },
   "ticketBooth": {
     "label": "Ticket price",
@@ -140,7 +142,7 @@
     "actionFailed": "Action failed.",
     "expireRound": "Expire round",
     "expiring": "Expiring…",
-    "expiredNote": "This round never reached the minimum number of players and has expired. Buyers can reclaim their own tickets below.",
+    "expiredNote": "This round expired. Minimum players not reached. Buyer can reclaim tickets.",
     "reclaimTicket": "Reclaim my ticket",
     "reclaiming": "Reclaiming…",
     "reclaimedNote": "Reclaimed! Your ticket money is on its way back to your wallet.",

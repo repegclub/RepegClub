@@ -5,6 +5,7 @@ import "../../styles/wheel.css";
 import "../../styles/cyol.css";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
+import { WalletBalance } from "../Wallet/WalletBalance";
 import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffleDetail } from "../../hooks/useCyolRaffleDetail";
 import { useCyolRaffleIndex } from "../../hooks/useCyolRaffleIndex";
@@ -171,6 +172,12 @@ export function RaffleDetailPage() {
         <GameNav current="/create-your-own-luck" />
         <div className="wallet-bar-right">
           <ConnectWalletButton />
+          {/* Wallet balance, not game data - belongs on every page, same as
+              Wheel of Repeg/Weekly Round/the CYOL list page (see
+              .wallet-bar-secondary there). */}
+          <div className="wallet-bar-secondary">
+            <WalletBalance />
+          </div>
         </div>
       </div>
       <Link className="cyol-back-link" to="/create-your-own-luck">
