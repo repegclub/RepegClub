@@ -13,6 +13,7 @@ import { LifetimeStatsPanel } from "../Wheel/LifetimeStatsPanel";
 import { PlatformRepeggedBanner } from "../Wheel/PlatformRepeggedBanner";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
+import { NetworkBadge } from "../Wallet/NetworkBadge";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { HistoryButton } from "../Wheel/HistoryButton";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
@@ -82,7 +83,10 @@ export function WeeklyRoundPage() {
       <div className="wallet-bar">
         <GameNav current="/weekly-round" />
         <div className="wallet-bar-right">
-          <ConnectWalletButton />
+          <div className="wallet-status-group">
+            <NetworkBadge />
+            <ConnectWalletButton />
+          </div>
           {/* Same .wallet-bar-secondary treatment as Wheel of Repeg's own
               wallet-bar, for consistency. History is account-level, not
               scoped to whichever game's page is open (useWalletHistory

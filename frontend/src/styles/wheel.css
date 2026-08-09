@@ -3475,36 +3475,36 @@
       margin-right: -1.5rem;
     }
     /* display:contents removes .wallet-bar-right's own box so its children
-       (chip/Connect Keplr, .wallet-bar-secondary) become direct items of
+       (.wallet-status-group, .wallet-bar-secondary) become direct items of
        .wallet-bar instead of a nested flex container - lets each wrap/
        reorder on its own real size instead of as a group. */
     .wallet-bar-right {
       display: contents;
     }
     /* Reordered (2026-08-09): adding the isotipo to .game-nav left too
-       little room for Games + Create + the chip to share line 1 anymore,
-       back to 3 rows. Rather than fight for the chip's spot on line 1,
-       give it to My Bag/History instead (flex-basis reset to auto so it
-       sizes to content and shares the line with .game-nav) and force the
-       chip/Connect Keplr button onto its own line 2 below, at its own
-       natural width (not stretched full-width - a full-width chip/button
-       read as an empty/broken section, reported live). The forced-wrap
-       is a zero-height ::before spacer with flex-basis:100% sitting
-       between the two groups in order, not flex-basis:100% on the chip
-       itself - the usual flexbox line-break trick, so the chip keeps its
-       intrinsic size and .wallet-chip/.wallet-connect-btn's existing
+       little room for Games + Create + the network badge + chip to share
+       line 1 anymore, back to 3 rows. Rather than fight for that spot on
+       line 1, give it to My Bag/History instead (flex-basis reset to auto
+       so it sizes to content and shares the line with .game-nav) and force
+       .wallet-status-group (the always-visible TESTNET/MAINNET badge plus
+       the chip/Connect Keplr button, grouped so they travel together) onto
+       its own line 2 below, at its own natural width (not stretched full-
+       width - a full-width chip/button read as an empty/broken section,
+       reported live). The forced-wrap is a zero-height ::before spacer
+       with flex-basis:100% sitting between the two groups in order, not
+       flex-basis:100% on .wallet-status-group itself - the usual flexbox
+       line-break trick, so it keeps its intrinsic size and its own
        margin-left:auto (below) still pins it to the right on that line,
-       same as when it was the sole item there before this reorder.
-       :has(.wallet-bar-secondary) scopes the chip/connect-btn/spacer part
-       to Wheel of Repeg/Weekly Round only - Create Your Own Luck has no
-       My Bag/History pair competing for line 1, so its game-nav+chip
-       pairing (and the cyol-page bleed fix above) is untouched. */
+       same as when the chip was the sole item there before this reorder.
+       :has(.wallet-bar-secondary) scopes the status-group/spacer part to
+       Wheel of Repeg/Weekly Round/CYOL (all 3 now have My Bag) - none of
+       them have History yet except Wheel of Repeg, but that's covered by
+       .wallet-bar-secondary itself already existing on all 3. */
     .wallet-bar-secondary {
       order: 1;
       flex-basis: auto;
     }
-    .wallet-chip,
-    .wallet-connect-btn {
+    .wallet-status-group {
       margin-left: auto;
     }
     .wallet-bar:has(.wallet-bar-secondary)::before {
@@ -3513,8 +3513,7 @@
       flex-basis: 100%;
       height: 0;
     }
-    .wallet-bar:has(.wallet-bar-secondary) .wallet-chip,
-    .wallet-bar:has(.wallet-bar-secondary) .wallet-connect-btn {
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-status-group {
       order: 3;
     }
     .game-nav {
@@ -3534,6 +3533,10 @@
     }
     .wallet-disconnect {
       padding: 0.3rem 0.5rem;
+    }
+    .network-badge {
+      padding: 0 0.5rem;
+      font-size: 0.92rem;
     }
     /* History regains its text label now that the chip moved off line 1
        freed up room for it - unlike My Bag's bag icon, a bare scroll icon
@@ -3753,6 +3756,52 @@
   }
   .bag-row-amount {
     color: var(--text);
+  }
+  /* NetworkBadge + ConnectWalletButton, grouped so they move together as
+     one unit in the narrow-width reorder below (see .wallet-status-group
+     in the max-width:480px block) instead of the badge landing on a
+     different line than the button it's meant to sit right next to. */
+  .wallet-status-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  /* Always visible, on every page, regardless of connection state - real
+     money is at stake once this reads MAINNET instead of TESTNET, so it
+     can't be something you only see after connecting. Same fixed height as
+     the rest of the wallet-bar buttons (see .game-nav-toggle-btn). Gold
+     like the site's other "pay attention" accents for testnet; green like
+     .wallet-dot's "connected/live" for mainnet. */
+  .network-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 2.2rem;
+    padding: 0 0.7rem;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--gold);
+    background: var(--bg-card);
+    border: 1px solid var(--gold-dim);
+  }
+  .network-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: var(--gold);
+    box-shadow: 0 0 5px 1px rgba(255,209,102,0.6);
+    flex-shrink: 0;
+  }
+  .network-badge.network-badge-main {
+    color: #3ddc84;
+    border-color: #1a7a41;
+  }
+  .network-badge.network-badge-main::before {
+    background: #3ddc84;
+    box-shadow: 0 0 5px 1px rgba(61,220,132,0.6);
   }
   /* Same flat-fill/hard-bevel/pressed-ledge pattern as .round-action-btn -
      this was still a soft rounded gradient pill, the last un-pixelated

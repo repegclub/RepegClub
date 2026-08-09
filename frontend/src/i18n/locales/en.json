@@ -282,7 +282,9 @@
     "notInstalled": "Keplr is not installed in this browser.",
     "connectFailed": "Could not connect to the chain.",
     "rejected": "Connection rejected.",
-    "bagToggle": "My Bag"
+    "bagToggle": "My Bag",
+    "testnet": "Testnet",
+    "mainnet": "Mainnet"
   },
   "admin": {
     "sweepButton": "Sweep stray funds",

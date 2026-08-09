@@ -14,6 +14,7 @@ import { HistoryButton } from "./HistoryButton";
 import { PlatformRepeggedBanner } from "./PlatformRepeggedBanner";
 import { GameNav } from "../Shared/GameNav";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
+import { NetworkBadge } from "../Wallet/NetworkBadge";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
 import { ExpiredPrizesButton } from "../Wallet/ExpiredPrizesButton";
@@ -121,7 +122,10 @@ export function WheelOfRepeg() {
       <div className="wallet-bar">
         <GameNav current="/" />
         <div className="wallet-bar-right">
-          <ConnectWalletButton />
+          <div className="wallet-status-group">
+            <NetworkBadge />
+            <ConnectWalletButton />
+          </div>
           {/* My Bag + History grouped so they can wrap onto their own line
               together, right-aligned - on a real phone (narrower than the
               "modo estrecho" breakpoint already fixed elsewhere), Games +
