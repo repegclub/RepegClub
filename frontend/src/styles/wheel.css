@@ -3937,3 +3937,41 @@
     font-size: 0.943rem;
     color: var(--crimson-bright);
   }
+
+  /* ---------- Floating Telegram/GitHub links - every page ---------- */
+  /* Rendered once in App.tsx outside <Routes>, so this appears on every
+     page without each one having to remember to include it. Fixed
+     bottom-right (not centered, not sticky) so it never competes with the
+     top wallet-bar or any page's own bottom-of-viewport content - a small
+     always-reachable pill, same spirit as the site's other persistent
+     utility bar. z-index below the modal layer (50, see .history-overlay/
+     .verify-modal-backdrop) so an open modal always covers it. */
+  .social-links-bar {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem;
+    background: rgba(7,9,17,0.85);
+    border: 1px solid var(--border-bright);
+    border-radius: 999px;
+    backdrop-filter: blur(3px);
+  }
+  .social-links-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: var(--text-dim);
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .social-links-icon:hover,
+  .social-links-icon:focus-visible {
+    color: var(--text);
+    background: rgba(255,255,255,0.1);
+  }

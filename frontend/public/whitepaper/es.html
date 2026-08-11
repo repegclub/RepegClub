@@ -101,7 +101,7 @@
   a { color: var(--blue-soft); text-decoration-color: rgba(157,192,255,0.35); text-underline-offset: 3px; }
   a:hover { color: var(--gold); }
 
-  p { margin: 0 0 16px; }
+  p { margin: 0 0 16px; text-align: justify; }
   p.lead { color: var(--text-dim); }
   section > *:last-child { margin-bottom: 0; }
 
@@ -433,6 +433,7 @@
     border-left: 3px solid var(--crimson);
     font-size: 0.88rem;
     color: var(--text-dim);
+    text-align: justify;
   }
   .disclaimer strong { color: var(--text); }
 
@@ -451,10 +452,47 @@
   }
 
   ul.plain { margin: 0; padding-left: 1.2em; }
-  ul.plain li { margin-bottom: 8px; font-size: 0.96rem; color: var(--text-dim); }
+  ul.plain li { margin-bottom: 8px; font-size: 0.96rem; color: var(--text-dim); text-align: justify; }
   ul.plain li::marker { color: var(--gold-dim); }
   ul.plain strong { color: var(--text); }
+
+  /* Floating Telegram/GitHub links, same treatment as the main site
+     (repegclub.com) - a website link doubles as the actual way in for
+     anyone whose own Telegram group blocks posting t.me invite links but
+     allows regular URLs. */
+  .social-links-bar {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem;
+    background: rgba(7,9,17,0.85);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    backdrop-filter: blur(3px);
+  }
+  .social-links-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: var(--text-dim);
+  }
+  .social-links-icon:hover { color: var(--text); background: rgba(255,255,255,0.1); }
 </style>
+
+<div class="social-links-bar">
+  <a href="https://t.me/+ifW-eoWfLiY4OTAx" target="_blank" rel="noopener noreferrer" class="social-links-icon" aria-label="Join our Telegram">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M21.9 3.5 2.6 11c-.9.35-.9 1.63.01 1.96l4.55 1.6 1.76 5.66c.24.77 1.22.98 1.77.38l2.44-2.66 4.68 3.46c.7.52 1.7.14 1.9-.71l3.35-14.6c.23-.99-.72-1.85-1.66-1.59Zm-3.1 3.36-8.6 7.85-.4 3.02-1.36-4.38 9.7-6.9c.24-.17.5.13.29.32Z"/></svg>
+  </a>
+  <a href="https://github.com/repegclub/RepegClub" target="_blank" rel="noopener noreferrer" class="social-links-icon" aria-label="View source on GitHub">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.58 2 12.19c0 4.49 2.87 8.3 6.84 9.65.5.1.68-.22.68-.49 0-.24-.01-1.03-.01-1.87-2.78.61-3.37-1.19-3.37-1.19-.45-1.17-1.11-1.48-1.11-1.48-.9-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.13-4.56-5.03 0-1.11.39-2.02 1.03-2.73-.1-.26-.45-1.31.1-2.73 0 0 .84-.27 2.75 1.04a9.4 9.4 0 0 1 5.01 0c1.9-1.31 2.75-1.04 2.75-1.04.55 1.42.2 2.47.1 2.73.64.71 1.03 1.62 1.03 2.73 0 3.91-2.35 4.77-4.58 5.02.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.19C22 6.58 17.52 2 12 2Z"/></svg>
+  </a>
+</div>
 
 <div class="wp-root">
 <div class="wp-shell">
