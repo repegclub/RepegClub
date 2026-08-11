@@ -77,6 +77,9 @@
     @page { margin: 0; }
     html, body { background: #070911; }
     * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    /* Fixed-position UI has no place in a printed/exported page - it would
+       render on top of every page's content instead of scrolling with it. */
+    .social-links-bar, .lang-toggle-bar, .back-to-site { display: none; }
   }
 
   * { box-sizing: border-box; }
@@ -101,7 +104,7 @@
   a { color: var(--blue-soft); text-decoration-color: rgba(157,192,255,0.35); text-underline-offset: 3px; }
   a:hover { color: var(--gold); }
 
-  p { margin: 0 0 16px; text-align: justify; }
+  p { margin: 0 0 16px; text-align: justify; -webkit-hyphens: auto; -ms-hyphens: auto; hyphens: auto; }
   p.lead { color: var(--text-dim); }
   section > *:last-child { margin-bottom: 0; }
 
@@ -434,6 +437,9 @@
     font-size: 0.88rem;
     color: var(--text-dim);
     text-align: justify;
+    -webkit-hyphens: auto;
+    -ms-hyphens: auto;
+    hyphens: auto;
   }
   .disclaimer strong { color: var(--text); }
 
@@ -452,7 +458,7 @@
   }
 
   ul.plain { margin: 0; padding-left: 1.2em; }
-  ul.plain li { margin-bottom: 8px; font-size: 0.96rem; color: var(--text-dim); text-align: justify; }
+  ul.plain li { margin-bottom: 8px; font-size: 0.96rem; color: var(--text-dim); text-align: justify; -webkit-hyphens: auto; -ms-hyphens: auto; hyphens: auto; }
   ul.plain li::marker { color: var(--gold-dim); }
   ul.plain strong { color: var(--text); }
 
@@ -482,7 +488,8 @@
     border-radius: 50%;
     color: var(--text-dim);
   }
-  .social-links-icon:hover { color: var(--text); background: rgba(255,255,255,0.1); }
+  .social-links-icon:hover,
+  .social-links-icon:focus-visible { color: var(--text); background: rgba(255,255,255,0.1); }
 </style>
 
 <div class="social-links-bar">
@@ -494,7 +501,7 @@
   </a>
 </div>
 
-<div class="wp-root">
+<div class="wp-root" lang="es">
 <div class="wp-shell">
 
   <div class="hero">
