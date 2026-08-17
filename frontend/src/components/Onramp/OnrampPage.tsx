@@ -1,13 +1,28 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/onramp.css";
 import { FAQClassroomPanel } from "../Shared/FAQClassroomPanel";
 import { GameNav } from "../Shared/GameNav";
+import { HostGuide } from "../Wheel/HostGuide";
 import { OriginOptionsPanel } from "./OriginOptionsPanel";
 import { DirectTransferCard } from "./DirectTransferCard";
 
 export function OnrampPage() {
   const { t } = useTranslation();
+
+  // Same guarded/cycling pattern as TicketBooth's hostHype - see the
+  // comment there for why returnObjects needs the isArray/filter guard.
+  const hostHype = t("onramp.hostHype", { returnObjects: true });
+  const HYPE_LINES = Array.isArray(hostHype)
+    ? hostHype.filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+    : [];
+  const [hypeIndex, setHypeIndex] = useState(0);
+  useEffect(() => {
+    if (HYPE_LINES.length === 0) return;
+    const id = setInterval(() => setHypeIndex((i) => (i + 1) % HYPE_LINES.length), 8000);
+    return () => clearInterval(id);
+  }, [HYPE_LINES.length]);
 
   return (
     <main className="onramp-page">
@@ -43,6 +58,9 @@ export function OnrampPage() {
               <br />
               USDC
             </p>
+            <div className="onramp-host-bubble">
+              {HYPE_LINES[hypeIndex] && <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />}
+            </div>
           </div>
         </div>
       </div>

@@ -3969,16 +3969,21 @@
      without that reassignment both would auto-push independently and
      Onramp would end up stranded on the far left of the line instead of
      sitting right next to TESTNET the way it does on line 1's left-aligned
-     group above. */
+     group above. Scoped to :has(.wallet-bar-secondary) - the only page
+     with this reorder need (Wheel of Repeg/Weekly Round/CYOL/raffle
+     detail); /onramp's own wallet-bar has neither that pair nor an Onramp
+     link to reorder (see GameNav.tsx) and must keep .game-nav as a normal
+     box so its own Games+Create group stays left-aligned against the
+     mainnet badge on the right, not flattened into this one. */
   @media (max-width: 480px) {
-    .game-nav {
+    .wallet-bar:has(.wallet-bar-secondary) .game-nav {
       display: contents;
     }
-    .game-nav-onramp {
+    .wallet-bar:has(.wallet-bar-secondary) .game-nav-onramp {
       order: 3;
       margin-left: auto;
     }
-    .wallet-status-group {
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-status-group {
       margin-left: 0;
     }
   }

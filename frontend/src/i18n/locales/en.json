@@ -572,7 +572,15 @@
     ]
   },
   "onramp": {
-    "mainnetBadge": "Mainnet — real funds",
+    "mainnetBadge": "Mainnet",
+    "hostHype": [
+      "Terra Classic needs\nfresh capital, friend!",
+      "USDC dodges that\nnasty burn tax!",
+      "Our cut's tiny\nnext to that tax!",
+      "Noble's my favorite —\ncheap and fast!",
+      "Straight from Noble,\nCosmos Hub, Osmosis!",
+      "Ethereum works too...\nbut Noble's smarter!"
+    ],
     "title": "Get USDC on Terra Classic",
     "subtitle": "Pick where your USDC (or ETH/OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
     "otherChainsTab": "Other chains",
