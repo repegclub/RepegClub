@@ -75,6 +75,14 @@ export function GameNav({ current }: { current: string }) {
         <img src="/wheel-pixel/clover-emoji.png" alt="" className="game-nav-creators-icon" />
         {t("gameSwitcher.creators")}
       </Link>
+      {/* Not shown on /onramp itself - unlike Games/Create, there's nowhere
+          left for it to navigate to from there. */}
+      {current !== "/onramp" && (
+        <Link to="/onramp" className="game-nav-onramp">
+          <img src="/wheel-pixel/onramp-icon.png" alt="" className="game-nav-onramp-icon" />
+          {t("gameSwitcher.onramp")}
+        </Link>
+      )}
     </nav>
   );
 }

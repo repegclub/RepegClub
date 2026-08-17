@@ -1431,6 +1431,16 @@
     color: var(--crimson-bright);
     margin: 0.3rem 0 0;
   }
+  .booth-onramp-cta {
+    display: inline-block;
+    font-size: 0.828rem;
+    color: var(--gold);
+    text-decoration: none;
+    margin: 0.4rem 0 0;
+  }
+  .booth-onramp-cta:hover {
+    text-decoration: underline;
+  }
   /* Pixel-art button: flat fill, no blur anywhere (hard-edged inset bevel
      instead of a soft gradient/glow), square corners, and a solid 4px
      "ledge" below instead of a drop shadow - it presses flush into that
@@ -3528,6 +3538,9 @@
     .game-nav-creators {
       padding: 0 0.6rem 0 0.45rem;
     }
+    .game-nav-onramp {
+      padding: 0 0.6rem 0 0.45rem;
+    }
     .wallet-chip {
       padding: 0 0.5rem 0 0.75rem;
     }
@@ -3684,6 +3697,44 @@
     cursor: default;
   }
   .game-nav-creators-icon {
+    width: 1.3em;
+    height: 1.3em;
+    margin-right: 0.35em;
+    image-rendering: pixelated;
+  }
+  /* Same flat-fill/hard-bevel pattern as .game-nav-creators, crimson instead
+     of gold so it reads as a third distinct action (blue = switch game,
+     gold = creator tooling, crimson = bring capital in) rather than a
+     variant of either. Always visible, not tucked in the Games dropdown -
+     a player may want the onramp independent of any game, and every extra
+     click here is a click further from a fee-generating transfer. */
+  .game-nav-onramp {
+    display: inline-flex;
+    align-items: center;
+    height: 2.2rem;
+    font-family: var(--body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    padding: 0 0.8rem 0 0.5rem;
+    background: var(--crimson);
+    text-decoration: none;
+    box-shadow:
+      inset 3px 3px 0 rgba(255,150,170,0.9),
+      inset -3px -3px 0 rgba(120,10,30,0.9),
+      0 4px 0 #78141f;
+  }
+  .game-nav-onramp:active {
+    box-shadow:
+      inset 3px 3px 0 rgba(120,10,30,0.9),
+      inset -3px -3px 0 rgba(255,150,170,0.5);
+    transform: translateY(4px);
+  }
+  .game-nav-onramp.active {
+    background: var(--crimson-bright);
+    cursor: default;
+  }
+  .game-nav-onramp-icon {
     width: 1.3em;
     height: 1.3em;
     margin-right: 0.35em;
@@ -3892,17 +3943,48 @@
       display: inline;
     }
   }
-  /* Below 480px on Wheel of Repeg/Weekly Round, the chip now has its own
-     full line (see the .wallet-bar reorder above) instead of squeezing
-     next to Games + Create + My Bag/History - room enough to show the
-     full truncated address again, not just the last-4-chars short form
-     the 720px rule above falls back to. */
+  /* Below 480px, line 2 (TESTNET/MAINNET + the connected chip) now also
+     carries the Onramp button (see the .game-nav/.game-nav-onramp reorder
+     below, added when Onramp needed a permanent spot in the header on real
+     phones) - back to the last-4-chars short form here instead of the full
+     17-char address, or the three don't fit together. Was briefly the full
+     form for a short window when this line only had to fit the chip alone;
+     that's no longer true. */
   @media (max-width: 480px) {
     .wallet-bar:has(.wallet-bar-secondary) .wallet-address-full {
-      display: inline;
+      display: none;
     }
     .wallet-bar:has(.wallet-bar-secondary) .wallet-address-short {
-      display: none;
+      display: inline;
+    }
+  }
+  /* Below 480px, Onramp moves off line 1 (Games + Create + My Bag/History,
+     already full - see the reorder above) onto line 2 with TESTNET/MAINNET
+     + the wallet chip instead. .game-nav itself never had its own visual
+     box (no background/border), so display:contents just drops its
+     children (logo, Games, Create, Onramp) directly into .wallet-bar's flex
+     context - same trick .wallet-bar-right already uses above for its own
+     children. Onramp shares wallet-status-group's order:3 (tie-broken by
+     source order, so it lands first) and takes over its margin-left:auto -
+     without that reassignment both would auto-push independently and
+     Onramp would end up stranded on the far left of the line instead of
+     sitting right next to TESTNET the way it does on line 1's left-aligned
+     group above. Scoped to :has(.wallet-bar-secondary) - the only page
+     with this reorder need (Wheel of Repeg/Weekly Round/CYOL/raffle
+     detail); /onramp's own wallet-bar has neither that pair nor an Onramp
+     link to reorder (see GameNav.tsx) and must keep .game-nav as a normal
+     box so its own Games+Create group stays left-aligned against the
+     mainnet badge on the right, not flattened into this one. */
+  @media (max-width: 480px) {
+    .wallet-bar:has(.wallet-bar-secondary) .game-nav {
+      display: contents;
+    }
+    .wallet-bar:has(.wallet-bar-secondary) .game-nav-onramp {
+      order: 3;
+      margin-left: auto;
+    }
+    .wallet-bar:has(.wallet-bar-secondary) .wallet-status-group {
+      margin-left: 0;
     }
   }
   /* Same flat-fill/hard-bevel pattern as .history-open-btn - was still a
