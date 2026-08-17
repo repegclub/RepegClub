@@ -153,6 +153,14 @@ function DirectOriginForm({
     amountRaw > 0n &&
     balance.status === "loaded" &&
     amountRaw <= BigInt(balance.amount) &&
+    // When the asset being sent IS the gas denom, hasGasForFee above is
+    // always true regardless of amount - it only checks the SEPARATE gas
+    // balance, which doesn't apply here. The Max button already reserves
+    // maxGasReserve (see handleMax), but a manually typed amount equal to
+    // the full balance wasn't checked the same way, and would pass
+    // validation only to fail at broadcast for lack of gas (found in
+    // review, 2026-08-17).
+    (!gasIsSameDenom || amountRaw + chain.maxGasReserve <= BigInt(balance.amount)) &&
     hasGasForFee &&
     terraClassicAddress !== null;
   const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);

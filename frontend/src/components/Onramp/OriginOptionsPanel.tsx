@@ -89,6 +89,7 @@ export function OriginOptionsPanel() {
               className="verify-modal-outline pixel-stepped-corners"
               role="dialog"
               aria-modal="true"
+              aria-labelledby="origin-options-modal-title"
               ref={modalRef}
               onClick={(e) => e.stopPropagation()}
             >
@@ -103,7 +104,9 @@ export function OriginOptionsPanel() {
                     >
                       &times;
                     </button>
-                    <p className="origin-options-modal-title">Understand your options</p>
+                    <p id="origin-options-modal-title" className="origin-options-modal-title">
+                      Understand your options
+                    </p>
                     <div className="origin-options-list">
                       {ORIGIN_OPTIONS.map((o) => (
                         <div className="origin-option-row" key={o.exchange}>
