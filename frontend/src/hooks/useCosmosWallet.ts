@@ -22,6 +22,13 @@ export type CosmosWalletState =
 export function useCosmosWallet(chain: DirectOriginChain) {
   const [state, setState] = useState<CosmosWalletState>({ status: "disconnected" });
   const controllersRef = useRef<Map<string, KeplrController>>(new Map());
+  // Always holds the currently-selected chain id, read (not captured) inside
+  // connect()'s post-await checks - `chain` itself is fine to read normally
+  // everywhere else, but a value closed over at call time would still be the
+  // OLD chain if the user switches tabs while a Keplr popup is pending, which
+  // is exactly the race this guards against.
+  const chainIdRef = useRef(chain.chainId);
+  chainIdRef.current = chain.chainId;
 
   function getController(chainId: string): KeplrController {
     let controller = controllersRef.current.get(chainId);
@@ -33,24 +40,28 @@ export function useCosmosWallet(chain: DirectOriginChain) {
   }
 
   const connect = useCallback(async () => {
-    const controller = getController(chain.chainId);
+    const chainId = chain.chainId;
+    const controller = getController(chainId);
     setState({ status: "connecting" });
     try {
       const installed = await controller.isInstalled(WalletType.EXTENSION);
+      if (chainIdRef.current !== chainId) return;
       if (!installed) {
         setState({ status: "error", kind: "notInstalled" });
         return;
       }
       const wallets = await controller.connect(WalletType.EXTENSION, [
-        { chainId: chain.chainId, rpc: chain.rpc, gasPrice: chain.gasPrice, sdkVersion: chain.sdkVersion },
+        { chainId, rpc: chain.rpc, gasPrice: chain.gasPrice, sdkVersion: chain.sdkVersion },
       ]);
-      const wallet = wallets.get(chain.chainId);
+      if (chainIdRef.current !== chainId) return;
+      const wallet = wallets.get(chainId);
       if (!wallet) {
         setState({ status: "error", kind: "connectFailed" });
         return;
       }
       setState({ status: "connected", address: wallet.address, wallet });
     } catch {
+      if (chainIdRef.current !== chainId) return;
       setState({ status: "error", kind: "rejected" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

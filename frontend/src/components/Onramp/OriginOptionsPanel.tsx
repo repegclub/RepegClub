@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 // Static reference data, not a live estimator - deliberately, per the
 // project decision to skip building gas-cost calculation logic and just
@@ -29,10 +32,54 @@ const ORIGIN_OPTIONS = [
 // inventing a new modal pattern.
 export function OriginOptionsPanel() {
   const [isOpen, setIsOpen] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Escape to close, focus moved into the dialog on open and back to the
+  // button that opened it on close, and Tab/Shift+Tab trapped inside while
+  // it's open instead of escaping into the page behind - aria-modal="true"
+  // alone doesn't do any of this by itself (found in review, 2026-08-17).
+  useEffect(() => {
+    if (!isOpen) return;
+    // Captured now, not read again inside the cleanup below - by the time
+    // that runs, .current may already point somewhere else (oxlint
+    // react-hooks/exhaustive-deps flagged the original direct read).
+    const trigger = triggerRef.current;
+    const modal = modalRef.current;
+    const focusables = modal?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    focusables?.[0]?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      trigger?.focus();
+    };
+  }, [isOpen]);
 
   return (
     <div className="origin-options">
-      <button type="button" className="origin-options-btn" onClick={() => setIsOpen(true)}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="origin-options-btn"
+        onClick={() => setIsOpen(true)}
+      >
         Understand your options
       </button>
       {isOpen &&
@@ -42,6 +89,7 @@ export function OriginOptionsPanel() {
               className="verify-modal-outline pixel-stepped-corners"
               role="dialog"
               aria-modal="true"
+              ref={modalRef}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="verify-modal-border pixel-stepped-corners">

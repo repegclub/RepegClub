@@ -113,10 +113,30 @@ function DirectOriginForm({
   // different source denom.
   const [asset, setAsset] = useState<DirectOriginAsset>(chain.assets[0]);
   const balance = useBalance(address, asset.denom, chain.lcd);
+  // Only meaningfully different from `balance` above when the selected
+  // asset ISN'T the chain's own gas denom (USDC on Cosmos Hub/Osmosis,
+  // sending their native ATOM/OSMO instead) - gas for that tx still comes
+  // out of the native token, which the asset balance above says nothing
+  // about. Without this, the wallet could hold plenty of USDC and still
+  // have the signed tx fail at broadcast for lack of gas (found in
+  // review, 2026-08-17).
+  const gasIsSameDenom = asset.denom === chain.gasPrice.denom;
+  const gasBalance = useBalance(gasIsSameDenom ? null : address, chain.gasPrice.denom, chain.lcd);
+  const hasGasForFee =
+    gasIsSameDenom || (gasBalance.status === "loaded" && BigInt(gasBalance.amount) >= chain.maxGasReserve);
   const [amountInput, setAmountInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  // Set instead of a normal retryable error when broadcastTxSync itself
+  // throws a TypeError (see handleSend below) - that can mean the tx never
+  // reached the chain, but it can also mean it DID land and only the
+  // response parsing afterward failed, which this project can't tell
+  // apart from here. Blocks Send until the user explicitly acknowledges
+  // they've checked their wallet/an explorer first, instead of silently
+  // re-enabling retry and risking a duplicate transfer + duplicate fee
+  // (found in review, 2026-08-17).
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
 
   const amountNumber = Number(amountInput);
   // Comparing in raw integer micro-units (not the rounded display string)
@@ -126,8 +146,14 @@ function DirectOriginForm({
   const amountValid =
     Number.isFinite(amountNumber) &&
     amountNumber > 0 &&
+    // A tiny-enough display amount rounds down to 0n in displayToMicro
+    // (e.g. under 0.0000005) while amountNumber > 0 above still passes -
+    // checked separately so a dust input can't slip through as a
+    // zero-value transfer (found in review, 2026-08-17).
+    amountRaw > 0n &&
     balance.status === "loaded" &&
     amountRaw <= BigInt(balance.amount) &&
+    hasGasForFee &&
     terraClassicAddress !== null;
   const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);
 
@@ -138,6 +164,7 @@ function DirectOriginForm({
     setAmountInput("");
     setTxHash(null);
     setError(null);
+    setOutcomeUnknown(false);
   }
 
   function handleMax() {
@@ -172,14 +199,17 @@ function DirectOriginForm({
       // of ... as it is undefined" (RpcClient.js) straight to the user -
       // that's what a flaky public RPC's malformed broadcast_tx_sync
       // response looks like from here, not a real message meant for
-      // display (found in review, 2026-08-16 - confirmed live the tx
-      // never reached the chain in this case, safe to just retry).
+      // display (found in review, 2026-08-16). That first sighting was
+      // confirmed live to be pre-broadcast, but a TypeError here can't be
+      // told apart in general from the tx actually landing and only the
+      // response parsing afterward failing - so this no longer treats it
+      // as a plain retryable network error (found in review, 2026-08-17).
       // Every deliberate throw in this file/onrampActions.ts is a plain
       // Error, so this still shows the real reason for anything we threw
       // on purpose.
       if (err instanceof TypeError) {
         console.error(err);
-        setError(t("onramp.direct.networkError"));
+        setOutcomeUnknown(true);
       } else {
         setError(err instanceof Error ? err.message : t("onramp.direct.sendFailed"));
       }
@@ -296,6 +326,12 @@ function DirectOriginForm({
             <p className="onramp-dest-warning">{t("onramp.direct.destAddressWarning")}</p>
           )}
 
+          {!gasIsSameDenom && gasBalance.status === "loaded" && !hasGasForFee && (
+            <p className="onramp-error-text">
+              {t("onramp.direct.gasNeeded", { symbol: chain.assets[0].symbol })}
+            </p>
+          )}
+
           {amountValid && (
             <p className="onramp-breakdown">
               {t("onramp.direct.breakdown", {
@@ -307,10 +343,29 @@ function DirectOriginForm({
             </p>
           )}
 
-          <button className="onramp-main-btn onramp-send-btn" onClick={handleSend} disabled={busy || !amountValid}>
+          <button
+            className="onramp-main-btn onramp-send-btn"
+            onClick={handleSend}
+            disabled={busy || !amountValid || outcomeUnknown}
+          >
             {busy ? t("onramp.direct.sending") : t("onramp.direct.sendButton")}
           </button>
           {error && <p className="onramp-error-text">{error}</p>}
+          {outcomeUnknown && (
+            <div className="onramp-outcome-unknown">
+              <p className="onramp-error-text">{t("onramp.direct.outcomeUnknown")}</p>
+              <button
+                type="button"
+                className="onramp-ghost-btn"
+                onClick={() => {
+                  setOutcomeUnknown(false);
+                  balance.refetch();
+                }}
+              >
+                {t("onramp.direct.outcomeUnknownAck")}
+              </button>
+            </div>
+          )}
           {txHash && <p className="onramp-success-text">{t("onramp.direct.sent", { hash: txHash })}</p>}
         </>
       )}

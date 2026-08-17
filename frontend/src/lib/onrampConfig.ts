@@ -265,8 +265,14 @@ function cosmosSplitAffiliates(chainId: keyof typeof TREASURY_COSMOS) {
 // see the note on ONRAMP_SOURCE_CHAINS above). BigInt only - this handles
 // real money, floating point has no place in it.
 export function getDirectFeeSplit(chainId: DirectFeeChainId, amount: bigint) {
-  const treasuryAmount = (amount * 10n) / 10000n;
-  const feeKeeperAmount = (amount * 10n) / 10000n;
+  // The 0.2% total is computed once, then split - truncating each 10bps
+  // half independently (the old (amount*10n)/10000n twice) could round
+  // BOTH halves down on the same amount, undercharging the declared total
+  // fee by up to 1 micro-unit whenever the remainder was >= half
+  // (found in review, 2026-08-17).
+  const totalFee = (amount * 20n) / 10000n;
+  const treasuryAmount = totalFee / 2n;
+  const feeKeeperAmount = totalFee - treasuryAmount;
   const transferAmount = amount - treasuryAmount - feeKeeperAmount;
   return {
     treasuryAddress: TREASURY_COSMOS[chainId],

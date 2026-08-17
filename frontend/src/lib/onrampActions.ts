@@ -159,8 +159,16 @@ async function fetchSkipMsg(route: SkipRoute, addressList: string[]): Promise<Sk
 // response and everything in it would otherwise be signed blindly.
 function buildAdapterFromSkipMsg(
   m: SkipMultiChainMsg,
-  expected: { sender: string; denom: string; amount: bigint }
+  expected: { sender: string; denom: string; amount: bigint; chainId: string; validReceivers: Set<string> }
 ): Adapter {
+  // Confirms this message is meant to be broadcast on the chain the
+  // wallet is actually connected to - Skip's response is a plain
+  // unauthenticated HTTP body, so nothing stops it (bug or compromise)
+  // from returning a message shaped for a different chain than the one
+  // this project asked to route from.
+  if (m.chain_id !== expected.chainId) {
+    throw new Error("Skip's response targets a different chain - refusing to sign.");
+  }
   const parsed = JSON.parse(m.msg);
   if (parsed.sender !== expected.sender) {
     throw new Error("Skip's response doesn't match the connected wallet - refusing to sign.");
@@ -168,6 +176,19 @@ function buildAdapterFromSkipMsg(
   if (m.msg_type_url === "/ibc.applications.transfer.v1.MsgTransfer") {
     if (parsed.token?.denom !== expected.denom || BigInt(parsed.token?.amount ?? "0") !== expected.amount) {
       throw new Error("Skip's response doesn't match the requested amount - refusing to sign.");
+    }
+    // The immediate receiver on this first hop must be one of the
+    // addresses this project itself computed for the route (the user's
+    // pasted Terra Classic address, the origin wallet, or a recovery
+    // address on a chain confirmed safe to derive - see addressList in
+    // sendDirectToTerraClassic) - not just anything Skip happens to send
+    // back. This does NOT validate the deeper forwarding instructions
+    // packed into `memo` below (Skip's own IBC-hooks/PFM format, which
+    // this project doesn't parse) - a compromised Skip response could
+    // still misdirect funds after this first hop by way of the memo.
+    // Known gap, not closed here.
+    if (!expected.validReceivers.has(parsed.receiver)) {
+      throw new Error("Skip's response doesn't match the expected route - refusing to sign.");
     }
     return new MsgIbcTransfer({
       sourcePort: parsed.source_port,
@@ -196,6 +217,14 @@ function buildAdapterFromSkipMsg(
     if (funds?.length !== 1 || funds[0].denom !== expected.denom || BigInt(funds[0].amount) !== expected.amount) {
       throw new Error("Skip's response doesn't match the requested amount - refusing to sign.");
     }
+    // Unlike MsgTransfer above, `contract`/`msg` aren't checked against an
+    // allowlist - the swap venue Skip routes through isn't stable (seen
+    // landing on core-1, neutron-1, and phoenix-1 across separate checks
+    // the same day, 2026-08-15), so a fixed pool-contract allowlist would
+    // need active upkeep this project doesn't do yet. sender/funds are
+    // still confirmed above, so this can't move a different amount or
+    // denom than requested, but the specific contract call is trusted as
+    // Skip returns it. Known gap, not closed here.
     return new MsgExecuteContract({
       sender: parsed.sender,
       contract: parsed.contract,
@@ -226,6 +255,13 @@ export async function sendDirectToTerraClassic(
   // input.
   if (!isValidTerraClassicAddress(terraClassicAddress)) {
     throw new Error("Not a valid Terra Classic address.");
+  }
+  // Same belt-and-suspenders reasoning as the address check above - the UI
+  // already guards against a dust amount that rounds to 0n (found in
+  // review, 2026-08-17), but this is the last check before anything gets
+  // signed.
+  if (amount <= 0n) {
+    throw new Error("Amount must be greater than zero.");
   }
 
   const { treasuryAddress, treasuryAmount, feeKeeperAddress, feeKeeperAmount, transferAmount } = getDirectFeeSplit(
@@ -279,7 +315,15 @@ export async function sendDirectToTerraClassic(
       return deriveAddress(wallet, prefix);
     });
     const skipMsg = await fetchSkipMsg(route, addressList);
-    msgs.push(buildAdapterFromSkipMsg(skipMsg, { sender: wallet.address, denom: asset.denom, amount: transferAmount }));
+    msgs.push(
+      buildAdapterFromSkipMsg(skipMsg, {
+        sender: wallet.address,
+        denom: asset.denom,
+        amount: transferAmount,
+        chainId: origin.chainId,
+        validReceivers: new Set(addressList),
+      })
+    );
   }
 
   // Skipped when an amount rounds to 0 (a fee-free dust transfer) rather

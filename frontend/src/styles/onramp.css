@@ -58,6 +58,12 @@
      box - drifting onto the alien's head, reported live. 3cqw calibrated
      to equal the old ~14px at this banner's 480px max-width, then keeps
      scaling continuously below that with no floor. */
+  /* Fallback for browsers that don't understand container query units
+     (Chrome <105, Safari <16) - they ignore the 3cqw line below entirely
+     and keep this fixed size instead of silently dropping the whole
+     declaration (found in review, 2026-08-17). Capable browsers still use
+     3cqw, since it's declared later and wins the cascade. */
+  font-size: 14px;
   font-size: 3cqw;
   line-height: 1.6;
 }
@@ -353,6 +359,13 @@
   font-weight: 700;
 }
 .onramp-input:focus { outline: none; }
+/* Replaces the outline removed above, on the wrapper instead of the bare
+   input - keyboard users had no visible focus state at all on the amount
+   or destination fields otherwise (found in review, 2026-08-17). */
+.onramp-input-wrap:focus-within {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
 
 .onramp-input-unit {
   font-family: var(--body);
@@ -415,6 +428,13 @@
   font-size: 0.897rem;
   color: #ff3a5e; /* ONRAMP_THEME.error.text */
   text-align: center;
+}
+
+.onramp-outcome-unknown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .onramp-success-text {

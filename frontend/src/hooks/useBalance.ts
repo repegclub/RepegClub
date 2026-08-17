@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getBalance } from "../lib/queryBalance";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type BalanceState =
   | { status: "idle" }
@@ -17,22 +18,28 @@ export function useBalance(
   lcd?: string
 ): BalanceState & { refetch: () => void } {
   const [state, setState] = useState<BalanceState>({ status: "idle" });
+  const { start, isCurrent } = useLatestRequest();
 
   const load = useCallback(() => {
+    const token = start();
     if (!address || !denom) {
       setState({ status: "idle" });
       return;
     }
     setState({ status: "loading" });
     getBalance(address, denom, lcd)
-      .then((amount) => setState({ status: "loaded", amount }))
-      .catch((err) =>
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Query failed.",
-        })
-      );
-  }, [address, denom, lcd]);
+      .then((amount) => {
+        if (isCurrent(token)) setState({ status: "loaded", amount });
+      })
+      .catch((err) => {
+        if (isCurrent(token)) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Query failed.",
+          });
+        }
+      });
+  }, [address, denom, lcd, start, isCurrent]);
 
   useEffect(() => {
     load();

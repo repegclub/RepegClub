@@ -573,6 +573,7 @@
   },
   "onramp": {
     "mainnetBadge": "Mainnet",
+    "loading": "Loading onramp…",
     "hostHype": [
       "Terra Classic needs\nfresh capital, friend!",
       "USDC dodges that\nnasty burn tax!",
@@ -595,11 +596,13 @@
       "balance": "Your {{symbol}} balance: {{amount}}",
       "balanceUsdc": "Your USDC balance in {{chain}}: {{amount}}",
       "amountLabel": "Amount to send",
+      "gasNeeded": "You need a little {{symbol}} in this wallet to pay gas for this transfer.",
       "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) — {{send}} {{symbol}} will be sent to {{address}} on Terra Classic.",
       "sendButton": "Send to Terra Classic",
       "sending": "Sending…",
       "sendFailed": "Transaction failed.",
-      "networkError": "Network error — please try again.",
+      "outcomeUnknown": "We couldn't confirm whether this went through — check your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
+      "outcomeUnknownAck": "I checked — let me try again",
       "sent": "Sent! Tx hash: {{hash}}"
     }
   },
@@ -610,11 +613,11 @@
     "items": [
       {
         "q": "How does this actually work?",
-        "a": "Pick which chain your funds are on, connect that wallet (or paste its address), and confirm. Everything else — swapping to USDC if you brought something else, then bridging it over — happens automatically in one flow, powered by Skip Go, a router used by other Cosmos apps for exactly this. Your USDC lands directly in your own Terra Classic wallet."
+        "a": "Pick which chain your funds are on, connect that wallet (or paste its address), and confirm. For Noble, Cosmos Hub, and Osmosis, this project builds and asks you to sign the transfer itself, using Skip's routing to figure out any swap needed. For Ethereum, Arbitrum, and Base, this page embeds Skip Go's own widget, a router used by other Cosmos apps for exactly this. Either way, your USDC lands directly in your own Terra Classic wallet."
       },
       {
         "q": "What can I bring in?",
-        "a": "USDC already sitting on Noble, Ethereum, Arbitrum, or Base — or native ETH, OSMO, or ATOM, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
+        "a": "USDC already sitting on Noble, Cosmos Hub, Osmosis, Ethereum, Arbitrum, or Base — or native ATOM, OSMO, or ETH, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
       },
       {
         "q": "How do I find my Noble wallet address?",
