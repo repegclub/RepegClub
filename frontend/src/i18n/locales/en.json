@@ -48,6 +48,7 @@
     "quantityIncrease": "Buy more tickets",
     "buying": "Buying…",
     "buyFailed": "Purchase failed.",
+    "onrampCta": "No USDC? Get some here →",
     "connectFirst": "Connect your wallet first.",
     "roundExpiredHint": "This round expired without reaching the minimum players. Tap \"Expire round\" below the wheel and confirm — that opens a fresh round you can buy into.",
     "roundNotOpenHint": "This round already closed to new tickets. A new round opens automatically right after the winner is drawn — check back in a moment.",
@@ -314,7 +315,8 @@
     "wheelOfRepeg": "Wheel of Repeg",
     "weeklyRound": "Weekly Round",
     "gamesToggle": "Games",
-    "creators": "Create"
+    "creators": "Create",
+    "onramp": "Onramp"
   },
   "createYourOwnLuck": {
     "pageTitle": "Create Your Own Luck",
@@ -566,6 +568,77 @@
       {
         "q": "Does buying more tickets actually improve my odds?",
         "a": "Ticket count is exactly what decides the odds — never the wallet. The draw works over the full list of tickets bought that week (one entry per ticket, not one per wallet) and picks a single ticket from that list at random. So in a week with 7 tickets sold where one wallet holds 5 of them, that wallet has a 5-in-7 chance of winning — not a 1-in-3 chance just because only 3 wallets took part. You don't have to take our word for this either: open \"Verify this week\" on any drawn week and look at the ticket list inside \"Show everything used in this calculation\" — it lists one entry per ticket, in the exact order bought, duplicates included for wallets that bought more than one."
+      }
+    ]
+  },
+  "onramp": {
+    "mainnetBadge": "Mainnet — real funds",
+    "title": "Get USDC on Terra Classic",
+    "subtitle": "Pick where your USDC (or ETH/OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
+    "otherChainsTab": "Other chains",
+    "direct": {
+      "destAddressLabel": "Terra Classic address to receive",
+      "destAddressPlaceholder": "terra1... (paste your wallet)",
+      "destAddressWarning": "Double-check this address — this transfer can't be reversed.",
+      "destAddressInvalid": "That doesn't look like a valid Terra Classic address.",
+      "desc": "Connect your {{chain}} wallet, then send to the Terra Classic address below.",
+      "assetSelectLabel": "Asset",
+      "connectButton": "Connect {{chain}} wallet",
+      "balance": "Your {{symbol}} balance: {{amount}}",
+      "balanceUsdc": "Your USDC balance in {{chain}}: {{amount}}",
+      "amountLabel": "Amount to send",
+      "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) — {{send}} {{symbol}} will be sent to {{address}} on Terra Classic.",
+      "sendButton": "Send to Terra Classic",
+      "sending": "Sending…",
+      "sendFailed": "Transaction failed.",
+      "networkError": "Network error — please try again.",
+      "sent": "Sent! Tx hash: {{hash}}"
+    }
+  },
+  "onrampFaq": {
+    "title": "F.A.Q. - How does getting USDC here work?",
+    "screenPrompt": "Ask away",
+    "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
+    "items": [
+      {
+        "q": "How does this actually work?",
+        "a": "Pick which chain your funds are on, connect that wallet (or paste its address), and confirm. Everything else — swapping to USDC if you brought something else, then bridging it over — happens automatically in one flow, powered by Skip Go, a router used by other Cosmos apps for exactly this. Your USDC lands directly in your own Terra Classic wallet."
+      },
+      {
+        "q": "What can I bring in?",
+        "a": "USDC already sitting on Noble, Ethereum, Arbitrum, or Base — or native ETH, OSMO, or ATOM, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
+      },
+      {
+        "q": "How do I find my Noble wallet address?",
+        "a": "If you already use Keplr, you likely already have one — just add Noble as a chain in Keplr's chain list (it isn't enabled by default) and it'll show you a Noble address for that same wallet, same seed phrase as your Terra Classic address. That's the address to withdraw USDC to from Binance/KuCoin if you're going that route."
+      },
+      {
+        "q": "Why only these chains — can't I bring something else?",
+        "a": "This list is short on purpose. Every asset on it trades in deep, liquid markets, so the automatic swap doesn't lose real value to slippage. An obscure or illiquid token could get a bad swap on the way in — better to convert it to one of these first, somewhere else, than risk that here."
+      },
+      {
+        "q": "What about Bitcoin?",
+        "a": "Not supported, and it's a real limitation, not an oversight: Skip Go (the router behind this tool) has no native Bitcoin chain at all — only wrapped representations like WBTC exist on other chains, and that isn't the same asset as real BTC sitting in a Bitcoin wallet. There's no way to bring BTC directly here today."
+      },
+      {
+        "q": "How much does it cost?",
+        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from an EVM chain like Arbitrum or Base adds a swap/bridge step with its own gas and a small routing fee on top — still a small fraction of a typical amount, but worth knowing before sending something very small."
+      },
+      {
+        "q": "How long does it take?",
+        "a": "Depends on the path. Coming from Noble, or another Cosmos chain like Osmosis or Cosmos Hub, is close to instant. Coming from Ethereum, Arbitrum, or Base takes longer — those routes go through Circle's official CCTP bridge, which needs roughly 15-20 minutes to confirm before the swap can complete."
+      },
+      {
+        "q": "Is this safe — does Repeg Club hold my funds?",
+        "a": "No. Funds move directly between your own wallets, on-chain, the same way the rest of this site already works with Keplr — Repeg Club never receives or holds anything in between. For Ethereum, Arbitrum, and Base, this page is an interface to Skip Go, a non-custodial router. For Noble, Cosmos Hub, and Osmosis, this project builds and asks you to sign the transfer itself, so you can always see exactly what you're signing — including the fee — before you confirm it in your wallet."
+      },
+      {
+        "q": "Why does my wallet show more than one message when I confirm?",
+        "a": "For Noble, Cosmos Hub, and Osmosis, one signature covers both your transfer and Repeg Club's 0.2% service fee — that's why Keplr's confirmation screen shows 2 or 3 messages instead of just one. Nothing extra is being asked of you: it adds up to exactly the amount you typed, split between your transfer and the fee, both visible before you sign."
+      },
+      {
+        "q": "Why do I have to paste my Terra Classic address for Noble, Cosmos Hub, and Osmosis?",
+        "a": "Those 3 use a different wallet connection than Ethereum/Arbitrum/Base, and Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       }
     ]
   }

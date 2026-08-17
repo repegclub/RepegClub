@@ -75,6 +75,13 @@ export function GameNav({ current }: { current: string }) {
         <img src="/wheel-pixel/clover-emoji.png" alt="" className="game-nav-creators-icon" />
         {t("gameSwitcher.creators")}
       </Link>
+      <Link
+        to="/onramp"
+        className={`game-nav-onramp${current === "/onramp" ? " active" : ""}`}
+      >
+        <img src="/wheel-pixel/onramp-icon.png" alt="" className="game-nav-onramp-icon" />
+        {t("gameSwitcher.onramp")}
+      </Link>
     </nav>
   );
 }

@@ -1,0 +1,401 @@
+.onramp-page {
+  min-height: 100%;
+  padding: 1.5rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* .onramp-page's own children default to max-width:480px/centered (see
+   above) - the wallet-bar needs to span the full page width like it does
+   on every other page instead of shrinking to its content, since it isn't
+   a flex item with align-self:stretch by default inside a centered
+   flex-column parent. */
+.onramp-page .wallet-bar {
+  align-self: stretch;
+}
+
+.onramp-banner-border {
+  width: 100%;
+  max-width: 480px;
+}
+
+.onramp-banner-wrap {
+  position: relative;
+  container-type: inline-size;
+}
+
+.onramp-banner {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Sits in the empty upper portion of the screen behind the alien in
+   onramp-counter.jpg - insets hand-measured against that specific image
+   (same technique as .lab-screen-title/mago-display.png elsewhere in this
+   codebase), not a generic centered overlay. The screen itself is
+   horizontally centered in the full image, so equal left/right insets
+   center this without guessing an offset. Same display font as
+   .onramp-title (just green instead of gold) and same CRT green as the
+   other pixel-art screens on the site - no new font or color. */
+.onramp-banner-screen-text {
+  position: absolute;
+  left: 35%;
+  right: 35%;
+  top: 8%;
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
+  font-family: var(--display);
+  color: #9be86a;
+  /* Pure cqw, no clamp() rem floor/ceiling - same fix already applied
+     elsewhere in this codebase (see .prize-banner-content in wheel.css): a
+     rem-bounded clamp stays pinned at its ceiling through most of this
+     banner's real narrow-phone range (480px down to ~260px here), so the
+     text never actually shrinks with the image and ends up overflowing its
+     box - drifting onto the alien's head, reported live. 3cqw calibrated
+     to equal the old ~14px at this banner's 480px max-width, then keeps
+     scaling continuously below that with no floor. */
+  font-size: 3cqw;
+  line-height: 1.6;
+}
+
+.onramp-title {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 1.6rem;
+  color: var(--gold);
+  margin: 0;
+}
+
+.onramp-subtitle {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  font-family: var(--body);
+  font-size: 1.1rem;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.origin-options {
+  display: flex;
+  justify-content: center;
+}
+
+/* Same flat-fill/hard-bevel pixel button as .history-open-btn (History/
+   Feedback/Expired prizes triggers) - reused as-is, not a new button style,
+   so this reads as the same kind of "open a panel" action already
+   established on the site. */
+.origin-options-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 2.2rem;
+  background: #6b7280;
+  color: #fff;
+  border: none;
+  border-radius: 0;
+  font-family: var(--body);
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0 0.8rem;
+  cursor: pointer;
+  box-shadow:
+    inset 3px 3px 0 rgba(199,204,214,0.9),
+    inset -3px -3px 0 rgba(38,42,52,0.9),
+    0 4px 0 #3f434e;
+}
+.origin-options-btn:active {
+  box-shadow:
+    inset 3px 3px 0 rgba(38,42,52,0.9),
+    inset -3px -3px 0 rgba(199,204,214,0.5);
+  transform: translateY(4px);
+}
+.origin-options-btn:hover { color: var(--text); }
+
+.origin-options-modal-title {
+  margin: 0 0 1rem;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  color: var(--gold);
+  text-align: center;
+}
+
+/* Back to a bordered box per exchange (a flat border-bottom grid read as
+   ambiguous - couldn't tell a line separating 2 fields of the same
+   exchange from a line separating 2 different exchanges, reported live).
+   The modal has real room now (not squeezed next to this page's other
+   480px elements), so this reads better than the first attempt at this
+   same idea did. */
+.origin-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.origin-option-row {
+  padding: 0.7rem 0.8rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.origin-option-exchange {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  color: var(--gold);
+}
+
+.origin-option-path {
+  margin: 0.25rem 0 0;
+  font-size: 0.943rem;
+  color: var(--text-dim);
+}
+
+.origin-option-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.897rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.origin-option-note {
+  margin: 0;
+  font-size: 0.943rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ---------- Unified transfer tool (2026-08-15) ---------- */
+/* Everything below deliberately does NOT use this site's usual pixel-art
+   chrome (.pixel-stepped-corners buttons/inputs, .redeem-*, --display
+   font) - the whole point of this redesign is that the direct-transfer
+   form (Noble/Cosmos Hub/Osmosis, signed by this project itself) and the
+   embedded Skip Go widget (Ethereum/Arbitrum/Base, which can't be pixel-
+   arted - its Shadow DOM only exposes the theme props ONRAMP_THEME
+   already sets in onrampConfig.ts) read as the SAME tool underneath one
+   pixel-art frame (OnrampPage.tsx), not two different products stitched
+   together. Colors and radii below are copy-pasted from ONRAMP_THEME/
+   ONRAMP_BORDER_RADIUS_* in onrampConfig.ts on purpose, not approximated -
+   keep the two in sync if either changes. */
+.onramp-tool-frame {
+  width: 100%;
+  max-width: 480px;
+}
+
+.onramp-tool-panel {
+  background: #131728; /* ONRAMP_THEME.primary.background.normal */
+  border-radius: 16px; /* ONRAMP_BORDER_RADIUS_MAIN */
+  padding: 1rem;
+  font-family: var(--body);
+}
+
+.onramp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.onramp-tab {
+  flex: 1 1 auto;
+  border: none;
+  background: #05060a; /* ONRAMP_THEME.secondary.background.normal */
+  color: #b9bfd6; /* ONRAMP_THEME.primary.text.lowContrast */
+  font-family: var(--body);
+  font-size: 0.943rem;
+  font-weight: 700;
+  padding: 0.55rem 0.6rem;
+  border-radius: 12px; /* ONRAMP_BORDER_RADIUS_BUTTON */
+  cursor: pointer;
+}
+
+.onramp-tab-active {
+  background: #ffd166; /* ONRAMP_THEME.brandColor */
+  color: #131728;
+}
+
+.onramp-panel-desc {
+  margin: 0 0 0.8rem;
+  font-size: 0.897rem;
+  color: #b9bfd6;
+  line-height: 1.5;
+}
+
+/* Pasted destination address (Terra Classic) - reuses .onramp-input-wrap
+   so it reads as the same kind of box as the amount field right above it
+   (same dark fill, same radius), not a plain unstyled input that blends
+   into the panel background. State lifted to DirectTransferCard so it
+   survives switching between the Noble/Cosmos Hub/Osmosis tabs, but
+   rendered here, after the amount field, one per tab. */
+.onramp-dest-input-invalid {
+  border: 1px solid #ff3a5e; /* ONRAMP_THEME.error.text */
+}
+
+.onramp-dest-warning {
+  margin: 0.35rem 0 0;
+  font-size: 0.81rem;
+  color: #ffd166; /* ONRAMP_THEME.warning.text */
+}
+
+/* Native <select> - simplest real dropdown for "pick which asset on this
+   chain", not a custom-built listbox, low risk for something this small. */
+.onramp-asset-select {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.8rem;
+  background: #05060a; /* ONRAMP_THEME.secondary.background.normal */
+  color: #f1f4fb;
+  border: none;
+  font-family: var(--body);
+  font-size: 0.943rem;
+  font-weight: 700;
+  padding: 0.5rem 0.6rem;
+  border-radius: 12px; /* ONRAMP_BORDER_RADIUS_BUTTON */
+  cursor: pointer;
+}
+
+.onramp-wallet-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.onramp-wallet-row-error {
+  flex-direction: column;
+}
+
+.onramp-wallet-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #2fb968; /* ONRAMP_THEME.success.text */
+}
+
+.onramp-wallet-address {
+  font-family: var(--body);
+  font-size: 0.943rem;
+  color: #f1f4fb;
+}
+
+.onramp-balance-note {
+  margin: 0 0 0.6rem;
+  text-align: center;
+  font-size: 0.897rem;
+  color: #b9bfd6;
+}
+
+.onramp-field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.897rem;
+  color: #b9bfd6;
+}
+
+.onramp-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.onramp-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #05060a; /* ONRAMP_THEME.secondary.background.normal */
+  border-radius: 12px; /* ONRAMP_BORDER_RADIUS_BUTTON, rowItem */
+  padding: 0.55rem 0.7rem;
+}
+
+.onramp-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: #f1f4fb;
+  font-family: var(--body);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.onramp-input:focus { outline: none; }
+
+.onramp-input-unit {
+  font-family: var(--body);
+  font-size: 0.897rem;
+  font-weight: 700;
+  color: #b9bfd6;
+}
+
+.onramp-breakdown {
+  margin: 0.7rem 0 0;
+  font-size: 0.897rem;
+  color: #b9bfd6;
+  line-height: 1.5;
+}
+
+/* Only this button imitates the embedded widget's own typography (Skip Go
+   renders its main CTA in a heavier, tighter-tracked grotesque - "ABC
+   Diatype", a licensed font this project doesn't have and isn't worth
+   adding just for this). Tabs/labels/body copy around it stay on this
+   site's normal --body (Manrope) at their usual weight - only the main
+   button's own weight/spacing is pushed further, using a weight (800)
+   already loaded on this site for headings, not a new font file. */
+.onramp-main-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.9rem;
+  border: none;
+  background: #ffd166; /* ONRAMP_THEME.brandColor */
+  color: #131728;
+  font-family: var(--body);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-decoration: none;
+  padding: 0.75rem;
+  border-radius: 16px; /* ONRAMP_BORDER_RADIUS_MAIN */
+  cursor: pointer;
+}
+.onramp-main-btn:disabled {
+  background: #05060a;
+  color: #b8811f; /* ONRAMP_THEME.primary.text.ultraLowContrast */
+  cursor: default;
+}
+
+.onramp-ghost-btn {
+  border: 1px solid #3c4560; /* ONRAMP_THEME.primary.ghostButtonHover */
+  background: none;
+  color: #b9bfd6;
+  font-family: var(--body);
+  font-size: 0.897rem;
+  font-weight: 700;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px; /* ONRAMP_BORDER_RADIUS_PILL */
+  cursor: pointer;
+}
+
+.onramp-error-text {
+  margin-top: 0.6rem;
+  font-size: 0.897rem;
+  color: #ff3a5e; /* ONRAMP_THEME.error.text */
+  text-align: center;
+}
+
+.onramp-success-text {
+  margin-top: 0.6rem;
+  font-size: 0.897rem;
+  color: #2fb968; /* ONRAMP_THEME.success.text */
+  text-align: center;
+  word-break: break-all;
+}

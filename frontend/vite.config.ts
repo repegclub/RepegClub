@@ -12,6 +12,18 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  resolve: {
+    // @skip-go/widget pulls in @solana/wallet-adapter-ledger, which calls
+    // Node's Buffer directly - Vite externalizes the "buffer" Node builtin
+    // by default instead of bundling it, so without this alias the browser
+    // throws "ReferenceError: Buffer is not defined" as soon as that
+    // adapter is constructed. Paired with the window.Buffer assignment in
+    // main.tsx (this alias alone only fixes `import ... from "buffer"`
+    // call sites, not bare global `Buffer` references).
+    alias: {
+      buffer: 'buffer',
+    },
+  },
   build: {
     // Vite's default build.target (chrome111/safari16.4 baseline) emits JS
     // syntax that in-app browsers inside wallet apps (Keplr's built-in

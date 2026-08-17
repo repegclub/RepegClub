@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
 import { buyTickets } from "../../lib/roundActions";
@@ -162,6 +163,9 @@ export function TicketBooth({
             <p className="booth-cap-note">{t("ticketBooth.maxPerRound", { max: maxTicketsPerRound })}</p>
           )}
           {error && <p className="booth-error">{error}</p>}
+          <Link to="/onramp" className="booth-onramp-cta">
+            {t("ticketBooth.onrampCta")}
+          </Link>
         </div>
       </div>
       <div className="booth-details">

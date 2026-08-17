@@ -8,10 +8,13 @@ export type BalanceState =
   | { status: "loaded"; amount: string };
 
 // address/denom === null|undefined (not connected, or round config not
-// loaded yet) intentionally skips the query rather than erroring.
+// loaded yet) intentionally skips the query rather than erroring. `lcd`
+// defaults to this project's usual (testnet Terra Classic) endpoint - the
+// onramp's Noble balance check is the only caller that overrides it.
 export function useBalance(
   address: string | null,
-  denom: string | undefined
+  denom: string | undefined,
+  lcd?: string
 ): BalanceState & { refetch: () => void } {
   const [state, setState] = useState<BalanceState>({ status: "idle" });
 
@@ -21,7 +24,7 @@ export function useBalance(
       return;
     }
     setState({ status: "loading" });
-    getBalance(address, denom)
+    getBalance(address, denom, lcd)
       .then((amount) => setState({ status: "loaded", amount }))
       .catch((err) =>
         setState({
@@ -29,7 +32,7 @@ export function useBalance(
           message: err instanceof Error ? err.message : "Query failed.",
         })
       );
-  }, [address, denom]);
+  }, [address, denom, lcd]);
 
   useEffect(() => {
     load();
