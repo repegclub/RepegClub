@@ -16,6 +16,7 @@ export function WeeklyFAQSection() {
       items={items}
       screenPrompt={t("faqWeekly.screenPrompt")}
       screenPlaceholder={t("faqWeekly.screenPlaceholder")}
+      answerLabel={t("faqWeekly.screenAnswerLabel")}
     />
   );
 }

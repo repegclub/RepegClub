@@ -16,6 +16,7 @@ export function FAQSection() {
         items={items}
         screenPrompt={t("faq.screenPrompt")}
         screenPlaceholder={t("faq.screenPlaceholder")}
+        answerLabel={t("faq.screenAnswerLabel")}
       />
     </>
   );

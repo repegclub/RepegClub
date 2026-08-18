@@ -12,11 +12,22 @@ export function FAQClassroomPanel({
   items,
   screenPrompt,
   screenPlaceholder,
+  answerLabel,
 }: {
   title: string;
   items: FaqItem[];
   screenPrompt: string;
   screenPlaceholder: string;
+  // Shown in the screen title instead of the full question once one's
+  // selected ("Answer 1", "Answer 2", ...) - the question itself stays on
+  // its button below, which isn't height-constrained. .faq-screen-title
+  // doesn't shrink (flex-shrink: 0, see wheel.css), so a long question
+  // there ate into .faq-screen-body's fixed remaining space badly enough
+  // on mobile that the answer had almost no room left to scroll (found in
+  // review, 2026-08-17 - onrampFaq's longest question is 83 chars). A
+  // short, constant-length title fixes this for any question length,
+  // current or future, instead of just the one that triggered it.
+  answerLabel: string;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const active = selected !== null ? items[selected] : null;
@@ -35,7 +46,7 @@ export function FAQClassroomPanel({
         <img src="/characters/faq-classroom.png" alt="" />
         <img src="/brand/isotipo-pixel-art.png" alt="" className="faq-classroom-logo" />
         <div className="faq-screen">
-          <p className="faq-screen-title">{active ? active.q : screenPrompt}</p>
+          <p className="faq-screen-title">{active ? `${answerLabel} ${selected! + 1}` : screenPrompt}</p>
           <div className="faq-screen-body" ref={bodyRef}>
             <p>{active ? active.a : screenPlaceholder}</p>
           </div>
@@ -53,7 +64,7 @@ export function FAQClassroomPanel({
             }
             onClick={() => setSelected(i)}
           >
-            {item.q}
+            <span className="faq-question-num">{i + 1}.</span> {item.q}
           </button>
         ))}
       </div>

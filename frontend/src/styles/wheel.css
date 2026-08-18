@@ -3305,6 +3305,9 @@
     color: #fce6ff;
     border-color: #e070ff;
   }
+  .faq-question-num {
+    color: #e070ff;
+  }
 
   .confetti-piece {
     position: fixed;

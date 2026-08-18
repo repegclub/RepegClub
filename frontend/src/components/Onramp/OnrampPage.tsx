@@ -86,6 +86,7 @@ export function OnrampPage() {
         items={t("onrampFaq.items", { returnObjects: true }) as { q: string; a: string }[]}
         screenPrompt={t("onrampFaq.screenPrompt")}
         screenPlaceholder={t("onrampFaq.screenPlaceholder")}
+        answerLabel={t("onrampFaq.screenAnswerLabel")}
       />
     </main>
   );

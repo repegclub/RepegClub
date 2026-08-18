@@ -176,6 +176,7 @@
     "title": "F.A.Q. - How does it work?",
     "screenPrompt": "Ask away",
     "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
+    "screenAnswerLabel": "Answer",
     "items": [
       {
         "q": "How does the game work?",
@@ -516,6 +517,7 @@
     "title": "F.A.Q. - How does the weekly jackpot work?",
     "screenPrompt": "Ask away",
     "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
+    "screenAnswerLabel": "Answer",
     "items": [
       {
         "q": "How does the game work?",
@@ -610,6 +612,7 @@
     "title": "F.A.Q. - How does getting USDC here work?",
     "screenPrompt": "Ask away",
     "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
+    "screenAnswerLabel": "Answer",
     "items": [
       {
         "q": "How does this actually work?",
