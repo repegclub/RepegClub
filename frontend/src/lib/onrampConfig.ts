@@ -162,6 +162,63 @@ export const KNOWN_SLIP44_118_CHAIN_IDS = new Set([
   "core-1",
 ]);
 
+// Bech32 prefix for each chain above - used to derive a recovery address
+// for whichever of these a route happens to pass through (onrampActions.ts,
+// deriveAddress). MEDIUM finding from review (2026-08-17, second blind-
+// audit pass): this used to be fetched live from Skip's own
+// `/v2/info/chains` at request time - the exact set of addresses this
+// project trusts (validReceivers) was partly built from data supplied by
+// the same untrusted API the rest of this file exists to police. A
+// tampered response could return the wrong prefix for a chain and get a
+// wallet-derived address silently added to validReceivers under the wrong
+// encoding. Since KNOWN_SLIP44_118_CHAIN_IDS above is already a fixed,
+// hand-verified set (not something that needs Skip's live registry to
+// discover), these 5 prefixes are just as fixed and cost nothing extra to
+// maintain - standard, long-stable per-chain values, not Skip-specific.
+export const KNOWN_SLIP44_118_CHAIN_PREFIXES: Record<string, string> = {
+  [NOBLE_CHAIN_ID]: "noble",
+  [COSMOSHUB_CHAIN_ID]: "cosmos",
+  [OSMOSIS_CHAIN_ID]: "osmo",
+  "neutron-1": "neutron",
+  "core-1": "persistence",
+};
+// Found in review (2026-08-18, CodeRabbit): KNOWN_SLIP44_118_CHAIN_IDS
+// above and this prefix map used to list these same 5 chains
+// independently - nothing enforced they stayed in sync, so adding a chain
+// ID to only one of them would surface as a runtime throw in
+// deriveAddress instead of a type error. Asserted equal at module load so
+// a future drift fails immediately and loudly instead of silently.
+if (
+  KNOWN_SLIP44_118_CHAIN_IDS.size !== Object.keys(KNOWN_SLIP44_118_CHAIN_PREFIXES).length ||
+  ![...KNOWN_SLIP44_118_CHAIN_IDS].every((id) => id in KNOWN_SLIP44_118_CHAIN_PREFIXES)
+) {
+  throw new Error("KNOWN_SLIP44_118_CHAIN_IDS and KNOWN_SLIP44_118_CHAIN_PREFIXES have drifted apart.");
+}
+
+// Skip's own IBC-hooks entry-point contract address, one per chain that can
+// appear as an intermediate swap venue in a route (onrampActions.ts uses
+// this to recognize the *legitimate* reason a MsgTransfer/MsgExecuteContract
+// targets a contract instead of a wallet - the receiver of a swap-via-hook
+// message is this contract, not a derived address). This is Skip's own
+// infrastructure, not the swap pool inside it - unlike the pool (which
+// varies, see KNOWN_SLIP44_118_CHAIN_IDS's comment on core-1/neutron-1/
+// phoenix-1), each chain has exactly one of these, versioned by Skip's own
+// deploy process. Sourced from Skip's own public deployment records
+// (github.com/skip-mev/skip-go-cosmwasm-contracts, deployed-contracts/
+// <chain>/mainnet.toml, `entry_point_contract_address`), cross-checked
+// 2026-08-17 against 2 of these 3 live on mainnet (Neutron, Osmosis -
+// exact match with the real broadcast txs from 2026-08-16). Only covers
+// chains already in KNOWN_SLIP44_118_CHAIN_IDS above minus Noble/Cosmos Hub
+// (neither has ever been seen as a swap venue - Noble has no CosmWasm at
+// all, Cosmos Hub is always the origin in this project's routes, never an
+// intermediate hop) - any chain not listed here is already rejected
+// upstream by that same set before a route gets this far.
+export const SKIP_ENTRY_POINT_CONTRACT_ADDRESSES = new Set([
+  "neutron1zvesudsdfxusz06jztpph4d3h5x6veglqsspxns2v2jqml9nhywskcc923", // neutron-1
+  "osmo10a3k4hvk37cc4hnxctw4p95fhscd2z6h2rmx0aukc6rm8u9qqx9smfsh7u", // osmosis-1
+  "persistence18x2ae7yhd3ggvw4ryp5fjtxz5e0z3ml6srnv3ssqxedvlaqvecyq9pwq2s", // core-1
+]);
+
 // Curated source chains, each mapped to the denoms allowed from it - USDC
 // contracts verified fresh against Skip's own /v2/fungible/assets on
 // 2026-08-14 (never hand-typed) so the filter below can't accidentally let
