@@ -296,11 +296,27 @@ const TREASURY_COSMOS = {
   "osmosis-1": "osmo1pmrw0x576skdqxel7aakph7nhjscucznlflfms",
   "cosmoshub-4": "cosmos1pmrw0x576skdqxel7aakph7nhjscucznhjvedz",
 };
+// Found in review, 2026-08-18: the Noble/Osmosis/Cosmos Hub entries here
+// used to be terra1h3898...'s OWN pubkey re-encoded with those chains'
+// bech32 prefixes - correct for TREASURY_COSMOS above (a 2-of-3 multisig,
+// whose composite pubkey isn't tied to any single chain's coin type), but
+// wrong for this wallet: it's a normal individual Keplr account, and Terra
+// Classic/Terra 2.0 derive with slip44 coin type 330, not the 118 every
+// other chain here uses (see isValidTerraClassicAddress/deriveAddress
+// above - this is the exact same bug class that comment already warns
+// about, except it slipped into this address table itself instead of a
+// runtime derivation). The result: fees landed at addresses this wallet's
+// own key controls, but that Keplr never shows when switching to Noble/
+// Osmosis/Cosmos Hub with this account (it derives via 118 there,
+// landing on a DIFFERENT address) - confusing to audit and indistinguishable
+// from funds sent to the wrong place by mistake. Replaced with the
+// addresses Keplr actually shows for this same seed on each chain
+// (confirmed live: all 3 decode to the same pubkey hash as each other).
 const FEE_KEEPER_COSMOS = {
   [TERRA_CLASSIC_CHAIN_ID]: "terra1h3898lq8fyspnlvpwknl9ffu8pttyjvxl7kran",
-  [NOBLE_CHAIN_ID]: "noble1h3898lq8fyspnlvpwknl9ffu8pttyjvx3eet8a",
-  "osmosis-1": "osmo1h3898lq8fyspnlvpwknl9ffu8pttyjvx3plnfp",
-  "cosmoshub-4": "cosmos1h3898lq8fyspnlvpwknl9ffu8pttyjvxe6vrln",
+  [NOBLE_CHAIN_ID]: "noble1gqamtvt98mptup8nhh7sx4uf59h2hfglt82gtr",
+  "osmosis-1": "osmo1gqamtvt98mptup8nhh7sx4uf59h2hfgltlvs9l",
+  "cosmoshub-4": "cosmos1gqamtvt98mptup8nhh7sx4uf59h2hfglrylqnd",
 };
 const EVM_TREASURY_ADDRESS = "0xC14112fB044A9353e9F9896Ab22F9F388A62ada3";
 const EVM_FEE_KEEPER_ADDRESS = "0x7Ba128C90A0633Ff8E7277f6C35D9Cb27Db6bdf3";
