@@ -581,12 +581,10 @@
       "USDC dodges that\nnasty burn tax!",
       "Our cut's tiny\nnext to that tax!",
       "Noble's my favorite —\ncheap and fast!",
-      "Straight from Noble,\nCosmos Hub, Osmosis!",
-      "Ethereum works too...\nbut Noble's smarter!"
+      "Straight from Noble,\nCosmos Hub, Osmosis!"
     ],
     "title": "Get USDC on Terra Classic",
-    "subtitle": "Pick where your USDC (or ETH/OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
-    "otherChainsTab": "Other chains",
+    "subtitle": "Pick where your USDC (or OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
       "destAddressPlaceholder": "terra1... (paste your wallet)",
@@ -616,11 +614,11 @@
     "items": [
       {
         "q": "How does this actually work?",
-        "a": "Pick which chain your funds are on, connect that wallet (or paste its address), and confirm. For Noble, Cosmos Hub, and Osmosis, this project builds and asks you to sign the transfer itself, using Skip's routing to figure out any swap needed. For Ethereum, Arbitrum, and Base, this page embeds Skip Go's own widget, a router used by other Cosmos apps for exactly this. Either way, your USDC lands directly in your own Terra Classic wallet."
+        "a": "Pick which chain your funds are on (Noble, Cosmos Hub, or Osmosis), connect that wallet, and confirm. This project builds and asks you to sign the transfer itself, using Skip's routing to figure out any swap needed, then broadcasts it — your USDC lands directly in your own Terra Classic wallet."
       },
       {
         "q": "What can I bring in?",
-        "a": "USDC already sitting on Noble, Cosmos Hub, Osmosis, Ethereum, Arbitrum, or Base — or native ATOM, OSMO, or ETH, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
+        "a": "USDC already sitting on Noble, Cosmos Hub, or Osmosis — or native ATOM or OSMO, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
       },
       {
         "q": "How do I find my Noble wallet address?",
@@ -636,23 +634,23 @@
       },
       {
         "q": "How much does it cost?",
-        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from an EVM chain like Arbitrum or Base adds a swap/bridge step with its own gas and a small routing fee on top — still a small fraction of a typical amount, but worth knowing before sending something very small."
+        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small."
       },
       {
         "q": "How long does it take?",
-        "a": "Depends on the path. Coming from Noble, or another Cosmos chain like Osmosis or Cosmos Hub, is close to instant. Coming from Ethereum, Arbitrum, or Base takes longer — those routes go through Circle's official CCTP bridge, which needs roughly 15-20 minutes to confirm before the swap can complete."
+        "a": "Close to instant either way — Noble, Cosmos Hub, and Osmosis all settle directly on-chain, no bridge or long confirmation wait involved."
       },
       {
         "q": "Is this safe — does Repeg Club hold my funds?",
-        "a": "No. Funds move directly between your own wallets, on-chain, the same way the rest of this site already works with Keplr — Repeg Club never receives or holds anything in between. For Ethereum, Arbitrum, and Base, this page is an interface to Skip Go, a non-custodial router. For Noble, Cosmos Hub, and Osmosis, this project builds and asks you to sign the transfer itself, so you can always see exactly what you're signing — including the fee — before you confirm it in your wallet."
+        "a": "No. Funds move directly between your own wallets, on-chain, the same way the rest of this site already works with Keplr — Repeg Club never receives or holds anything in between. This project builds and asks you to sign the transfer itself, so you can always see exactly what you're signing — including the fee — before you confirm it in your wallet."
       },
       {
         "q": "Why does my wallet show more than one message when I confirm?",
         "a": "For Noble, Cosmos Hub, and Osmosis, one signature covers both your transfer and Repeg Club's 0.2% service fee — that's why Keplr's confirmation screen shows 2 or 3 messages instead of just one. Nothing extra is being asked of you: it adds up to exactly the amount you typed, split between your transfer and the fee, both visible before you sign."
       },
       {
-        "q": "Why do I have to paste my Terra Classic address for Noble, Cosmos Hub, and Osmosis?",
-        "a": "Those 3 use a different wallet connection than Ethereum/Arbitrum/Base, and Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
+        "q": "Why do I have to paste my Terra Classic address?",
+        "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       }
     ]
   }
