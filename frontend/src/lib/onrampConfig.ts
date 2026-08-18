@@ -182,6 +182,18 @@ export const KNOWN_SLIP44_118_CHAIN_PREFIXES: Record<string, string> = {
   "neutron-1": "neutron",
   "core-1": "persistence",
 };
+// Found in review (2026-08-18, CodeRabbit): KNOWN_SLIP44_118_CHAIN_IDS
+// above and this prefix map used to list these same 5 chains
+// independently - nothing enforced they stayed in sync, so adding a chain
+// ID to only one of them would surface as a runtime throw in
+// deriveAddress instead of a type error. Asserted equal at module load so
+// a future drift fails immediately and loudly instead of silently.
+if (
+  KNOWN_SLIP44_118_CHAIN_IDS.size !== Object.keys(KNOWN_SLIP44_118_CHAIN_PREFIXES).length ||
+  ![...KNOWN_SLIP44_118_CHAIN_IDS].every((id) => id in KNOWN_SLIP44_118_CHAIN_PREFIXES)
+) {
+  throw new Error("KNOWN_SLIP44_118_CHAIN_IDS and KNOWN_SLIP44_118_CHAIN_PREFIXES have drifted apart.");
+}
 
 // Skip's own IBC-hooks entry-point contract address, one per chain that can
 // appear as an intermediate swap venue in a route (onrampActions.ts uses

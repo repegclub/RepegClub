@@ -116,6 +116,19 @@ type SkipMultiChainMsg = { chain_id: string; msg_type_url: string; msg: string; 
 //       "ibc_transfer": {"ibc_info": {"receiver": "...", "recover_address": "...", "memo": "<JSON string, recurse>"}, "fee_swap": {"refund_address": "..."}}
 //       | "transfer": {"to_address": "..."}
 //     }}}
+// Shared by both branches below (MsgTransfer's memo and MsgExecuteContract's
+// msg) - found in review (2026-08-18, CodeRabbit): the two loops had
+// already drifted once (the entry-point exemption was granted to the first
+// hop's memo only, fixed 2026-08-17), a real risk of two copies of the same
+// check re-diverging.
+function assertReceiversAllowed(node: unknown, validReceivers: Set<string>): void {
+  for (const addr of collectSkipReceivers(node)) {
+    if (!validReceivers.has(addr) && !SKIP_ENTRY_POINT_CONTRACT_ADDRESSES.has(addr)) {
+      throw new Error("Skip's response forwards funds to an unexpected address - refusing to sign.");
+    }
+  }
+}
+
 function collectSkipReceivers(node: unknown): string[] {
   if (node === null || typeof node !== "object") return [];
   const o = node as Record<string, unknown>;
@@ -236,13 +249,26 @@ function collectSwapAndActionReceivers(swapAndAction: unknown): string[] {
   // down) - a non-empty affiliates array here means either Skip's API
   // changed shape or the response was tampered with. Every real response
   // this project has captured (2026-08-16/17) returned an empty array.
+  // Found in review (2026-08-18, CodeRabbit): a non-array affiliates value
+  // (e.g. an object or a string) skipped this check entirely instead of
+  // being rejected - safe today only because Skip's own entry-point
+  // contract would reject the malformed message on-chain, not because
+  // this validator actually caught it.
+  if (sa.affiliates !== undefined && !Array.isArray(sa.affiliates)) {
+    throw new Error("Skip's response has an unrecognized affiliates list - refusing to sign.");
+  }
   if (Array.isArray(sa.affiliates) && sa.affiliates.length > 0) {
     throw new Error("Skip's response includes an unexpected affiliate payout - refusing to sign.");
   }
 
   const postSwap = sa.post_swap_action;
-  if (postSwap === undefined) return found;
-  if (!postSwap || typeof postSwap !== "object") {
+  // Found in review (2026-08-18, CodeRabbit): `post_swap_action` is
+  // required by Skip's own swap_and_action schema (confirmed live,
+  // 2026-08-18, against a real ATOM->Terra Classic route) - an absent
+  // value used to return `found` as-is instead of rejecting, so a
+  // tampered response could drop it and have every address check in this
+  // function silently no-op.
+  if (postSwap === undefined || !postSwap || typeof postSwap !== "object") {
     throw new Error("Skip's response has an unrecognized post-swap action - refusing to sign.");
   }
   const ps = postSwap as Record<string, unknown>;
@@ -288,6 +314,15 @@ function collectSwapAndActionReceivers(swapAndAction: unknown): string[] {
       } catch {
         throw new Error("Skip's response has an unparseable nested memo - refusing to sign.");
       }
+      // Found in review (2026-08-18, CodeRabbit): a memo string that
+      // parses successfully but to a non-object (e.g. "null", "0", "[]")
+      // passed this check (it IS a string) and then collectSkipReceivers
+      // silently returned [] for the non-object node - the same
+      // entry-point-stranding case the check right above this one exists
+      // to reject, just reachable through a valid-JSON detour.
+      if (!nested || typeof nested !== "object") {
+        throw new Error("Skip's response has an unrecognized nested memo - refusing to sign.");
+      }
       found.push(...collectSkipReceivers(nested));
     }
     // Neutron (and any other chain charging its own ack/timeout relay fee
@@ -295,10 +330,21 @@ function collectSwapAndActionReceivers(swapAndAction: unknown): string[] {
     // refunds the leftover here - a real payout position, seen live in the
     // ATOM route (2026-08-16/17), missed by the first version of this
     // function.
+    // Found in review (2026-08-18, CodeRabbit): a present-but-malformed
+    // fee_swap (not an object, or a refund_address that isn't a string)
+    // was silently ignored instead of rejected - fee_swap itself stays
+    // optional (not every route charges one), but a present one must have
+    // the shape this project actually validates.
     const feeSwap = it.fee_swap;
-    if (feeSwap && typeof feeSwap === "object") {
+    if (feeSwap !== undefined) {
+      if (!feeSwap || typeof feeSwap !== "object") {
+        throw new Error("Skip's response has an unrecognized fee_swap - refusing to sign.");
+      }
       const refund = (feeSwap as Record<string, unknown>).refund_address;
-      if (typeof refund === "string") found.push(refund);
+      if (typeof refund !== "string") {
+        throw new Error("Skip's response has an unrecognized fee_swap - refusing to sign.");
+      }
+      found.push(refund);
     }
   }
 
@@ -471,11 +517,7 @@ function buildAdapterFromSkipMsg(
     // NOT validate which pool executes an intermediate swap (that part of
     // the route isn't stable chain-to-chain, see the MsgExecuteContract
     // branch below) - only where the money can end up.
-    for (const addr of collectSkipReceivers(memoObj)) {
-      if (!expected.validReceivers.has(addr) && !SKIP_ENTRY_POINT_CONTRACT_ADDRESSES.has(addr)) {
-        throw new Error("Skip's response forwards funds to an unexpected address - refusing to sign.");
-      }
-    }
+    assertReceiversAllowed(memoObj, expected.validReceivers);
     return new MsgIbcTransfer({
       sourcePort: parsed.source_port,
       sourceChannel: parsed.source_channel,
@@ -541,11 +583,7 @@ function buildAdapterFromSkipMsg(
     if (!parsed.msg || typeof parsed.msg !== "object") {
       throw new Error("Skip's response has an unrecognized contract message - refusing to sign.");
     }
-    for (const addr of collectSkipReceivers(parsed.msg)) {
-      if (!expected.validReceivers.has(addr) && !SKIP_ENTRY_POINT_CONTRACT_ADDRESSES.has(addr)) {
-        throw new Error("Skip's response forwards funds to an unexpected address - refusing to sign.");
-      }
-    }
+    assertReceiversAllowed(parsed.msg, expected.validReceivers);
     return new MsgExecuteContract({
       sender: parsed.sender,
       contract: parsed.contract,
