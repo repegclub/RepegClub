@@ -1,15 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Widget } from "@skip-go/widget";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
 import { isValidTerraClassicAddress, sendDirectToTerraClassic } from "../../lib/onrampActions";
 import {
   DIRECT_ORIGIN_CHAINS,
-  ONRAMP_CHAIN_AFFILIATES,
-  ONRAMP_DEFAULT_ROUTE,
-  ONRAMP_FILTER,
-  ONRAMP_THEME,
   displayToMicro,
   getDirectFeeSplit,
   microToDisplay,
@@ -21,20 +16,27 @@ function truncate(address: string): string {
   return `${address.slice(0, 10)}...${address.slice(-4)}`;
 }
 
-// One card, one selector, one panel underneath that swaps content - the
-// unifying design decided 2026-08-15: Noble/Cosmos Hub/Osmosis sign
-// themselves (see onrampActions.ts), Ethereum/Arbitrum/Base still need the
-// Skip Go widget (no EVM wallet integration of our own yet). The seam
-// between those two engines is deliberately invisible - same tab row,
-// same rounded "widget-style" panel chrome for both (onramp.css), pixel
-// art only on the outer frame in OnrampPage.tsx. Nothing here decides
-// which engine "looks more like the site" - the goal is the opposite: the
-// direct-transfer form matches the embedded widget's own look, not the
-// other way around, since the widget's Shadow DOM can't be pixel-arted
-// (see ONRAMP_THEME's own comments on that constraint).
+// Noble/Cosmos Hub/Osmosis sign themselves (see onrampActions.ts) and are
+// the only origins offered here. Ethereum/Arbitrum/Base via the embedded
+// Skip Go widget ("Other chains" tab) were pulled 2026-08-18: the widget's
+// default API proxy (go.skip.build/api/skip) returns no
+// access-control-allow-origin header for repegclub.com (confirmed live,
+// both in-browser - "Failed to fetch... blocked by CORS policy" - and via
+// curl comparing its preflight response against api.skip.build's, which
+// DOES send `access-control-allow-origin: *` and is what the direct
+// origins below call). Skip's own docs require reaching out on Discord to
+// get a domain whitelisted for the widget's endpoint - not something
+// fixable from this project's code. Not a loss in practice: EVM origins
+// never reliably collected the 0.2% fee either (chainIdsToAffiliates only
+// fires on an actual swap, and Ethereum/Arbitrum/Base -> Noble via CCTP is
+// a pure bridge, no swap, same root cause already documented for Noble
+// itself). Config for this path (ONRAMP_SOURCE_CHAINS, ONRAMP_FILTER,
+// ONRAMP_DEFAULT_ROUTE, ONRAMP_THEME, the EVM entries in
+// ONRAMP_CHAIN_AFFILIATES) is left in onrampConfig.ts, not deleted -
+// restoring this tab once a whitelist comes through should just mean
+// bringing the <Widget> branch back, not rebuilding the config.
 export function DirectTransferCard() {
-  const { t } = useTranslation();
-  const [selected, setSelected] = useState<DirectOriginChain | "other">(DIRECT_ORIGIN_CHAINS[0]);
+  const [selected, setSelected] = useState<DirectOriginChain>(DIRECT_ORIGIN_CHAINS[0]);
   // Lifted up here (not local to DirectOriginForm) so it survives
   // switching between the Noble/Cosmos Hub/Osmosis tabs - the destination
   // is the same address no matter which origin tab is active, the user
@@ -51,42 +53,22 @@ export function DirectTransferCard() {
             key={chain.chainId}
             type="button"
             role="tab"
-            aria-selected={selected !== "other" && selected.chainId === chain.chainId}
-            className={
-              "onramp-tab" + (selected !== "other" && selected.chainId === chain.chainId ? " onramp-tab-active" : "")
-            }
+            aria-selected={selected.chainId === chain.chainId}
+            className={"onramp-tab" + (selected.chainId === chain.chainId ? " onramp-tab-active" : "")}
             onClick={() => setSelected(chain)}
           >
             {chain.label}
           </button>
         ))}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={selected === "other"}
-          className={"onramp-tab" + (selected === "other" ? " onramp-tab-active" : "")}
-          onClick={() => setSelected("other")}
-        >
-          {t("onramp.otherChainsTab")}
-        </button>
       </div>
 
-      {selected === "other" ? (
-        <Widget
-          theme={ONRAMP_THEME}
-          defaultRoute={ONRAMP_DEFAULT_ROUTE}
-          filter={ONRAMP_FILTER}
-          chainIdsToAffiliates={ONRAMP_CHAIN_AFFILIATES}
-        />
-      ) : (
-        <DirectOriginForm
-          key={selected.chainId}
-          chain={selected}
-          terraClassicAddressInput={terraClassicAddressInput}
-          onTerraClassicAddressInputChange={setTerraClassicAddressInput}
-          terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
-        />
-      )}
+      <DirectOriginForm
+        key={selected.chainId}
+        chain={selected}
+        terraClassicAddressInput={terraClassicAddressInput}
+        onTerraClassicAddressInputChange={setTerraClassicAddressInput}
+        terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
+      />
     </div>
   );
 }
