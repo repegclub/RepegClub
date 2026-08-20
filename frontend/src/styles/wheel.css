@@ -2985,6 +2985,10 @@
   .verify-modal-header-wrap {
     position: relative;
     margin: -1.5rem -1.2rem 1rem;
+    /* Only TreasuryPanel's screen-text overlay below uses cq units so far
+       (VerifyRoundPanel's lab bubble sticks to plain rem) - harmless for
+       that one either way, since it declares none. */
+    container-type: inline-size;
   }
   .verify-modal-header {
     display: block;
@@ -3004,6 +3008,119 @@
   }
   .verify-lab-bubble-wrap .host-guide-bubble {
     font-size: 0.7rem;
+  }
+  /* Same header-bleed treatment as .verify-modal-header-wrap, reused for
+     TreasuryPanel's treasury-bank.jpg. The bank teller's head sits around
+     81%/43% of that image, with the big RPC screen occupying roughly
+     33%-66% wide / 5%-49% tall behind him - the bubble sits below the
+     screen's own bottom edge (else it covers it) and to the left of the
+     teller, roughly at his chest height rather than his head. No tail
+     (removed per direct request - "artisanal wedges" didn't read well at
+     this size), so nothing needs to point at him. */
+  .treasury-bank-bubble-wrap {
+    position: absolute;
+    left: 34%;
+    top: 51%;
+    width: 44%;
+    z-index: 2;
+  }
+  .treasury-bank-bubble-wrap .host-guide-bubble {
+    font-size: 0.65rem;
+  }
+  /* Title/total, printed on the big empty RPC screen in treasury-bank.jpg -
+     insets hand-measured against that specific image's black screen area
+     (36.5%-62.5% wide, 10.4%-43.9% tall), same technique as .onramp-
+     banner-screen-text. top+bottom (not just top) pins this to the
+     screen's actual height, and overflow:hidden is a hard backstop - both
+     together mean nothing can visually spill onto the neon frame around
+     it at any width. cqw off .verify-modal-header-wrap's own
+     container-type above so it scales with the modal's rendered width
+     instead of the viewport - box and font shrink together, so the fit
+     that works at 480px holds at any narrower/mobile width too. */
+  .treasury-screen-text {
+    position: absolute;
+    left: 36.5%;
+    right: 37.5%;
+    top: 10.5%;
+    bottom: 56%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25em;
+    overflow: hidden;
+    text-align: center;
+    text-transform: uppercase;
+    font-family: var(--display);
+    color: #9be86a;
+    font-size: 9px;
+    font-size: 2cqw;
+    line-height: 1.25;
+  }
+  .treasury-screen-title {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .treasury-screen-label {
+    margin-top: 1.2em;
+    opacity: 0.85;
+    font-size: 0.85em;
+  }
+  /* USDC isn't a literal dollar - no "$" anywhere here. Ticker after the
+     number, same order as formatUluna()'s "123.45 USDC" elsewhere on the
+     site, just smaller and bottom-aligned (flex-end) against the bigger
+     digits' baseline instead of full-size inline, since this number is
+     more prominent than a normal amount display. */
+  .treasury-screen-total {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25em;
+  }
+  .treasury-screen-currency {
+    font-size: 0.85em;
+    line-height: 1;
+    opacity: 0.85;
+  }
+  .treasury-screen-amount {
+    font-size: 1.5em;
+    line-height: 1;
+  }
+  .treasury-screen-status {
+    margin-top: 1.2em;
+    font-size: 0.8em;
+  }
+  /* Compact per-chain rows - TreasuryPanel.tsx's own classes rather than
+     OriginOptionsPanel's .origin-option-* (shared elsewhere, keeping
+     those untouched) - much smaller padding/font than that picker so all
+     4 chains plus their balances fit near a first glance, screen total
+     above taking over what .treasury-grand-total used to show below. */
+  .treasury-chains-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+  }
+  .treasury-chain-row {
+    padding: 0.4rem 0.55rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+  }
+  .treasury-chain-label {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 0.8rem;
+    color: var(--gold);
+  }
+  .treasury-chain-status {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+  .treasury-total-note {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    text-align: center;
   }
   .verify-modal-body {
     padding: 0.9rem 1rem;

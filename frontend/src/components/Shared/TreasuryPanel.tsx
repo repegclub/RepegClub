@@ -36,6 +36,19 @@ export function TreasuryPanel() {
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
+  // Same rotating-bubble pattern as VerifyRoundPanel's lab bubble - cycles
+  // while the modal is open, resets to idle while it's closed.
+  const BANK_BUBBLE_LINES = t("treasury.bankBubble", { returnObjects: true }) as string[];
+  const [bankBubbleIndex, setBankBubbleIndex] = useState(0);
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = setInterval(
+      () => setBankBubbleIndex((i) => (i + 1) % BANK_BUBBLE_LINES.length),
+      8000
+    );
+    return () => clearInterval(id);
+  }, [isOpen, BANK_BUBBLE_LINES.length]);
+
   // Prices fetched once per time the panel is opened (not on every page
   // load) - the estimated USD total is the only thing that needs them, and
   // it's meaningless while the modal is closed.
@@ -176,11 +189,42 @@ export function TreasuryPanel() {
                     >
                       &times;
                     </button>
+                    <div className="verify-modal-header-wrap">
+                      <img src="/characters/treasury-bank.jpg" alt="" className="verify-modal-header" />
+                      {/* Estimated total, printed on the big empty RPC screen
+                          in the image itself (same technique as .onramp-
+                          banner-screen-text) instead of taking up modal-body
+                          space below the chain list - so it's visible at a
+                          glance without scrolling, per direct request. */}
+                      <div className="treasury-screen-text">
+                        <span className="treasury-screen-title">{t("treasury.screenTitle")}</span>
+                        {grandTotal !== null ? (
+                          <>
+                            <span className="treasury-screen-label">{t("treasury.screenLabel")}</span>
+                            <span className="treasury-screen-total">
+                              <span className="treasury-screen-amount">{grandTotal.toFixed(2)}</span>
+                              <span className="treasury-screen-currency">USDC</span>
+                            </span>
+                          </>
+                        ) : pricesFailed ? (
+                          <span className="treasury-screen-status">{t("treasury.pricesError")}</span>
+                        ) : (
+                          <span className="treasury-screen-status">{t("treasury.loading")}</span>
+                        )}
+                      </div>
+                      <div className="treasury-bank-bubble-wrap">
+                        <div className="host-guide-bubble-outline-rectangulo">
+                          <div className="host-guide-bubble host-guide-bubble-rectangulo">
+                            <p>{BANK_BUBBLE_LINES[bankBubbleIndex]}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     <p id="treasury-modal-title" className="origin-options-modal-title">
                       {t("treasury.modalTitle")}
                     </p>
                     <p className="origin-option-note">{t("treasury.modalDesc")}</p>
-                    <div className="origin-options-list">
+                    <div className="treasury-chains-list">
                       {TREASURY_CHAINS.map((chain) => (
                         <TreasuryChainRow
                           key={chain.chainId}
@@ -190,20 +234,9 @@ export function TreasuryPanel() {
                         />
                       ))}
                     </div>
-                    <div className="treasury-grand-total">
-                      {grandTotal !== null ? (
-                        <>
-                          <p>{t("treasury.grandTotal", { amount: grandTotal.toFixed(2) })}</p>
-                          {anyIncomplete && (
-                            <p className="origin-option-path">{t("treasury.totalIncomplete")}</p>
-                          )}
-                        </>
-                      ) : pricesFailed ? (
-                        <p className="origin-option-path">{t("treasury.pricesError")}</p>
-                      ) : (
-                        <p className="origin-option-path">{t("treasury.loading")}</p>
-                      )}
-                    </div>
+                    {grandTotal !== null && anyIncomplete && (
+                      <p className="treasury-total-note">{t("treasury.totalIncomplete")}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -255,13 +288,13 @@ function TreasuryChainRow({
   }, [state, prices, chain.chainId]);
 
   return (
-    <div className="origin-option-row">
-      <p className="origin-option-exchange">{chain.label}</p>
-      {state.status === "loading" && <p className="origin-option-path">{t("treasury.loading")}</p>}
-      {state.status === "error" && <p className="origin-option-path">{t("treasury.error")}</p>}
+    <div className="treasury-chain-row">
+      <p className="treasury-chain-label">{chain.label}</p>
+      {state.status === "loading" && <p className="treasury-chain-status">{t("treasury.loading")}</p>}
+      {state.status === "error" && <p className="treasury-chain-status">{t("treasury.error")}</p>}
       {state.status === "loaded" &&
         (state.balances.length === 0 ? (
-          <p className="origin-option-path">{t("treasury.empty")}</p>
+          <p className="treasury-chain-status">{t("treasury.empty")}</p>
         ) : (
           <ul className="treasury-balances">
             {state.balances.map((b) => {

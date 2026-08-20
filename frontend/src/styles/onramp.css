@@ -205,21 +205,23 @@
   text-align: center;
 }
 
-/* TreasuryPanel.tsx's per-chain balance list - lives inside .origin-option-
-   row alongside .origin-option-exchange/.origin-option-path above. */
+/* TreasuryPanel.tsx's per-chain balance list - lives inside .treasury-
+   chain-row alongside .treasury-chain-label/.treasury-chain-status (see
+   wheel.css). Smaller than before (was 0.943rem) - part of the same
+   "balance sheet, not a stack of cards" pass as those. */
 .treasury-balances {
   list-style: none;
-  margin: 0.35rem 0 0;
+  margin: 0.3rem 0 0;
   padding: 0;
-  font-size: 0.943rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--text);
 }
 
 .treasury-explorer-link {
   display: inline-block;
-  margin-top: 0.5rem;
-  font-size: 0.855rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
   color: var(--blue);
   text-decoration: none;
 }
@@ -228,20 +230,6 @@
 .treasury-balance-usd {
   font-weight: 400;
   color: var(--text-dim);
-}
-
-/* Combined USD estimate across all 4 chains, once every row has priced
-   itself (TreasuryPanel.tsx) - separated from the per-chain list above by
-   the same border-top .origin-options-list's own rows already use via
-   their individual borders, so it doesn't read as a 5th chain. */
-.treasury-grand-total {
-  margin-top: 1rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
-  text-align: center;
-  font-family: var(--display);
-  font-size: 1.15rem;
-  color: var(--gold);
 }
 
 /* ---------- Unified transfer tool (2026-08-15) ---------- */

@@ -663,6 +663,12 @@
     "repo": "Public repo"
   },
   "treasury": {
+    "bankBubble": [
+      "Every coin in here is public — check it yourself, don't take our word for it",
+      "This vault funds what we build next, not anyone's pocket",
+      "Every game, every tool — their fees all land right here",
+      "No lone key opens this vault. Two of three signers, always"
+    ],
     "openButton": "View treasury balance",
     "modalTitle": "Repeg Club treasury",
     "modalDesc": "Your browser queries each chain's public LCD directly for these balances — nothing here is self-reported. Use the explorer link on any chain to double-check independently.",
@@ -670,7 +676,8 @@
     "error": "Couldn't load this chain's balance.",
     "empty": "Empty",
     "viewExplorer": "View on explorer",
-    "grandTotal": "Estimated total: ~${{amount}} USD",
+    "screenTitle": "Repeg Club Treasury",
+    "screenLabel": "Estimated total",
     "pricesError": "Couldn't load live prices for the total.",
     "totalIncomplete": "Some chains or assets couldn't be included — actual total may be higher.",
     "close": "Close"
