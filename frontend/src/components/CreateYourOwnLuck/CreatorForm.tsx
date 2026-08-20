@@ -103,6 +103,42 @@ function countEntrantLines(text: string): number {
   return new Set(lines).size;
 }
 
+// Same modal chrome + explicit-checkbox pattern as RaffleDetailPage.tsx's
+// own ValueMismatchWarningModal (history-overlay/history-modal classes,
+// checkbox-gated confirm) - duplicated rather than shared, since it's a
+// small self-contained component and the 2 differ in when they show up and
+// what they're confirming (a live financial mismatch there vs. a one-time
+// intent acknowledgement here).
+function PaidAirdropDisclaimerModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  const { t } = useTranslation();
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="history-overlay" onClick={onCancel}>
+      <div className="history-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="history-modal-header">
+          <h2 className="history-modal-title">{t("createYourOwnLuck.form.paidAirdropDisclaimerTitle")}</h2>
+          <button type="button" className="history-close-btn" onClick={onCancel}>
+            ✕
+          </button>
+        </div>
+        <p className="cyol-modal-body-text">{t("createYourOwnLuck.form.paidAirdropDisclaimerBody")}</p>
+        <label className="cyol-checkbox-label">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+          {t("createYourOwnLuck.form.paidAirdropDisclaimerCheckbox")}
+        </label>
+        <div className="cyol-detail-actions">
+          <button className="cyol-submit cyol-submit-secondary" onClick={onCancel}>
+            {t("createYourOwnLuck.form.paidAirdropDisclaimerCancel")}
+          </button>
+          <button className="cyol-submit" onClick={onConfirm} disabled={!checked}>
+            {t("createYourOwnLuck.form.paidAirdropDisclaimerConfirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // "mode" replaces the old in-form "Raffle type" radio (single_winner vs
 // airdrop) - split into 2 separate tools on CreatorToolsPage.tsx (direct
 // request, 2026-08-20): an Airdrop has no winner, so grouping it under
@@ -142,6 +178,11 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPaidAirdropDisclaimer, setShowPaidAirdropDisclaimer] = useState(false);
+  // Once per form instance, not once per click - re-showing it on every
+  // submit attempt (eg. after a rejected tx) would just teach people to
+  // click through it without reading.
+  const [paidAirdropDisclaimerAcked, setPaidAirdropDisclaimerAcked] = useState(false);
 
   function validate(): string | null {
     const price = Number(ticketPrice);
@@ -167,7 +208,12 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
     if (!Number.isInteger(min) || min < 2) return t("createYourOwnLuck.form.errorMinPlayers", { unit });
     if (!Number.isInteger(max) || max < min) return t("createYourOwnLuck.form.errorMaxPlayers", { unit });
     const limit = maxPlayersLimit(raffleType);
-    if (max > limit) return t("createYourOwnLuck.form.errorMaxPlayersLimit", { limit, unit });
+    if (max > limit) {
+      return t(
+        raffleType === "airdrop" ? "createYourOwnLuck.form.errorMaxPlayersLimitAirdrop" : "createYourOwnLuck.form.errorMaxPlayersLimit",
+        { limit, unit }
+      );
+    }
 
     let allowedEntrants: string[] | null;
     try {
@@ -183,23 +229,52 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
     // The contract doesn't reject this itself (it'd just sit until
     // ExpireRaffle refunds everyone), so this is worth catching up front.
     if (allowedEntrants !== null && allowedEntrants.length < min) {
-      return t("createYourOwnLuck.form.errorAllowedEntrantsBelowMinimum", {
-        count: allowedEntrants.length,
-        min,
-        unit,
-      });
+      return t(
+        raffleType === "airdrop"
+          ? "createYourOwnLuck.form.errorAllowedEntrantsBelowMinimumAirdrop"
+          : "createYourOwnLuck.form.errorAllowedEntrantsBelowMinimum",
+        {
+          count: allowedEntrants.length,
+          min,
+          unit,
+        }
+      );
     }
 
     return null;
   }
 
-  async function handleSubmit() {
+  // Gate before the real submit: a paid Airdrop needs an explicit
+  // acknowledgement first (direct request, 2026-08-20) - the tool's
+  // legitimate use is filtering bot farming / building FOMO around a
+  // genuine giveaway, not creator profit (see doSubmit below, called only
+  // after this clears once per form instance).
+  function handleSubmit() {
     if (walletState.status !== "connected") return;
     const validationError = validate();
     if (validationError) {
       setError(validationError);
       return;
     }
+    if (mode === "airdrop" && Number(ticketPrice) > 0 && !paidAirdropDisclaimerAcked) {
+      setShowPaidAirdropDisclaimer(true);
+      return;
+    }
+    doSubmit();
+  }
+
+  function confirmPaidAirdropDisclaimer() {
+    setShowPaidAirdropDisclaimer(false);
+    setPaidAirdropDisclaimerAcked(true);
+    doSubmit();
+  }
+
+  async function doSubmit() {
+    // Redundant at runtime (both callers - handleSubmit and
+    // confirmPaidAirdropDisclaimer - already checked this) but needed for
+    // TS to narrow walletState.wallet's type here, since that narrowing
+    // doesn't carry across the function boundary.
+    if (walletState.status !== "connected") return;
 
     setSubmitting(true);
     setError(null);
@@ -229,9 +304,12 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         // revisit, defeating the safety warning meant to catch exactly
         // that). Still testnet-only - see cyolPrizeAssetCache.ts.
         setCachedPrizeAssetChoice(raffleAddress, prizeAssetChoice);
-        navigate(`/create-your-own-luck/${raffleAddress}`, {
-          state: raffleType === "single_winner" ? { plannedPrizeAmount } : undefined,
-        });
+        // plannedPrizeAmount now applies to both modes (extended to Airdrop,
+        // 2026-08-20 - see the field above) - this used to only pass it for
+        // single_winner, silently dropping an Airdrop creator's planned
+        // amount and leaving the funding screen to fall back to its own
+        // "100" default instead (CodeRabbit finding, PR #37).
+        navigate(`/create-your-own-luck/${raffleAddress}`, { state: { plannedPrizeAmount } });
       }
       try {
         onCreated?.();
@@ -240,7 +318,11 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         // raffle that was just created.
       }
     } catch (err) {
-      setError(err instanceof Error ? friendlyCyolError(err.message) : t("createYourOwnLuck.form.errorGeneric"));
+      setError(
+        err instanceof Error
+          ? friendlyCyolError(err.message)
+          : t(raffleType === "airdrop" ? "createYourOwnLuck.form.errorGenericAirdrop" : "createYourOwnLuck.form.errorGeneric")
+      );
     } finally {
       setSubmitting(false);
     }
@@ -360,7 +442,12 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
               if (count < min) {
                 return (
                   <span className="cyol-hint">
-                    {t("createYourOwnLuck.form.allowedEntrantsBelowMinimumHint", { count, min, unit: participantsWord(raffleType) })}
+                    {t(
+                      raffleType === "airdrop"
+                        ? "createYourOwnLuck.form.allowedEntrantsBelowMinimumHintAirdrop"
+                        : "createYourOwnLuck.form.allowedEntrantsBelowMinimumHint",
+                      { count, min, unit: participantsWord(raffleType) }
+                    )}
                   </span>
                 );
               }
@@ -375,7 +462,13 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
             })()}
           </label>
 
-          {raffleType === "single_winner" && (
+          {/* Planned prize amount - shown for both modes now (used to be
+              SingleWinner-only). Airdrop needs it too so the fairness check
+              below can run at creation time, not just later at DepositPrize
+              (direct request, 2026-08-20) - a creator could otherwise pick
+              ticket_price/max_players fairly blind to whether the deal
+              they're setting up is even fair to participants. */}
+          {(raffleType === "single_winner" || raffleType === "airdrop") && (
             <label className="cyol-field">
               <span>{t("createYourOwnLuck.form.plannedPrizeLabel", { asset: PRIZE_ASSET_LABELS[prizeAssetChoice] })}</span>
               <input
@@ -385,20 +478,26 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                 value={plannedPrizeAmount}
                 onChange={(e) => setPlannedPrizeAmount(e.target.value)}
               />
-              <span className="cyol-hint">{t("createYourOwnLuck.form.plannedPrizeHint")}</span>
+              <span className="cyol-hint">
+                {t(raffleType === "airdrop" ? "createYourOwnLuck.form.plannedPrizeHintAirdrop" : "createYourOwnLuck.form.plannedPrizeHint")}
+              </span>
               {(() => {
                 const price = Number(ticketPrice);
                 const max = Number(maxPlayers);
                 const prize = Number(plannedPrizeAmount);
-                // Mirrors validate()'s own constraints (price > 0 for
-                // SingleWinner, integer max_players) - without this, typing
-                // an invalid value still in progress (a negative price, a
-                // fractional max_players) showed a disclosure number for an
-                // input that submit would reject anyway (CodeRabbit finding,
-                // 2026-07-26).
+                // Mirrors validate()'s own constraints (integer max_players,
+                // and - for SingleWinner only - price > 0) - without this,
+                // typing an invalid value still in progress (a negative
+                // price, a fractional max_players) showed a disclosure
+                // number for an input that submit would reject anyway
+                // (CodeRabbit finding, 2026-07-26). Airdrop can legitimately
+                // have price === 0 (free) - skipped separately below, not
+                // here, since a free airdrop has no fairness question to
+                // begin with (nobody pays anything).
                 if (
                   !Number.isFinite(price) ||
-                  price <= 0 ||
+                  price < 0 ||
+                  (raffleType === "single_winner" && price <= 0) ||
                   !Number.isFinite(max) ||
                   !Number.isInteger(max) ||
                   max < 2 ||
@@ -417,13 +516,36 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                 // which one the creator picked (real bug found live,
                 // 2026-07-26: LUNC was silently priced as USDC otherwise).
                 const prizeUsd = prize * priceForAsset(prizeAssetChoice, tokenPrices.prices);
-                const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prizeUsd);
+
+                if (raffleType === "single_winner") {
+                  const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prizeUsd);
+                  return (
+                    <span className="cyol-hint">
+                      {profit > 0
+                        ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
+                        : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
+                    </span>
+                  );
+                }
+
+                // Airdrop fairness check - only meaningful once a ticket
+                // actually costs something (see the free-airdrop skip
+                // above). Same math as RaffleDetailPage.tsx's own
+                // fundValueMismatch/buyValueMismatch (worst-case share =
+                // prize / max_players, the whole point being "how bad can
+                // this get if it fills up completely") - shown here too so
+                // a creator sees it before ever instantiating the raffle,
+                // not only after, at the DepositPrize step.
+                if (price <= 0) return null;
+                const worstCaseShareUsd = prizeUsd / max;
+                const fair = worstCaseShareUsd >= price;
                 return (
-                  <span className="cyol-hint">
-                    {profit > 0
-                      ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
-                      : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
-                  </span>
+                  <div className={`cyol-airdrop-fairness-box${fair ? "" : " cyol-airdrop-fairness-box-unfair"}`}>
+                    {t("createYourOwnLuck.form.airdropCalcWorstCase", { shareUsd: worstCaseShareUsd.toFixed(2) })}{" "}
+                    {t(fair ? "createYourOwnLuck.form.airdropCalcFair" : "createYourOwnLuck.form.airdropCalcUnfair", {
+                      ticketUsd: price.toFixed(2),
+                    })}
+                  </div>
                 );
               })()}
             </label>
@@ -431,10 +553,7 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
 
           {/* Creator calculator - only meaningful once real money is on the
               line (a free raffle has no fee-vs-revenue tension to plan
-              around). Airdrop's prize isn't known until DepositPrize, so its
-              break-even here only covers the service fee, not the
-              (yet-unknown) prize on top of it - SingleWinner already has a
-              real planned prize in this same form to fold in. */}
+              around). */}
           {Number(ticketPrice) > 0 &&
             (() => {
               const price = Number(ticketPrice);
@@ -510,7 +629,12 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                             : "createYourOwnLuck.form.calcBreakEvenFeeOnly",
                           { tickets: breakEvenTickets }
                         )
-                      : t("createYourOwnLuck.form.calcBreakEvenUnreachable", { maxTickets, unit: participantsWord(raffleType) })}
+                      : t(
+                          raffleType === "airdrop"
+                            ? "createYourOwnLuck.form.calcBreakEvenUnreachableAirdrop"
+                            : "createYourOwnLuck.form.calcBreakEvenUnreachable",
+                          { maxTickets, unit: participantsWord(raffleType) }
+                        )}
                   </p>
                   {breakEvenReachable && suggestedMinPlayers !== null && (
                     <button
@@ -540,6 +664,13 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
               ? t(raffleType === "airdrop" ? "createYourOwnLuck.form.submittingAirdrop" : "createYourOwnLuck.form.submitting")
               : t(raffleType === "airdrop" ? "createYourOwnLuck.form.submitAirdrop" : "createYourOwnLuck.form.submit")}
           </button>
+
+          {showPaidAirdropDisclaimer && (
+            <PaidAirdropDisclaimerModal
+              onCancel={() => setShowPaidAirdropDisclaimer(false)}
+              onConfirm={confirmPaidAirdropDisclaimer}
+            />
+          )}
         </div>
       )}
     </div>
