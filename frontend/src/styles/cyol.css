@@ -6,9 +6,39 @@
 
 .cyol-title {
   font-family: var(--display);
+  /* No explicit size before this - fell back to the browser's default h1
+     size (~2rem), too big once the titles here got longer ("Create Your
+     Own Luck with our Creator Tools", "Galactic Raffles & Airdrops") -
+     direct request, 2026-08-20. Matches .onramp-title's own page-title
+     size for consistency. */
+  font-size: 1.6rem;
   color: var(--text);
   text-align: center;
   margin: 1rem 0 1.5rem;
+}
+
+/* Shared by CreateYourOwnLuckPage.tsx's Galactic Raffle banner and
+   CreatorToolsPage.tsx's Creators Lab banner - was raffle-specific until
+   the 2nd one showed up (2026-08-20). */
+.cyol-page-banner-border {
+  /* .panel-border (reused here for its pixel-frame look) defaults to
+     max-width:340px, sized for the ticket-stub entrant panel it was built
+     for - that silently capped this card small regardless of what this
+     rule set (found live, 2026-08-20: a margin tweak here had no visible
+     effect at all because of it). Un-capping it to the full width of
+     .cyol-page's own centered column makes the card as big as it can get
+     while staying centered - no bleed needed, filling the column already
+     reads as both. */
+  width: 100%;
+  max-width: none;
+  margin: 0 0 1.5rem;
+}
+
+.cyol-page-banner {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
 }
 
 .cyol-list-title {
@@ -101,6 +131,28 @@
   font-size: 0.75rem;
 }
 
+/* The airdrop worst-case-vs-ticket-price fairness disclosure - its own
+   boxed container (direct request, 2026-08-20), not loose text like a
+   plain .cyol-hint, since this message matters more than the usual field
+   hint and shouldn't read as easy-to-skip fine print. Same card look as
+   .cyol-creator-calculator below. Gold border by default (matches
+   .cyol-hint's own color); switches to crimson when the deal is actually
+   bad for participants, so the warning has real visual weight, not just
+   bigger text. */
+.cyol-airdrop-fairness-box {
+  background: var(--bg-card);
+  border: 1px solid var(--gold-dim);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  color: var(--gold);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.cyol-airdrop-fairness-box-unfair {
+  border-color: var(--crimson-bright);
+  color: var(--crimson-bright);
+}
+
 .cyol-radio-group {
   display: flex;
   gap: 1rem;
@@ -125,21 +177,36 @@
   width: 4.5rem;
 }
 
+/* Flat-fill/hard-bevel pixel button, same pattern as .game-nav-toggle-btn/
+   .wallet-connect-btn - was a soft rounded pill (border-radius:999px), the
+   last one left in these forms (direct request, 2026-08-20). */
 .cyol-submit {
   align-self: flex-start;
   background: var(--blue);
-  color: var(--text);
+  color: #fff;
   border: none;
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.7rem 1.6rem;
   font-family: var(--display);
   font-size: 0.85rem;
   cursor: pointer;
+  box-shadow:
+    inset 3px 3px 0 rgba(157,192,255,0.9),
+    inset -3px -3px 0 rgba(11,58,158,0.9),
+    0 4px 0 var(--blue-deep);
+}
+
+.cyol-submit:active:not(:disabled) {
+  box-shadow:
+    inset 3px 3px 0 rgba(11,58,158,0.9),
+    inset -3px -3px 0 rgba(157,192,255,0.5);
+  transform: translateY(4px);
 }
 
 .cyol-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .cyol-form-error {
@@ -335,9 +402,22 @@
   margin-top: 0.5rem;
 }
 
+/* Shares .cyol-submit's new hard-bevel base - overridden here to a muted
+   gray (same as .wallet-disconnect) so it reads as the secondary action,
+   not a 2nd copy of the primary blue submit button. The old thin border
+   doesn't work anymore now that .cyol-submit itself has a bevel shadow
+   instead of a plain fill. */
 .cyol-submit-secondary {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-bright);
+  background: #6b7280;
+  box-shadow:
+    inset 2px 2px 0 rgba(199,204,214,0.9),
+    inset -2px -2px 0 rgba(38,42,52,0.9),
+    0 3px 0 #3f434e;
+}
+.cyol-submit-secondary:active:not(:disabled) {
+  box-shadow:
+    inset 2px 2px 0 rgba(38,42,52,0.9),
+    inset -2px -2px 0 rgba(199,204,214,0.5);
 }
 
 .cyol-buy-group {

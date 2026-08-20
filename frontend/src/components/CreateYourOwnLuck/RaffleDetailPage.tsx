@@ -140,7 +140,6 @@ export function RaffleDetailPage() {
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
   const [showSelfBuyWarning, setShowSelfBuyWarning] = useState(false);
   const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
-  const [showFundValueWarning, setShowFundValueWarning] = useState(false);
   const [showSingleWinnerPrizeWarning, setShowSingleWinnerPrizeWarning] = useState(false);
   const [showSingleWinnerBuyerPrizeWarning, setShowSingleWinnerBuyerPrizeWarning] = useState(false);
   const tokenPrices = useTokenPrices();
@@ -167,7 +166,15 @@ export function RaffleDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raffleOpenStatus, detail.refetch]);
 
-  const shell = (children: React.ReactNode) => (
+  // isAirdropParam (not a closure over the component's own `isAirdrop`,
+  // which - see below - isn't computed until after `config` loads):
+  // shell() is also used by the loading/error/podium-unsupported early
+  // returns above, before the raffle's own type is known at all, so those
+  // call sites default to the generic wording (mirrors createYourOwnLuck
+  // vs createYourOwnLuck.raffleType elsewhere - "raffle" as the fallback
+  // when a distinction can't be made yet). Only the real, loaded render at
+  // the bottom of this component passes the true value.
+  const shell = (children: React.ReactNode, isAirdropParam = false) => (
     <main className="wheel-page cyol-page">
       <div className="wallet-bar">
         <GameNav current="/create-your-own-luck" />
@@ -185,7 +192,7 @@ export function RaffleDetailPage() {
         </div>
       </div>
       <Link className="cyol-back-link" to="/create-your-own-luck">
-        {t("createYourOwnLuck.detail.back")}
+        {t(isAirdropParam ? "createYourOwnLuck.detail.backAirdrop" : "createYourOwnLuck.detail.back")}
       </Link>
       {children}
     </main>
@@ -311,18 +318,24 @@ export function RaffleDetailPage() {
   }
   function handleFund() {
     if (walletState.status !== "connected" || !prizeDenom) return;
-    if (fundValueMismatch) {
-      setShowFundValueWarning(true);
-      return;
-    }
+    // Hard block, not a confirm-and-proceed warning like the other 3 below
+    // (direct request, 2026-08-20): worst-case share >= ticket price is
+    // mathematically equivalent to "the creator can never profit from this
+    // airdrop, no matter how many people join" (worst-case share = prize /
+    // max_players >= ticket_price implies prize >= ticket_price *
+    // max_players, which is the most ticket revenue this raffle could ever
+    // collect - so ticket_revenue - prize can never be positive). This is
+    // the moment that ratio becomes real and binding (the prize amount
+    // funded here can't be changed afterward), unlike the same math shown
+    // as a preview back in CreatorForm.tsx against a non-binding planned
+    // prize - so this is where it's actually enforceable, not just
+    // advisory. The button itself is disabled for the same reason below,
+    // this is a defensive backstop.
+    if (fundValueMismatch) return;
     if (singleWinnerPrizeBelowTicket) {
       setShowSingleWinnerPrizeWarning(true);
       return;
     }
-    runFund();
-  }
-  function confirmFundValueWarning() {
-    setShowFundValueWarning(false);
     runFund();
   }
   function confirmSingleWinnerPrizeWarning() {
@@ -332,7 +345,11 @@ export function RaffleDetailPage() {
   function runBuyTicket() {
     if (walletState.status !== "connected") return;
     if (maxMoreTickets < 1) {
-      setActionError(t("createYourOwnLuck.detail.ticketCapReached", { cap: ticketCap }));
+      setActionError(
+        t(isAirdrop ? "createYourOwnLuck.detail.ticketCapReachedAirdrop" : "createYourOwnLuck.detail.ticketCapReached", {
+          cap: ticketCap,
+        })
+      );
       return;
     }
     const quantity = Math.min(Math.max(1, Math.floor(Number(ticketQuantity)) || 1), maxMoreTickets);
@@ -469,7 +486,9 @@ export function RaffleDetailPage() {
           {t(statusLabelKey(raffleStatus.status, config.raffle_type))}
         </span>
       </div>
-      <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.contractAddressLabel")}</p>
+      <p className="cyol-detail-hint">
+        {t(isAirdrop ? "createYourOwnLuck.detail.contractAddressLabelAirdrop" : "createYourOwnLuck.detail.contractAddressLabel")}
+      </p>
       <p className="cyol-card-address">{address}</p>
       <p className="cyol-detail-line">{t("createYourOwnLuck.detail.creator", { creator: config.creator })}</p>
       <p className="cyol-detail-line">
@@ -490,10 +509,11 @@ export function RaffleDetailPage() {
       {raffleStatus.status === "open" && raffleStatus.seconds_remaining !== null && (
         <p className="cyol-detail-hint">
           {raffleStatus.seconds_remaining > 0
-            ? t("createYourOwnLuck.detail.marketingWindowRemaining", {
-                time: formatDuration(raffleStatus.seconds_remaining),
-              })
-            : t("createYourOwnLuck.detail.marketingWindowElapsed")}
+            ? t(
+                isAirdrop ? "createYourOwnLuck.detail.marketingWindowRemainingAirdrop" : "createYourOwnLuck.detail.marketingWindowRemaining",
+                { time: formatDuration(raffleStatus.seconds_remaining) }
+              )
+            : t(isAirdrop ? "createYourOwnLuck.detail.marketingWindowElapsedAirdrop" : "createYourOwnLuck.detail.marketingWindowElapsed")}
         </p>
       )}
       <p className="cyol-detail-line">
@@ -503,7 +523,9 @@ export function RaffleDetailPage() {
         )}
       </p>
       {connected && myTicketCount !== null && myTicketCount > 0 && (
-        <p className="cyol-detail-line cyol-detail-highlight">{t("createYourOwnLuck.detail.myTickets", { count: myTicketCount })}</p>
+        <p className="cyol-detail-line cyol-detail-highlight">
+          {t(isAirdrop ? "createYourOwnLuck.detail.myTicketsAirdrop" : "createYourOwnLuck.detail.myTickets", { count: myTicketCount })}
+        </p>
       )}
       {raffleStatus.prize_amount !== "0" && (
         <p className="cyol-detail-line">
@@ -535,11 +557,17 @@ export function RaffleDetailPage() {
       {raffleStatus.status === "funding" &&
         (canFund ? (
           <div className="cyol-detail-action">
-            <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.fundHint")}</p>
+            <p className="cyol-detail-hint">
+              {t(isAirdrop ? "createYourOwnLuck.detail.fundHintAirdrop" : "createYourOwnLuck.detail.fundHint")}
+            </p>
             <label className="cyol-field">
-              <span>{t("createYourOwnLuck.detail.prizeAmountLabel", { currency: prizeCurrency })}</span>
+              <span>
+                {t(isAirdrop ? "createYourOwnLuck.detail.airdropAmountLabel" : "createYourOwnLuck.detail.prizeAmountLabel", {
+                  currency: prizeCurrency,
+                })}
+              </span>
               <input type="number" min="0" step="0.01" value={prizeAmount} onChange={(e) => setPrizeAmount(e.target.value)} />
-              {(config.raffle_type === "single_winner" || config.raffle_type === "airdrop") &&
+              {config.raffle_type === "single_winner" &&
                 (() => {
                   const prize = Number(prizeAmount);
                   if (!Number.isFinite(prize) || prizeAssetPrice === null) return null;
@@ -561,13 +589,40 @@ export function RaffleDetailPage() {
                     </span>
                   );
                 })()}
+              {/* Airdrop never gets the fundraiser framing above (direct
+                  request, 2026-08-20) - a positive "this works like a
+                  fundraiser" reading here would just preview a state the
+                  Fund button below is about to refuse anyway. Same worst-
+                  case-share math and copy as CreatorForm.tsx's own airdrop
+                  calculator (reused verbatim, not duplicated under a new
+                  key) - this is the same question asked again now that the
+                  prize amount is finally real instead of just planned. */}
+              {isAirdrop && isPaid && fundWorstCaseShareUsd !== null && (
+                <div className={`cyol-airdrop-fairness-box${fundValueMismatch ? " cyol-airdrop-fairness-box-unfair" : ""}`}>
+                  {t("createYourOwnLuck.form.airdropCalcWorstCase", { shareUsd: fundWorstCaseShareUsd.toFixed(2) })}{" "}
+                  {t(
+                    fundValueMismatch ? "createYourOwnLuck.form.airdropCalcUnfair" : "createYourOwnLuck.form.airdropCalcFair",
+                    { ticketUsd: ticketPriceUsd.toFixed(2) }
+                  )}
+                  {fundValueMismatch && (
+                    <>
+                      {" "}
+                      {t("createYourOwnLuck.detail.fundValueMismatchBlocked")}
+                    </>
+                  )}
+                </div>
+              )}
             </label>
-            <button className="cyol-submit" onClick={handleFund} disabled={busy || !connected}>
-              {actionBusy === "fund" ? t("createYourOwnLuck.detail.funding") : t("createYourOwnLuck.detail.fund")}
+            <button className="cyol-submit" onClick={handleFund} disabled={busy || !connected || fundValueMismatch}>
+              {actionBusy === "fund"
+                ? t("createYourOwnLuck.detail.funding")
+                : t(isAirdrop ? "createYourOwnLuck.detail.fundAirdrop" : "createYourOwnLuck.detail.fund")}
             </button>
           </div>
         ) : (
-          <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.waitingForFunding")}</p>
+          <p className="cyol-detail-hint">
+            {t(isAirdrop ? "createYourOwnLuck.detail.waitingForFundingAirdrop" : "createYourOwnLuck.detail.waitingForFunding")}
+          </p>
         ))}
 
       {raffleStatus.status === "open" && (
@@ -601,7 +656,13 @@ export function RaffleDetailPage() {
                   className="cyol-submit"
                   onClick={handleBuyTicket}
                   disabled={busy || !connected || maxMoreTickets < 1}
-                  title={maxMoreTickets < 1 ? t("createYourOwnLuck.detail.ticketCapReached", { cap: ticketCap }) : undefined}
+                  title={
+                    maxMoreTickets < 1
+                      ? t(isAirdrop ? "createYourOwnLuck.detail.ticketCapReachedAirdrop" : "createYourOwnLuck.detail.ticketCapReached", {
+                          cap: ticketCap,
+                        })
+                      : undefined
+                  }
                 >
                   {actionBusy === "buy"
                     ? t("createYourOwnLuck.detail.buying")
@@ -640,7 +701,9 @@ export function RaffleDetailPage() {
           )}
           {canExpireRaffle && (
             <button className="cyol-submit cyol-submit-secondary" onClick={handleExpireRaffle} disabled={busy || !connected}>
-              {actionBusy === "expire" ? t("createYourOwnLuck.detail.expiring") : t("createYourOwnLuck.detail.expireRaffle")}
+              {actionBusy === "expire"
+                ? t("createYourOwnLuck.detail.expiring")
+                : t(isAirdrop ? "createYourOwnLuck.detail.expireAirdrop" : "createYourOwnLuck.detail.expireRaffle")}
             </button>
           )}
         </div>
@@ -695,11 +758,17 @@ export function RaffleDetailPage() {
         </div>
       )}
 
-      {raffleStatus.status === "cancelled" && <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.cancelled")}</p>}
+      {raffleStatus.status === "cancelled" && (
+        <p className="cyol-detail-hint">
+          {t(isAirdrop ? "createYourOwnLuck.detail.cancelledAirdrop" : "createYourOwnLuck.detail.cancelled")}
+        </p>
+      )}
 
       {canCancelRaffle && (
         <button className="cyol-cancel-link" onClick={handleCancelRaffle} disabled={busy || !connected}>
-          {actionBusy === "cancel" ? t("createYourOwnLuck.detail.cancelling") : t("createYourOwnLuck.detail.cancelRaffle")}
+          {actionBusy === "cancel"
+            ? t("createYourOwnLuck.detail.cancelling")
+            : t(isAirdrop ? "createYourOwnLuck.detail.cancelAirdrop" : "createYourOwnLuck.detail.cancelRaffle")}
         </button>
       )}
     </div>
@@ -713,7 +782,9 @@ export function RaffleDetailPage() {
               ✕
             </button>
           </div>
-          <p className="cyol-modal-body-text">{t("createYourOwnLuck.detail.selfBuyWarningBody")}</p>
+          <p className="cyol-modal-body-text">
+            {t(isAirdrop ? "createYourOwnLuck.detail.selfBuyWarningBodyAirdrop" : "createYourOwnLuck.detail.selfBuyWarningBody")}
+          </p>
           <div className="cyol-detail-actions">
             <button className="cyol-submit cyol-submit-secondary" onClick={() => setShowSelfBuyWarning(false)}>
               {t("createYourOwnLuck.detail.selfBuyWarningCancel")}
@@ -734,17 +805,6 @@ export function RaffleDetailPage() {
         })}
         onCancel={() => setShowBuyValueWarning(false)}
         onConfirm={confirmBuyValueWarning}
-      />
-    )}
-
-    {showFundValueWarning && fundWorstCaseShareUsd !== null && (
-      <ValueMismatchWarningModal
-        bodyText={t("createYourOwnLuck.detail.valueMismatchFundBody", {
-          shareUsd: fundWorstCaseShareUsd.toFixed(2),
-          ticketUsd: ticketPriceUsd.toFixed(2),
-        })}
-        onCancel={() => setShowFundValueWarning(false)}
-        onConfirm={confirmFundValueWarning}
       />
     )}
 
@@ -769,6 +829,7 @@ export function RaffleDetailPage() {
         onConfirm={confirmSingleWinnerBuyerPrizeWarning}
       />
     )}
-    </>
+    </>,
+    isAirdrop
   );
 }

@@ -38,6 +38,15 @@ export function CreatorToolsPage() {
 
       <h1 className="cyol-title">{t("creatorTools.pageTitle")}</h1>
 
+      {/* Creators Lab / Dev Hub art (2026-08-20, direct request) - same
+          alien-lore treatment as CreateYourOwnLuckPage.tsx's Galactic
+          Raffle banner, shares its CSS (.cyol-page-banner*). */}
+      <div className="cyol-page-banner-border panel-border pixel-stepped-corners">
+        <div className="panel-highlight pixel-stepped-corners">
+          <img src="/characters/creators-lab-banner.jpg" alt="" className="cyol-page-banner pixel-stepped-corners" />
+        </div>
+      </div>
+
       {/* 2 separate tools, not 1 form with a type switch (direct request,
           2026-08-20) - an Airdrop has no winner, so folding it under the
           same "raffle" framing as SingleWinner misrepresented what it is.
