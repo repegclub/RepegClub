@@ -103,15 +103,29 @@ function countEntrantLines(text: string): number {
   return new Set(lines).size;
 }
 
-export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
+// "mode" replaces the old in-form "Raffle type" radio (single_winner vs
+// airdrop) - split into 2 separate tools on CreatorToolsPage.tsx (direct
+// request, 2026-08-20): an Airdrop has no winner, so grouping it under
+// "raffle type" alongside SingleWinner misrepresented it as a kind of
+// raffle, the same "no winner = wrong words" principle cyolTerminology.ts
+// already applies to players/participants and Drawn/Executed. Podium stays
+// excluded from the UI either way (see the comment above) - if it returns,
+// it becomes a second option WITHIN raffle mode, not a 3rd top-level mode,
+// since Podium (unlike Airdrop) is still a real raffle.
+export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; onCreated?: () => void }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { state: walletState } = useWallet();
   const [open, setOpen] = useState(false);
   const tokenPrices = useTokenPrices();
 
-  const [raffleType, setRaffleType] = useState<RaffleType>("single_winner");
-  const [ticketPrice, setTicketPrice] = useState("1");
+  const raffleType: RaffleType = mode === "airdrop" ? "airdrop" : "single_winner";
+  // Each mode's own sensible default - Airdrop defaults to free (0),
+  // SingleWinner needs a real ticket price (this form doesn't offer a free
+  // path for it yet). Used to live in the type radio's onChange; mode is
+  // now fixed for this component instance's whole lifetime, so the initial
+  // state value alone covers it.
+  const [ticketPrice, setTicketPrice] = useState(mode === "airdrop" ? "0" : "1");
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
   const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
@@ -235,34 +249,21 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
   return (
     <div className="cyol-creator">
       <button type="button" className="cyol-creator-toggle" onClick={() => setOpen((o) => !o)}>
-        {t("createYourOwnLuck.creatorToggle")} {open ? "▲" : "▼"}
+        {t(mode === "airdrop" ? "createYourOwnLuck.creatorToggleAirdrop" : "createYourOwnLuck.creatorToggle")}{" "}
+        {open ? "▲" : "▼"}
       </button>
+
+      {/* Pitch for whoever hasn't opened the form yet - gone once they have,
+          so it doesn't compete with the real fields for space (direct
+          request, 2026-08-20). */}
+      {!open && (
+        <p className="cyol-creator-intro">
+          {t(mode === "airdrop" ? "createYourOwnLuck.creatorIntroAirdrop" : "createYourOwnLuck.creatorIntroRaffle")}
+        </p>
+      )}
 
       {open && (
         <div className="cyol-creator-form">
-          <label className="cyol-field">
-            <span>{t("createYourOwnLuck.form.raffleTypeLabel")}</span>
-            <div className="cyol-radio-group">
-              {(["single_winner", "airdrop"] as RaffleType[]).map((type) => (
-                <label key={type} className="cyol-radio">
-                  <input
-                    type="radio"
-                    name="raffleType"
-                    checked={raffleType === type}
-                    onChange={() => {
-                      setRaffleType(type);
-                      // Each type's own sensible default - Airdrop defaults
-                      // to free (0), SingleWinner needs a real ticket price
-                      // (this form doesn't offer a free path for it yet).
-                      setTicketPrice(type === "airdrop" ? "0" : "1");
-                    }}
-                  />
-                  {t(`createYourOwnLuck.raffleType.${type === "single_winner" ? "singleWinner" : type}`)}
-                </label>
-              ))}
-            </div>
-          </label>
-
           <label className="cyol-field">
             <span>{t("createYourOwnLuck.form.ticketPriceLabel")}</span>
             <input
@@ -316,7 +317,13 @@ export function CreatorForm({ onCreated }: { onCreated?: () => void }) {
                 <label key={choice} className="cyol-radio">
                   <input
                     type="radio"
-                    name="prizeAsset"
+                    // Scoped by mode - CreatorToolsPage now renders both a
+                    // "raffle" and an "airdrop" CreatorForm on the same page
+                    // at once (2026-08-20 split); a fixed "prizeAsset" name
+                    // would make the browser treat their 2 radio groups as
+                    // one, so picking an asset in one form could silently
+                    // deselect the other's.
+                    name={`prizeAsset-${mode}`}
                     checked={prizeAssetChoice === choice}
                     onChange={() => setPrizeAssetChoice(choice)}
                   />

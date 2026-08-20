@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WheelOfRepeg } from "./components/Wheel/WheelOfRepeg";
 import { WeeklyRoundPage } from "./components/Weekly/WeeklyRoundPage";
 import { CreateYourOwnLuckPage } from "./components/CreateYourOwnLuck/CreateYourOwnLuckPage";
+import { CreatorToolsPage } from "./components/CreateYourOwnLuck/CreatorToolsPage";
 import { RaffleDetailPage } from "./components/CreateYourOwnLuck/RaffleDetailPage";
 import { SocialLinks } from "./components/Shared/SocialLinks";
 import { WalletProvider } from "./contexts/WalletContext";
@@ -54,6 +55,7 @@ function App() {
           <Route path="/weekly-round" element={<WeeklyRoundPage />} />
           <Route path="/create-your-own-luck" element={<CreateYourOwnLuckPage />} />
           <Route path="/create-your-own-luck/:address" element={<RaffleDetailPage />} />
+          <Route path="/creators" element={<CreatorToolsPage />} />
           <Route
             path="/onramp"
             element={

@@ -75,7 +75,7 @@ export function CyolRevealChest({ contractAddress, walletAddress, myAirdropShare
     <div className="cyol-reveal-chest">
       <div
         ref={sceneRef}
-        className={`cyol-chest-scene${opening || opened ? " cyol-chest-open" : ""}${
+        className={`cyol-chest-scene${opened ? " cyol-chest-open" : ""}${
           connected && !isParticipant ? " cyol-chest-scene-locked" : ""
         }`}
       >
@@ -85,19 +85,15 @@ export function CyolRevealChest({ contractAddress, walletAddress, myAirdropShare
           <span className="cyol-coin cyol-coin-2" />
           <span className="cyol-coin cyol-coin-3" />
         </div>
-        <div className="cyol-chest-lid cyol-chest-wood">
-          <div className="cyol-chest-lid-band" />
-          <div className="cyol-chest-hasp-top" />
-        </div>
-        <div className="cyol-chest-body cyol-chest-wood">
-          <div className="cyol-chest-band cyol-chest-band-top" />
-          <div className="cyol-chest-band cyol-chest-band-bottom" />
-          <div className="cyol-chest-lock" />
-          <div className="cyol-chest-corner cyol-chest-corner-tl" />
-          <div className="cyol-chest-corner cyol-chest-corner-tr" />
-          <div className="cyol-chest-corner cyol-chest-corner-bl" />
-          <div className="cyol-chest-corner cyol-chest-corner-br" />
-        </div>
+        {/* Static pixel-art chest (closed/open), swapped the instant
+            `opened` flips - replaces the old CSS-drawn wood chest and its
+            hinged-lid rotation, which clashed with the rest of the site's
+            pixel-art look (direct request, 2026-08-20). The lid-opening
+            motion is gone; the glow/coins/sign payoff below still fires at
+            the same moment, so the reveal still lands as one beat instead
+            of the chest looking "open" before the actual result appears. */}
+        <img src="/wheel-pixel/cyol-chest-closed.png" alt="" className="cyol-chest-img cyol-chest-img-closed" />
+        <img src="/wheel-pixel/cyol-chest-open.png" alt="" className="cyol-chest-img cyol-chest-img-open" />
         {opened && myAirdropShare && (
           <div className="cyol-chest-sign">
             <span className="cyol-chest-sign-amount">{formatAmount(myAirdropShare.share, prizeCurrency)}</span>

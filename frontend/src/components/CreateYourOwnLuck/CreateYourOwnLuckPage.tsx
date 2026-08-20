@@ -11,7 +11,6 @@ import { useCyolRaffles } from "../../hooks/useCyolRaffles";
 import { useCyolRaffleSummaries, type CyolRaffleListEntry } from "../../hooks/useCyolRaffleSummaries";
 import type { RaffleRecordResponse } from "../../lib/queryFactory";
 import { RaffleCard } from "./RaffleCard";
-import { CreatorForm } from "./CreatorForm";
 
 type StatusFilter = "all" | "open" | "funding" | "closed" | "drawn" | "cancelled" | "mine";
 const STATUS_FILTERS: StatusFilter[] = ["all", "open", "funding", "closed", "drawn", "cancelled", "mine"];
@@ -69,8 +68,6 @@ export function CreateYourOwnLuckPage() {
       </div>
 
       <h1 className="cyol-title">{t("createYourOwnLuck.pageTitle")}</h1>
-
-      <CreatorForm onCreated={raffles.refetch} />
 
       <h2 className="cyol-list-title">{t("createYourOwnLuck.raffleListTitle")}</h2>
       {raffles.status === "loading" && <p>{t("createYourOwnLuck.loading")}</p>}

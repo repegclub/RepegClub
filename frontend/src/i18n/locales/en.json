@@ -318,9 +318,15 @@
   "gameSwitcher": {
     "wheelOfRepeg": "Wheel of Repeg",
     "weeklyRound": "Weekly Round",
+    "raffles": "Raffles",
     "gamesToggle": "Games",
     "creators": "Create",
     "onramp": "Onramp"
+  },
+  "creatorTools": {
+    "pageTitle": "Creator Tools",
+    "raffleFormTitle": "Create a raffle",
+    "airdropFormTitle": "Create an airdrop"
   },
   "createYourOwnLuck": {
     "pageTitle": "Create Your Own Luck",
@@ -354,8 +360,10 @@
       "cancelled": "Cancelled"
     },
     "creatorToggle": "🎪 I'm a creator",
+    "creatorToggleAirdrop": "🎁 I'm launching an airdrop",
+    "creatorIntroRaffle": "Create your own raffle, sell tickets, and offer a prize worth talking about. A great tool for fundraising — every raffle you run is public and verifiable on-chain, so a track record builds as you go.",
+    "creatorIntroAirdrop": "Create an airdrop for your community. There's no winner — the prize splits equally among everyone who joins. Keep it free to enter, or charge a ticket if you want it to double as a fundraiser too.",
     "form": {
-      "raffleTypeLabel": "Raffle type",
       "ticketPriceLabel": "Ticket price (USDC)",
       "minPlayersLabel": "Minimum {{unit}}",
       "maxPlayersLabel": "Maximum {{unit}} (up to {{limit}})",
