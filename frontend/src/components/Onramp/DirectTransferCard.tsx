@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { WalletProviderPopover } from "../Wallet/WalletProviderPopover";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
 import { isValidTerraClassicAddress, sendDirectToTerraClassic } from "../../lib/onrampActions";
+import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import {
   DIRECT_ORIGIN_CHAINS,
   displayToMicro,
@@ -46,15 +48,22 @@ export function DirectTransferCard() {
   const terraClassicAddressValid = isValidTerraClassicAddress(terraClassicAddressInput);
 
   return (
-    <div className="onramp-tool-panel">
+    <div className="onramp-tool-panel pixel-stepped-corners">
       <div className="onramp-tabs" role="tablist">
-        {DIRECT_ORIGIN_CHAINS.map((chain) => (
+        {DIRECT_ORIGIN_CHAINS.map((chain, index) => (
           <button
             key={chain.chainId}
             type="button"
             role="tab"
             aria-selected={selected.chainId === chain.chainId}
-            className={"onramp-tab" + (selected.chainId === chain.chainId ? " onramp-tab-active" : "")}
+            // onramp-tab-cN: which of the 3 established accent colors
+            // (green/blue/crimson) this tab turns into once picked - stays
+            // plain gray otherwise, see .onramp-tab-active.onramp-tab-cN in
+            // onramp.css.
+            className={
+              `onramp-tab onramp-tab-c${index}` +
+              (selected.chainId === chain.chainId ? " onramp-tab-active" : "")
+            }
             onClick={() => setSelected(chain)}
           >
             {chain.label}
@@ -86,6 +95,8 @@ function DirectOriginForm({
 }) {
   const { t } = useTranslation();
   const { state: walletState, connect, disconnect } = useCosmosWallet(chain);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const connectBtnRef = useRef<HTMLButtonElement>(null);
   const address = walletState.status === "connected" ? walletState.address : null;
   const destAddressInvalid = terraClassicAddressInput !== "" && terraClassicAddress === null;
   // Noble only ever has one asset (its native token already is USDC).
@@ -236,24 +247,57 @@ function DirectOriginForm({
           </button>
         </div>
       ) : walletState.status === "error" ? (
-        <div className="onramp-wallet-row onramp-wallet-row-error">
-          <span className="onramp-error-text">{t(`wallet.${walletState.kind}`)}</span>
-          {walletState.kind === "notInstalled" ? (
-            <a className="onramp-main-btn" href="https://www.keplr.app/" target="_blank" rel="noreferrer">
-              {t("wallet.install")}
-            </a>
-          ) : (
-            <button className="onramp-main-btn" onClick={connect}>
-              {t("wallet.retry")}
-            </button>
-          )}
-        </div>
+        (() => {
+          const provider = WALLET_PROVIDERS.find((p) => p.id === walletState.providerId)!;
+          return (
+            <div className="onramp-wallet-row onramp-wallet-row-error">
+              <span className="onramp-error-text">
+                {t(`wallet.${walletState.kind}`, { provider: provider.name })}
+              </span>
+              {walletState.kind === "notInstalled" ? (
+                <a className="onramp-main-btn" href={provider.installUrl} target="_blank" rel="noreferrer">
+                  {t("wallet.install", { provider: provider.name })}
+                </a>
+              ) : (
+                <button
+                  className="onramp-main-btn"
+                  onClick={() => connect(walletState.providerId, walletState.type)}
+                >
+                  {t("wallet.retry")}
+                </button>
+              )}
+              {/* Without this, a rejected/failed attempt only offers Retry
+                  on the SAME provider - no way back to the picker short of
+                  reloading the page (found live, 2026-08-19). */}
+              <button className="onramp-ghost-btn" onClick={disconnect}>
+                {t("wallet.chooseAnother")}
+              </button>
+            </div>
+          );
+        })()
       ) : (
-        <button className="onramp-main-btn" onClick={connect} disabled={walletState.status === "connecting"}>
-          {walletState.status === "connecting"
-            ? t("wallet.connecting")
-            : t("onramp.direct.connectButton", { chain: chain.label })}
-        </button>
+        <>
+          <button
+            ref={connectBtnRef}
+            className="onramp-main-btn"
+            onClick={() => setProviderMenuOpen((open) => !open)}
+            disabled={walletState.status === "connecting"}
+          >
+            {walletState.status === "connecting"
+              ? t("wallet.connecting")
+              : t("onramp.direct.connectButton", { chain: chain.label })}
+          </button>
+          {providerMenuOpen && (
+            <WalletProviderPopover
+              anchorRef={connectBtnRef}
+              onClose={() => setProviderMenuOpen(false)}
+              onSelect={(providerId, type) => {
+                setProviderMenuOpen(false);
+                connect(providerId, type);
+              }}
+            />
+          )}
+        </>
       )}
 
       {walletState.status === "connected" && (

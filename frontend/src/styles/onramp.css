@@ -205,26 +205,73 @@
   text-align: center;
 }
 
+/* TreasuryPanel.tsx's per-chain balance list - lives inside .origin-option-
+   row alongside .origin-option-exchange/.origin-option-path above. */
+.treasury-balances {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  font-size: 0.943rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.treasury-explorer-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.855rem;
+  color: var(--blue);
+  text-decoration: none;
+}
+.treasury-explorer-link:hover { text-decoration: underline; }
+
+.treasury-balance-usd {
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* Combined USD estimate across all 4 chains, once every row has priced
+   itself (TreasuryPanel.tsx) - separated from the per-chain list above by
+   the same border-top .origin-options-list's own rows already use via
+   their individual borders, so it doesn't read as a 5th chain. */
+.treasury-grand-total {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-family: var(--display);
+  font-size: 1.15rem;
+  color: var(--gold);
+}
+
 /* ---------- Unified transfer tool (2026-08-15) ---------- */
-/* Everything below deliberately does NOT use this site's usual pixel-art
-   chrome (.pixel-stepped-corners buttons/inputs, .redeem-*, --display
-   font) - the whole point of this redesign is that the direct-transfer
-   form (Noble/Cosmos Hub/Osmosis, signed by this project itself) and the
-   embedded Skip Go widget (Ethereum/Arbitrum/Base, which can't be pixel-
-   arted - its Shadow DOM only exposes the theme props ONRAMP_THEME
-   already sets in onrampConfig.ts) read as the SAME tool underneath one
-   pixel-art frame (OnrampPage.tsx), not two different products stitched
-   together. Colors and radii below are copy-pasted from ONRAMP_THEME/
-   ONRAMP_BORDER_RADIUS_* in onrampConfig.ts on purpose, not approximated -
-   keep the two in sync if either changes. */
+/* Originally deliberately avoided this site's usual pixel-art chrome
+   (.pixel-stepped-corners buttons, the .redeem-.../.round-action-btn
+   family's flat-fill/hard-bevel buttons) so this form and the embedded
+   Skip Go widget
+   (Ethereum/Arbitrum/Base, which couldn't be pixel-arted - its Shadow DOM
+   only exposed the theme props ONRAMP_THEME set in onrampConfig.ts) would
+   read as one tool. The widget tab was pulled entirely 2026-08-18 (see
+   DirectTransferCard.tsx) - this card is now the whole onramp, so its
+   buttons switched to the site's normal pixel-art bevel buttons (per
+   direct request, 2026-08-19) instead of staying rounded pills to match a
+   widget that's no longer here. Layout/inputs/tabs below are untouched -
+   still copy-pasted from ONRAMP_THEME/ONRAMP_BORDER_RADIUS_* in
+   onrampConfig.ts, keep the two in sync if either changes. */
 .onramp-tool-frame {
   width: 100%;
   max-width: 480px;
 }
 
+/* No border-radius here on purpose - this is the innermost of the site's
+   usual 3-layer pixel frame (.panel-border/.panel-highlight, both already
+   pixel-stepped-corners in OnrampPage.tsx) - a rounded corner on this
+   layer covered the frame's thin white middle line at the 4 stepped
+   corners, since it didn't follow the same clip-path shape as its 2
+   parents (found live, 2026-08-19). .pixel-stepped-corners on this class
+   itself (see DirectTransferCard.tsx) is what actually shapes it now. */
 .onramp-tool-panel {
   background: #131728; /* ONRAMP_THEME.primary.background.normal */
-  border-radius: 16px; /* ONRAMP_BORDER_RADIUS_MAIN */
   padding: 1rem;
   font-family: var(--body);
 }
@@ -236,22 +283,60 @@
   margin-bottom: 0.9rem;
 }
 
+/* Same flat-fill/hard-bevel pattern as .wallet-disconnect/.onramp-ghost-btn
+   (gray) - all 3 tabs read identical until one is picked, so the picked
+   one visibly stands out from its still-gray siblings instead of just
+   being subtly recolored gold like the rest of this frame (per direct
+   request, 2026-08-19). */
 .onramp-tab {
   flex: 1 1 auto;
   border: none;
-  background: #05060a; /* ONRAMP_THEME.secondary.background.normal */
-  color: #b9bfd6; /* ONRAMP_THEME.primary.text.lowContrast */
+  border-radius: 0;
+  background: #6b7280;
+  color: #fff;
   font-family: var(--body);
   font-size: 0.943rem;
   font-weight: 700;
   padding: 0.55rem 0.6rem;
-  border-radius: 12px; /* ONRAMP_BORDER_RADIUS_BUTTON */
   cursor: pointer;
+  box-shadow:
+    inset 2px 2px 0 rgba(199,204,214,0.9),
+    inset -2px -2px 0 rgba(38,42,52,0.9),
+    0 3px 0 #3f434e;
+}
+.onramp-tab:active {
+  box-shadow:
+    inset 2px 2px 0 rgba(38,42,52,0.9),
+    inset -2px -2px 0 rgba(199,204,214,0.5);
+  transform: translateY(3px);
 }
 
-.onramp-tab-active {
-  background: #ffd166; /* ONRAMP_THEME.brandColor */
-  color: #131728;
+/* Active tab's color - one of the site's 3 established accent colors per
+   chain (green/blue/crimson, same formulas as .booth-buy/.wallet-connect-
+   btn/.game-nav-onramp respectively), not the shared gold used elsewhere
+   in this frame. Which chain gets which color is arbitrary (no chain-brand
+   meaning intended) - just needs to visibly diverge from its 2 gray
+   siblings the moment it's picked. */
+.onramp-tab-active.onramp-tab-c0 {
+  background: #2fb968;
+  box-shadow:
+    inset 2px 2px 0 rgba(168,240,192,0.9),
+    inset -2px -2px 0 rgba(26,122,65,0.9),
+    0 3px 0 #1a7a41;
+}
+.onramp-tab-active.onramp-tab-c1 {
+  background: var(--blue);
+  box-shadow:
+    inset 2px 2px 0 rgba(157,192,255,0.9),
+    inset -2px -2px 0 rgba(11,58,158,0.9),
+    0 3px 0 var(--blue-deep);
+}
+.onramp-tab-active.onramp-tab-c2 {
+  background: var(--crimson);
+  box-shadow:
+    inset 2px 2px 0 rgba(255,150,170,0.9),
+    inset -2px -2px 0 rgba(120,10,30,0.9),
+    0 3px 0 #78141f;
 }
 
 .onramp-panel-desc {
@@ -381,20 +466,22 @@
   line-height: 1.5;
 }
 
-/* Only this button imitates the embedded widget's own typography (Skip Go
-   renders its main CTA in a heavier, tighter-tracked grotesque - "ABC
-   Diatype", a licensed font this project doesn't have and isn't worth
-   adding just for this). Tabs/labels/body copy around it stay on this
-   site's normal --body (Manrope) at their usual weight - only the main
-   button's own weight/spacing is pushed further, using a weight (800)
-   already loaded on this site for headings, not a new font file. */
+/* Same flat-fill/hard-bevel/pressed-ledge pattern as .booth-buy (green,
+   the site's "primary confirm/proceed" color - buying a ticket and sending
+   funds through are the same kind of action) - was gold, matching the now-
+   gone Skip Go widget's own button style (see the section comment above).
+   Kept off gold now that nothing forces it, so it doesn't compete with the
+   3 tab colors above (.onramp-tab-active.onramp-tab-cN) - green only
+   overlaps with the Noble tab, and even then this button and the tabs
+   are never both "the thing to look at" at the same time. */
 .onramp-main-btn {
   display: block;
   width: 100%;
   margin-top: 0.9rem;
   border: none;
-  background: #ffd166; /* ONRAMP_THEME.brandColor */
-  color: #131728;
+  border-radius: 0;
+  background: #2fb968;
+  color: #fff;
   font-family: var(--body);
   font-size: 1.05rem;
   font-weight: 800;
@@ -402,25 +489,49 @@
   text-align: center;
   text-decoration: none;
   padding: 0.75rem;
-  border-radius: 16px; /* ONRAMP_BORDER_RADIUS_MAIN */
   cursor: pointer;
+  box-shadow:
+    inset 3px 3px 0 rgba(168,240,192,0.9),
+    inset -3px -3px 0 rgba(26,122,65,0.9),
+    0 4px 0 #1a7a41;
+}
+.onramp-main-btn:active:not(:disabled) {
+  box-shadow:
+    inset 3px 3px 0 rgba(26,122,65,0.9),
+    inset -3px -3px 0 rgba(168,240,192,0.5);
+  transform: translateY(4px);
 }
 .onramp-main-btn:disabled {
-  background: #05060a;
-  color: #b8811f; /* ONRAMP_THEME.primary.text.ultraLowContrast */
+  opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }
 
+/* Same flat-fill/hard-bevel pattern as .wallet-disconnect (the connected-
+   wallet chip's own Disconnect button in the site's top nav) - reused
+   as-is, not just visually matched, so this onramp card's Disconnect/Max/
+   "choose another wallet" actions read as the exact same control, per
+   direct request (was a rounded outline pill before). */
 .onramp-ghost-btn {
-  border: 1px solid #3c4560; /* ONRAMP_THEME.primary.ghostButtonHover */
-  background: none;
-  color: #b9bfd6;
+  border: none;
+  border-radius: 0;
+  background: #6b7280;
+  color: #fff;
   font-family: var(--body);
-  font-size: 0.897rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  padding: 0.4rem 0.8rem;
-  border-radius: 999px; /* ONRAMP_BORDER_RADIUS_PILL */
+  padding: 0.3rem 0.6rem;
   cursor: pointer;
+  box-shadow:
+    inset 2px 2px 0 rgba(199,204,214,0.9),
+    inset -2px -2px 0 rgba(38,42,52,0.9),
+    0 3px 0 #3f434e;
+}
+.onramp-ghost-btn:active {
+  box-shadow:
+    inset 2px 2px 0 rgba(38,42,52,0.9),
+    inset -2px -2px 0 rgba(199,204,214,0.5);
+  transform: translateY(3px);
 }
 
 .onramp-error-text {

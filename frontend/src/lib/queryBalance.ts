@@ -13,3 +13,15 @@ export async function getBalance(address: string, denom: string, lcd: string = L
   const body = await res.json();
   return body?.balance?.amount ?? "0";
 }
+
+export type DenomBalance = { denom: string; amount: string };
+
+// Unfiltered bank balance query (every denom the address holds, not just
+// one) - for TreasuryPanel.tsx, which doesn't know in advance which denoms
+// a given chain's treasury address might be holding.
+export async function getAllBalances(address: string, lcd: string): Promise<DenomBalance[]> {
+  const res = await fetch(`${lcd}/cosmos/bank/v1beta1/balances/${address}`);
+  if (!res.ok) throw new Error(`Balance query failed (${res.status})`);
+  const body = await res.json();
+  return body?.balances ?? [];
+}

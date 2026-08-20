@@ -9,16 +9,22 @@ import type { PrizeAssetChoice } from "./cyolPrizeDenoms";
 // manipulable without a TWAP: manipulating a display-only warning has no
 // exploitable payoff.
 //
-// CoinGecko ids verified live (2026-07-26): "terra-luna" is LUNC/Terra
-// Classic's native token (not "terra-luna-2", which is the unrelated Terra
-// 2.0 chain's new LUNA) - "terrausd" is USTC (not "terrausd-classic", which
-// doesn't exist as an id). USDC is assumed exactly $1, no fetch needed.
-const COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd&vs_currencies=usd";
+// CoinGecko ids verified live (2026-07-26 for terra-luna/terrausd,
+// 2026-08-19 for cosmos/osmosis): "terra-luna" is LUNC/Terra Classic's
+// native token (not "terra-luna-2", which is the unrelated Terra 2.0
+// chain's new LUNA) - "terrausd" is USTC (not "terrausd-classic", which
+// doesn't exist as an id) - "cosmos"/"osmosis" are ATOM/OSMO's real ids
+// (added for TreasuryPanel.tsx's USD total, not originally needed by
+// CYOL). USDC is assumed exactly $1, no fetch needed.
+const COINGECKO_URL =
+  "https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd,cosmos,osmosis&vs_currencies=usd";
 
 export type TokenPrices = {
   lunc: number;
   ustc: number;
   usdc: number;
+  atom: number;
+  osmo: number;
 };
 
 export async function fetchTokenPrices(): Promise<TokenPrices> {
@@ -27,10 +33,34 @@ export async function fetchTokenPrices(): Promise<TokenPrices> {
   const data = await res.json();
   const lunc = data["terra-luna"]?.usd;
   const ustc = data["terrausd"]?.usd;
-  if (typeof lunc !== "number" || typeof ustc !== "number") {
+  const atom = data["cosmos"]?.usd;
+  const osmo = data["osmosis"]?.usd;
+  if (
+    typeof lunc !== "number" ||
+    typeof ustc !== "number" ||
+    typeof atom !== "number" ||
+    typeof osmo !== "number"
+  ) {
     throw new Error("CoinGecko response missing expected price fields");
   }
-  return { lunc, ustc, usdc: 1 };
+  return { lunc, ustc, usdc: 1, atom, osmo };
+}
+
+// Generic symbol -> USD price lookup, for callers (TreasuryPanel.tsx) that
+// only have a display symbol (DIRECT_ORIGIN_CHAINS' assets/treasuryConfig.ts's
+// symbolForDenom), not CYOL's specific prize-denom/asset-choice types below.
+// Returns null for anything not priced here (an unrecognized IBC asset,
+// eg.) - callers must treat that as "can't include this in a total", never
+// silently as $0 or $1.
+export function priceForSymbol(symbol: string, prices: TokenPrices): number | null {
+  switch (symbol) {
+    case "USDC": return prices.usdc;
+    case "ATOM": return prices.atom;
+    case "OSMO": return prices.osmo;
+    case "LUNC": return prices.lunc;
+    case "USTC": return prices.ustc;
+    default: return null;
+  }
 }
 
 // See cyolFormat.ts's prizeCurrencyLabel for the same testnet-only

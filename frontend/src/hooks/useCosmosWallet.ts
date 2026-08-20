@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { KeplrController, WalletType, type ConnectedWallet } from "@goblinhunt/cosmes/wallet";
+import { useCallback, useRef, useState } from "react";
+import { WalletType, type ConnectedWallet, type WalletController } from "@goblinhunt/cosmes/wallet";
 import type { DirectOriginChain } from "../lib/onrampConfig";
-import type { WalletErrorKind } from "./useKeplrWallet";
+import { WC_PROJECT_ID } from "../lib/walletConnectConfig";
+import { WALLET_PROVIDERS, type WalletErrorKind, type WalletProviderId } from "../lib/walletProviders";
 
 export type CosmosWalletState =
   | { status: "disconnected" }
-  | { status: "connecting" }
-  | { status: "connected"; address: string; wallet: ConnectedWallet }
-  | { status: "error"; kind: WalletErrorKind };
+  | { status: "connecting"; providerId: WalletProviderId; type: WalletType }
+  | { status: "connected"; address: string; wallet: ConnectedWallet; providerId: WalletProviderId }
+  | { status: "error"; kind: WalletErrorKind; providerId: WalletProviderId; type: WalletType };
 
 // Separate from the site's main WalletContext/useKeplrWallet on purpose:
 // that one is hardwired to this project's usual CHAIN_ID (testnet Terra
@@ -16,78 +17,73 @@ export type CosmosWalletState =
 // each need their own mainnet connection - no other component needs this,
 // so a standalone hook is enough, no shared context. Reconnects from
 // scratch whenever `chain` changes (switching tabs in the onramp's origin
-// picker) - each chain is a fully separate KeplrController instance, not a
-// single one juggling multiple chains, since disconnecting one shouldn't
-// disconnect another the user already connected on a different tab.
+// picker) - each (chain, wallet provider) pair is a fully separate
+// controller instance, not one juggling everything, since disconnecting one
+// shouldn't disconnect another the user already connected on a different
+// tab or with a different wallet.
 export function useCosmosWallet(chain: DirectOriginChain) {
   const [state, setState] = useState<CosmosWalletState>({ status: "disconnected" });
-  const controllersRef = useRef<Map<string, KeplrController>>(new Map());
+  const controllersRef = useRef<Map<string, WalletController>>(new Map());
   // Always holds the currently-selected chain id, read (not captured) inside
   // connect()'s post-await checks - `chain` itself is fine to read normally
   // everywhere else, but a value closed over at call time would still be the
-  // OLD chain if the user switches tabs while a Keplr popup is pending, which
-  // is exactly the race this guards against.
+  // OLD chain if the user switches tabs while a wallet popup is pending,
+  // which is exactly the race this guards against.
   const chainIdRef = useRef(chain.chainId);
   chainIdRef.current = chain.chainId;
 
-  function getController(chainId: string): KeplrController {
-    let controller = controllersRef.current.get(chainId);
+  function getController(chainId: string, providerId: WalletProviderId): WalletController {
+    const key = `${chainId}:${providerId}`;
+    let controller = controllersRef.current.get(key);
     if (!controller) {
-      controller = new KeplrController("placeholder");
-      controllersRef.current.set(chainId, controller);
+      const info = WALLET_PROVIDERS.find((p) => p.id === providerId)!;
+      controller = info.create(WC_PROJECT_ID);
+      controller.onDisconnect(() => {
+        if (chainIdRef.current === chainId) setState({ status: "disconnected" });
+      });
+      controllersRef.current.set(key, controller);
     }
     return controller;
   }
 
-  const connect = useCallback(async () => {
-    const chainId = chain.chainId;
-    const controller = getController(chainId);
-    setState({ status: "connecting" });
-    try {
-      const installed = await controller.isInstalled(WalletType.EXTENSION);
-      if (chainIdRef.current !== chainId) return;
-      if (!installed) {
-        setState({ status: "error", kind: "notInstalled" });
-        return;
+  const connect = useCallback(
+    async (providerId: WalletProviderId, type: WalletType = WalletType.EXTENSION) => {
+      const chainId = chain.chainId;
+      const controller = getController(chainId, providerId);
+      setState({ status: "connecting", providerId, type });
+      try {
+        const installed = await controller.isInstalled(type);
+        if (chainIdRef.current !== chainId) return;
+        if (!installed) {
+          setState({ status: "error", kind: "notInstalled", providerId, type });
+          return;
+        }
+        const wallets = await controller.connect(type, [
+          { chainId, rpc: chain.rpc, gasPrice: chain.gasPrice, sdkVersion: chain.sdkVersion },
+        ]);
+        if (chainIdRef.current !== chainId) return;
+        const wallet = wallets.get(chainId);
+        if (!wallet) {
+          setState({ status: "error", kind: "connectFailed", providerId, type });
+          return;
+        }
+        setState({ status: "connected", address: wallet.address, wallet, providerId });
+      } catch {
+        if (chainIdRef.current !== chainId) return;
+        setState({ status: "error", kind: "rejected", providerId, type });
       }
-      const wallets = await controller.connect(WalletType.EXTENSION, [
-        { chainId, rpc: chain.rpc, gasPrice: chain.gasPrice, sdkVersion: chain.sdkVersion },
-      ]);
-      if (chainIdRef.current !== chainId) return;
-      const wallet = wallets.get(chainId);
-      if (!wallet) {
-        setState({ status: "error", kind: "connectFailed" });
-        return;
-      }
-      setState({ status: "connected", address: wallet.address, wallet });
-    } catch {
-      if (chainIdRef.current !== chainId) return;
-      setState({ status: "error", kind: "rejected" });
-    }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chain.chainId]);
+    [chain.chainId]
+  );
 
   const disconnect = useCallback(() => {
-    controllersRef.current.get(chain.chainId)?.disconnect([chain.chainId]);
+    if (state.status !== "disconnected") {
+      controllersRef.current.get(`${chain.chainId}:${state.providerId}`)?.disconnect([chain.chainId]);
+    }
     setState({ status: "disconnected" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chain.chainId]);
-
-  // Switching the selected chain always starts from "disconnected" for the
-  // newly selected one - each tab's connection is independent, so this
-  // never auto-connects on the user's behalf.
-  useEffect(() => {
-    setState({ status: "disconnected" });
-  }, [chain.chainId]);
-
-  useEffect(() => {
-    const controller = getController(chain.chainId);
-    const unsubscribe = controller.onDisconnect(() => {
-      setState({ status: "disconnected" });
-    });
-    return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chain.chainId]);
+  }, [chain.chainId, state]);
 
   return { state, connect, disconnect };
 }
