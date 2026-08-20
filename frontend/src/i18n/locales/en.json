@@ -657,6 +657,11 @@
       }
     ]
   },
+  "socialLinks": {
+    "whitepaper": "Whitepaper",
+    "telegram": "Join Telegram",
+    "repo": "Public repo"
+  },
   "treasury": {
     "openButton": "View treasury balance",
     "modalTitle": "Repeg Club treasury",

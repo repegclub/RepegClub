@@ -282,6 +282,8 @@ function DirectOriginForm({
             className="onramp-main-btn"
             onClick={() => setProviderMenuOpen((open) => !open)}
             disabled={walletState.status === "connecting"}
+            aria-haspopup="menu"
+            aria-expanded={providerMenuOpen}
           >
             {walletState.status === "connecting"
               ? t("wallet.connecting")

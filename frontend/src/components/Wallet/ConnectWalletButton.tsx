@@ -74,6 +74,8 @@ export function ConnectWalletButton() {
         className="wallet-connect-btn"
         onClick={() => setMenuOpen((open) => !open)}
         disabled={state.status === "connecting"}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
       >
         {state.status === "connecting" ? t("wallet.connecting") : t("wallet.connect")}
       </button>

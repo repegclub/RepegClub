@@ -10,14 +10,17 @@ import type { PrizeAssetChoice } from "./cyolPrizeDenoms";
 // exploitable payoff.
 //
 // CoinGecko ids verified live (2026-07-26 for terra-luna/terrausd,
-// 2026-08-19 for cosmos/osmosis): "terra-luna" is LUNC/Terra Classic's
-// native token (not "terra-luna-2", which is the unrelated Terra 2.0
-// chain's new LUNA) - "terrausd" is USTC (not "terrausd-classic", which
-// doesn't exist as an id) - "cosmos"/"osmosis" are ATOM/OSMO's real ids
-// (added for TreasuryPanel.tsx's USD total, not originally needed by
-// CYOL). USDC is assumed exactly $1, no fetch needed.
+// 2026-08-19 for cosmos/osmosis/usd-coin): "terra-luna" is LUNC/Terra
+// Classic's native token (not "terra-luna-2", which is the unrelated Terra
+// 2.0 chain's new LUNA) - "terrausd" is USTC (not "terrausd-classic",
+// which doesn't exist as an id) - "cosmos"/"osmosis" are ATOM/OSMO's real
+// ids, "usd-coin" is USDC's (all 3 added for TreasuryPanel.tsx's USD
+// total, not originally needed by CYOL). USDC used to be hardcoded to
+// exactly $1 (a real depeg, even a small one, would have silently under/
+// over-counted the treasury total) - fetched live now instead, same as
+// every other asset here (found in CodeRabbit review, PR #35).
 const COINGECKO_URL =
-  "https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd,cosmos,osmosis&vs_currencies=usd";
+  "https://api.coingecko.com/api/v3/simple/price?ids=terra-luna,terrausd,cosmos,osmosis,usd-coin&vs_currencies=usd";
 
 export type TokenPrices = {
   lunc: number;
@@ -35,15 +38,17 @@ export async function fetchTokenPrices(): Promise<TokenPrices> {
   const ustc = data["terrausd"]?.usd;
   const atom = data["cosmos"]?.usd;
   const osmo = data["osmosis"]?.usd;
+  const usdc = data["usd-coin"]?.usd;
   if (
     typeof lunc !== "number" ||
     typeof ustc !== "number" ||
     typeof atom !== "number" ||
-    typeof osmo !== "number"
+    typeof osmo !== "number" ||
+    typeof usdc !== "number"
   ) {
     throw new Error("CoinGecko response missing expected price fields");
   }
-  return { lunc, ustc, usdc: 1, atom, osmo };
+  return { lunc, ustc, usdc, atom, osmo };
 }
 
 // Generic symbol -> USD price lookup, for callers (TreasuryPanel.tsx) that

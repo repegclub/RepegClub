@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { WalletType } from "@goblinhunt/cosmes/wallet";
 import type { WalletProviderId } from "../../lib/walletProviders";
@@ -26,7 +26,11 @@ export function WalletProviderPopover({
   const menuRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<{ top: number; left: number } | null>(null);
 
-  useLayoutEffect(() => {
+  // Split out from the layout effect below so scroll/resize can re-run the
+  // same measurement (found in CodeRabbit review, PR #35: position:fixed
+  // means the menu stayed at its old viewport coordinates and visibly
+  // detached from the trigger on scroll/resize otherwise).
+  const position = useCallback(() => {
     const anchor = anchorRef.current;
     const menu = menuRef.current;
     if (!anchor || !menu) return;
@@ -41,6 +45,19 @@ export function WalletProviderPopover({
     );
     setStyle({ top, left });
   }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    position();
+    // capture:true - scroll events on an inner scrollable ancestor (not
+    // just the window) don't bubble, capture is the only way to catch those
+    // too.
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
+    return () => {
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
+    };
+  }, [position]);
 
   useEffect(() => {
     function handlePointerDown(e: PointerEvent) {
@@ -67,9 +84,15 @@ export function WalletProviderPopover({
   }, [anchorRef, onClose]);
 
   // Focus the first option once the menu has a measured position, so Tab
-  // order continues inside the portal instead of skipping past it.
+  // order continues inside the portal instead of skipping past it. Guarded
+  // to fire only once (not on every `style` update) - `position` above now
+  // also runs on scroll/resize, which would otherwise yank focus back to
+  // the first option every time the user scrolls while further into the
+  // menu.
+  const hasFocusedRef = useRef(false);
   useEffect(() => {
-    if (!style) return;
+    if (!style || hasFocusedRef.current) return;
+    hasFocusedRef.current = true;
     menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [style]);
 

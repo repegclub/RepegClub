@@ -15,8 +15,16 @@ export function WalletProviderOptions({
 }) {
   const { t } = useTranslation();
   return (
+    // role="presentation" on the group labels - a role="menu" only accepts
+    // menuitem/group/separator children, and these plain labels made the
+    // structure invalid for assistive tech (found in CodeRabbit review, PR
+    // #35). The 📱 in each mobile option's own aria-hidden span for the
+    // same reason - without it, a screen reader announced the emoji as
+    // part of the option's name.
     <>
-      <div className="wallet-provider-group-label">{t("wallet.groupExtension")}</div>
+      <div className="wallet-provider-group-label" role="presentation">
+        {t("wallet.groupExtension")}
+      </div>
       {WALLET_PROVIDERS.map((provider) => (
         <button
           key={`ext-${provider.id}`}
@@ -29,7 +37,9 @@ export function WalletProviderOptions({
         </button>
       ))}
       <div className="wallet-provider-divider" />
-      <div className="wallet-provider-group-label">{t("wallet.groupMobile")}</div>
+      <div className="wallet-provider-group-label" role="presentation">
+        {t("wallet.groupMobile")}
+      </div>
       {WALLET_PROVIDERS.map((provider) => (
         <button
           key={`wc-${provider.id}`}
@@ -38,7 +48,7 @@ export function WalletProviderOptions({
           className="wallet-provider-option"
           onClick={() => onSelect(provider.id, WalletType.WALLETCONNECT)}
         >
-          📱 {provider.name}
+          <span aria-hidden="true">📱</span> {provider.name}
         </button>
       ))}
     </>

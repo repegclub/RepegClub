@@ -44,6 +44,12 @@ export function useCosmosWallet(chain: DirectOriginChain) {
   // compared the instance's own chain id against itself).
   const mountedRef = useRef(true);
   useEffect(() => {
+    // Re-arm on setup, not just reset on cleanup - React Strict Mode
+    // double-invokes effects in dev (setup, cleanup, setup again), and
+    // without this, mountedRef.current stayed false forever after that
+    // first cleanup, so connect() bailed out immediately post-await and
+    // the UI hung on "connecting" (found in CodeRabbit review, PR #35).
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
