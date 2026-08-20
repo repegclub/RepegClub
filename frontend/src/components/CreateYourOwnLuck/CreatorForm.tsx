@@ -304,9 +304,12 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         // revisit, defeating the safety warning meant to catch exactly
         // that). Still testnet-only - see cyolPrizeAssetCache.ts.
         setCachedPrizeAssetChoice(raffleAddress, prizeAssetChoice);
-        navigate(`/create-your-own-luck/${raffleAddress}`, {
-          state: raffleType === "single_winner" ? { plannedPrizeAmount } : undefined,
-        });
+        // plannedPrizeAmount now applies to both modes (extended to Airdrop,
+        // 2026-08-20 - see the field above) - this used to only pass it for
+        // single_winner, silently dropping an Airdrop creator's planned
+        // amount and leaving the funding screen to fall back to its own
+        // "100" default instead (CodeRabbit finding, PR #37).
+        navigate(`/create-your-own-luck/${raffleAddress}`, { state: { plannedPrizeAmount } });
       }
       try {
         onCreated?.();

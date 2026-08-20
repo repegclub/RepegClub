@@ -345,7 +345,7 @@
     "filter": {
       "all": "All",
       "mine": "Created by me",
-      "empty": "No raffles match this filter.",
+      "empty": "No raffles or airdrops match this filter.",
       "emptyRaffle": "No raffles match this filter.",
       "emptyAirdrop": "No airdrops match this filter."
     },
@@ -387,7 +387,7 @@
       "fundraiserDisclosureNegative": "Even if this raffle fills up completely, you'd still be funding at least {{amount}} USDC of the prize yourself — a genuine giveaway to your community.",
       "airdropCalcWorstCase": "If this fills up completely, each wallet's guaranteed share would be worth about {{shareUsd}} USDC.",
       "airdropCalcFair": "That's at or above your {{ticketUsd}} USDC ticket price — participants get back at least what they paid, even in the worst case. They could see a nice profit if fewer people join: the fewer the participants, the bigger the airdrop.",
-      "airdropCalcUnfair": "That's less than your {{ticketUsd}} USDC ticket price — participants would pay more than they get back, even in the best case. This can look like a scam and hurt your reputation as a creator.",
+      "airdropCalcUnfair": "That's less than your {{ticketUsd}} USDC ticket price if the airdrop fills. Participants may receive more if fewer wallets join, but the payout can be below the ticket price. This can look like a scam and hurt your reputation as a creator.",
       "paidAirdropDisclaimerTitle": "⚠️ Before you charge a ticket",
       "paidAirdropDisclaimerBody": "A paid Airdrop exists to filter out bot farming and build FOMO around a genuine giveaway — not to earn you money as a creator. A common, legitimate pattern: require participants to complete tasks (follow our X account, join our Discord, etc.) to get whitelisted, and keep the ticket price low enough that everyone still gets back at least what they paid. Your willingness to give should always come before the wish to profit. If you're looking to fundraise instead, use Galactic Raffles — that's what it's built for.",
       "paidAirdropDisclaimerCheckbox": "I understand — this isn't for making money as a creator.",
