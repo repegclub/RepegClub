@@ -290,7 +290,10 @@ export const ONRAMP_FILTER = {
 //   designated for this ("Repeg Club Treasury" on EVM) - not multisig yet,
 //   swept to the real Cosmos multisig manually once it accumulates enough,
 //   same spirit as SweepUstc elsewhere in this project.
-const TREASURY_COSMOS = {
+// Exported so TreasuryPanel.tsx (the public balance-transparency panel) can
+// read the exact same addresses - never hand-retyped elsewhere, same
+// principle as importing any other opaque constant instead of copying it.
+export const TREASURY_COSMOS = {
   [TERRA_CLASSIC_CHAIN_ID]: "terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z",
   [NOBLE_CHAIN_ID]: "noble1pmrw0x576skdqxel7aakph7nhjscucznl3e34v",
   "osmosis-1": "osmo1pmrw0x576skdqxel7aakph7nhjscucznlflfms",

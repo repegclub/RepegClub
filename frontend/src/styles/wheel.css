@@ -3898,6 +3898,72 @@
     cursor: default;
     box-shadow: none;
   }
+  /* Anchors the provider dropdown below .wallet-connect-btn - the button
+     itself stays a normal inline-block in flow, only the menu pops out. */
+  .wallet-picker-wrap {
+    position: relative;
+    display: inline-block;
+  }
+  /* Same flat-fill/hard-bevel pattern as .wallet-chip, positioned as a
+     dropdown under the Connect button instead of inline in the bar. */
+  .wallet-provider-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    background: var(--bg-card);
+    box-shadow:
+      inset 3px 3px 0 rgba(168,240,192,0.9),
+      inset -3px 0 0 #1a7a41,
+      inset 0 -3px 0 var(--black),
+      0 4px 0 #1a7a41;
+  }
+  /* WalletProviderPopover's portal variant - position:fixed (not the plain
+     .wallet-provider-menu's absolute/top/right) since it's rendered into
+     document.body, positioned via inline style computed from the trigger's
+     own getBoundingClientRect(). Needed for triggers inside a clip-path
+     ancestor (eg. the onramp's .pixel-stepped-corners frame), which crops a
+     position:absolute dropdown same as overflow:hidden would. */
+  .wallet-provider-menu-portal {
+    position: fixed;
+    right: auto;
+    z-index: 200;
+  }
+  /* Grouped by connection type (Extension, then Mobile/QR below a divider)
+     - a lone icon-button next to each wallet name tested live as invisible
+     as a control, nobody could tell it was clickable (found live,
+     2026-08-19). Small uppercase label per group instead. */
+  .wallet-provider-group-label {
+    font-family: var(--body);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim, #8a90a6);
+    padding: 0.5rem 0.9rem 0.3rem;
+  }
+  .wallet-provider-divider {
+    border-top: 1px solid rgba(255,255,255,0.15);
+    margin: 0.2rem 0;
+  }
+  .wallet-provider-option {
+    background: transparent;
+    color: var(--text);
+    border: none;
+    text-align: left;
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 0.98rem;
+    padding: 0.6rem 0.9rem;
+    cursor: pointer;
+  }
+  .wallet-provider-option:hover,
+  .wallet-provider-option:focus-visible {
+    background: rgba(157,192,255,0.18);
+  }
   /* Square frame, not a rounded pill - matches the rest of the header now
      that .wallet-connect-btn is pixel-square too. */
   .wallet-chip {
@@ -4055,6 +4121,7 @@
     backdrop-filter: blur(3px);
   }
   .social-links-icon {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4068,4 +4135,43 @@
   .social-links-icon:focus-visible {
     color: var(--text);
     background: rgba(255,255,255,0.1);
+  }
+  /* TreasuryPanel.tsx's trigger is a <button>, not an <a> like its 3
+     siblings here - only .social-links-icon-btn resets the browser's
+     default button chrome (border/background/font), .social-links-icon
+     alone has nothing that needs resetting on an anchor. */
+  .social-links-icon-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+  /* Plain CSS tooltip (TreasuryPanel.tsx's trigger only, so far) - shows
+     immediately on hover/focus, no delay, unlike a native `title`
+     attribute's built-in browser/OS delay (reported live as too slow,
+     2026-08-19). Anchored to .social-links-icon's own position:relative. */
+  .social-links-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: var(--bg-card);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.08s ease;
+    pointer-events: none;
+    z-index: 40;
+  }
+  .social-links-icon:hover .social-links-tooltip,
+  .social-links-icon:focus-visible .social-links-tooltip {
+    opacity: 1;
+    visibility: visible;
   }

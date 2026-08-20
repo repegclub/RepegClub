@@ -276,17 +276,20 @@
     "explanation": "This app doesn't ask our own servers who won. When you click \"Verify on-chain\", your browser fetches the actual block straight from Terra Classic's public network and recomputes the winner itself, using the exact formula the smart contract runs: hash the week ID, that block's real height and time, and every ticket bought (across the whole week, price rising day by day), then pick a ticket weighted by the result. Nobody chooses the outcome — the formula does, from data that didn't exist yet while the week was still open. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
   },
   "wallet": {
-    "connect": "Connect Keplr",
+    "connect": "Connect Wallet",
     "connecting": "Connecting…",
     "disconnect": "Disconnect",
-    "install": "Install Keplr",
+    "install": "Install {{provider}}",
     "retry": "Retry",
-    "notInstalled": "Keplr is not installed in this browser.",
+    "notInstalled": "{{provider}} is not installed in this browser.",
     "connectFailed": "Could not connect to the chain.",
     "rejected": "Connection rejected.",
     "bagToggle": "My Bag",
     "testnet": "Testnet",
-    "mainnet": "Mainnet"
+    "mainnet": "Mainnet",
+    "groupExtension": "Browser extension",
+    "groupMobile": "Mobile (scan QR)",
+    "chooseAnother": "Choose another wallet"
   },
   "admin": {
     "sweepButton": "Sweep stray funds",
@@ -653,5 +656,23 @@
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       }
     ]
+  },
+  "socialLinks": {
+    "whitepaper": "Whitepaper",
+    "telegram": "Join Telegram",
+    "repo": "Public repo"
+  },
+  "treasury": {
+    "openButton": "View treasury balance",
+    "modalTitle": "Repeg Club treasury",
+    "modalDesc": "Your browser queries each chain's public LCD directly for these balances — nothing here is self-reported. Use the explorer link on any chain to double-check independently.",
+    "loading": "Loading…",
+    "error": "Couldn't load this chain's balance.",
+    "empty": "Empty",
+    "viewExplorer": "View on explorer",
+    "grandTotal": "Estimated total: ~${{amount}} USD",
+    "pricesError": "Couldn't load live prices for the total.",
+    "totalIncomplete": "Some chains or assets couldn't be included — actual total may be higher.",
+    "close": "Close"
   }
 }

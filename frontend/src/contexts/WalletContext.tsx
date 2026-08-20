@@ -1,9 +1,11 @@
 import { createContext, useContext, type ReactNode } from "react";
+import type { WalletType } from "@goblinhunt/cosmes/wallet";
 import { useKeplrWallet, type WalletState } from "../hooks/useKeplrWallet";
+import type { WalletProviderId } from "../lib/walletProviders";
 
 type WalletContextValue = {
   state: WalletState;
-  connect: () => Promise<void>;
+  connect: (providerId: WalletProviderId, type?: WalletType) => Promise<void>;
   disconnect: () => void;
 };
 
