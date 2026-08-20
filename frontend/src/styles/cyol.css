@@ -18,6 +18,24 @@
   margin: 2rem 0 1rem;
 }
 
+/* Same look as .cyol-list-title, as a full-width toggle button instead of
+   a plain heading - CreateYourOwnLuckPage.tsx's raffle/airdrop sections
+   collapse independently (direct request, 2026-08-20) so 2 lists together
+   don't turn the page into endless scroll. */
+.cyol-list-toggle {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 1.1rem;
+  text-align: left;
+  cursor: pointer;
+  margin: 2rem 0 1rem;
+  padding: 0;
+}
+
 /* Creator form */
 
 .cyol-creator {

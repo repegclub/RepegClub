@@ -324,16 +324,17 @@
     "onramp": "Onramp"
   },
   "creatorTools": {
-    "pageTitle": "Creator Tools",
+    "pageTitle": "Create Your Own Luck with our Creator Tools",
     "raffleFormTitle": "Create a raffle",
     "airdropFormTitle": "Create an airdrop"
   },
   "createYourOwnLuck": {
-    "pageTitle": "Create Your Own Luck",
+    "pageTitle": "Raffles & Airdrops",
     "loading": "Loading raffles…",
     "error": "Couldn't load raffles. Try again shortly.",
     "empty": "No raffles yet — be the first to create one.",
     "raffleListTitle": "Active raffles",
+    "airdropListTitle": "Active airdrops",
     "createdBy": "by {{creator}}",
     "partialList": "Showing the latest {{shown}} of {{total}} raffles.",
     "cardError": "Couldn't load this raffle.",

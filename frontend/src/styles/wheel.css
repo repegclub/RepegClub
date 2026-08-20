@@ -2467,7 +2467,9 @@
     }
     .history-open-btn,
     .bag-toggle-btn {
-      padding: 0.35rem;
+      /* -5% from 0.35rem (direct request, 2026-08-20 - the wallet-bar's
+         buttons were forming half-empty 3-button rows on real phones). */
+      padding: 0.333rem;
     }
     .history-open-btn .round-action-btn-icon,
     .bag-toggle-btn .bag-toggle-icon {
@@ -3596,7 +3598,10 @@
      page's usual side padding buys back width on top of that. */
   @media (max-width: 480px) {
     .wallet-bar {
-      gap: 0.4rem;
+      /* -10% from 0.4rem (direct request, 2026-08-20 - buttons were
+         forming half-empty 3-button rows on real phones; see the matching
+         -5% padding cuts below on every button in this bar). */
+      gap: 0.36rem;
       margin-left: -0.5rem;
       margin-right: -0.5rem;
     }
@@ -3642,9 +3647,15 @@
     .wallet-bar-secondary {
       order: 1;
       flex-basis: auto;
+      /* -10% from the base 0.6rem (My Bag <-> History), same pass as
+         .wallet-bar's own gap above. */
+      gap: 0.54rem;
     }
     .wallet-status-group {
       margin-left: auto;
+      /* -10% from the base 0.6rem (badge <-> Connect Keplr/chip), same
+         pass as .wallet-bar's own gap above. */
+      gap: 0.54rem;
     }
     .wallet-bar:has(.wallet-bar-secondary)::before {
       content: "";
@@ -3656,29 +3667,37 @@
       order: 3;
     }
     .game-nav {
-      gap: 0.4rem;
+      /* -10%, same pass as .wallet-bar's own gap above. */
+      gap: 0.36rem;
     }
     .game-nav-logo {
       height: 1.2rem;
     }
+    /* Every padding value below is -5% off what it was (direct request,
+       2026-08-20, paired with the -10% gap cuts above) - together they
+       buy back enough width to stop the wallet-bar's buttons forming
+       half-empty 3-button rows on real phones. */
     .game-nav-toggle-btn {
-      padding: 0 0.6rem;
+      padding: 0 0.57rem;
     }
     .game-nav-creators {
-      padding: 0 0.6rem 0 0.45rem;
+      padding: 0 0.57rem 0 0.428rem;
     }
     .game-nav-onramp {
-      padding: 0 0.6rem 0 0.45rem;
+      padding: 0 0.57rem 0 0.428rem;
     }
     .wallet-chip {
-      padding: 0 0.5rem 0 0.75rem;
+      padding: 0 0.475rem 0 0.713rem;
     }
     .wallet-disconnect {
-      padding: 0.3rem 0.5rem;
+      padding: 0.285rem 0.475rem;
     }
     .network-badge {
-      padding: 0 0.5rem;
+      padding: 0 0.475rem;
       font-size: 0.92rem;
+    }
+    .wallet-connect-btn {
+      padding: 0.57rem 1.235rem;
     }
     /* History regains its text label now that the chip moved off line 1
        freed up room for it - unlike My Bag's bag icon, a bare scroll icon
@@ -3689,7 +3708,8 @@
       display: inline;
     }
     .history-open-btn {
-      padding: 0 0.6rem;
+      /* -5%, same pass as the other wallet-bar buttons above. */
+      padding: 0 0.57rem;
     }
     .history-open-btn .round-action-btn-icon {
       margin-right: 0.35em;

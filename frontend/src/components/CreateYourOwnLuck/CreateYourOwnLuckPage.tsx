@@ -26,6 +26,42 @@ function matchesFilter(entry: CyolRaffleListEntry, filter: StatusFilter, walletA
   return entry.summary.status === "loaded" && entry.summary.raffleStatus.status === filter;
 }
 
+// Collapsible so 2 lists together don't turn this page into endless scroll
+// once either has more than a handful of entries (direct request,
+// 2026-08-20) - same toggle pattern as CreatorForm.tsx's own sections.
+// Defaults open (nothing changes for a first-time visitor); collapsing is
+// purely a "get this out of my way" action.
+function CyolListSection({
+  titleKey,
+  entries,
+  open,
+  onToggle,
+}: {
+  titleKey: string;
+  entries: CyolRaffleListEntry[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <button type="button" className="cyol-list-toggle" onClick={onToggle}>
+        {t(titleKey)} {open ? "▲" : "▼"}
+      </button>
+      {open &&
+        (entries.length === 0 ? (
+          <p>{t("createYourOwnLuck.filter.empty")}</p>
+        ) : (
+          <div className="cyol-card-grid">
+            {entries.map((entry) => (
+              <RaffleCard key={entry.index} address={entry.address} index={entry.index} summary={entry.summary} />
+            ))}
+          </div>
+        ))}
+    </>
+  );
+}
+
 // Step 2: the real discovery page (raffle cards with live status/price, the
 // "I'm a creator" form) on top of step 1's proven-working plumbing.
 export function CreateYourOwnLuckPage() {
@@ -37,6 +73,8 @@ export function CreateYourOwnLuckPage() {
     raffles.status === "loaded" ? raffles.raffles.raffles : NO_RECORDS
   );
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [rafflesOpen, setRafflesOpen] = useState(true);
+  const [airdropsOpen, setAirdropsOpen] = useState(true);
 
   // "Created by me" only means anything with a wallet connected - if it
   // disconnects mid-filter, every entry would compare against null (never
@@ -46,6 +84,18 @@ export function CreateYourOwnLuckPage() {
   }, [walletAddress, filter]);
 
   const visibleEntries = entries.filter((entry) => matchesFilter(entry, filter, walletAddress));
+  // Split into 2 lists instead of 1 mixed "Active raffles" grid (direct
+  // request, 2026-08-20) - same "Airdrop isn't a raffle" principle already
+  // applied to the creator forms (CreatorForm.tsx's `mode`). By the time
+  // this runs `loaded` is already true, so every entry's summary has
+  // settled to "loaded" or "error" (see useCyolRaffleSummaries.ts) - never
+  // "loading" - an entry whose query failed has no known raffle_type, so it
+  // falls into the raffles bucket by default rather than being silently
+  // dropped from both.
+  const airdropEntries = visibleEntries.filter(
+    (entry) => entry.summary.status === "loaded" && entry.summary.config.raffle_type === "airdrop"
+  );
+  const raffleEntries = visibleEntries.filter((entry) => !airdropEntries.includes(entry));
 
   return (
     <main className="wheel-page cyol-page">
@@ -69,7 +119,6 @@ export function CreateYourOwnLuckPage() {
 
       <h1 className="cyol-title">{t("createYourOwnLuck.pageTitle")}</h1>
 
-      <h2 className="cyol-list-title">{t("createYourOwnLuck.raffleListTitle")}</h2>
       {raffles.status === "loading" && <p>{t("createYourOwnLuck.loading")}</p>}
       {raffles.status === "error" && <p>{t("createYourOwnLuck.error")}</p>}
       {raffles.status === "loaded" && raffles.raffles.raffles.length === 0 && (
@@ -108,11 +157,20 @@ export function CreateYourOwnLuckPage() {
           ) : visibleEntries.length === 0 ? (
             <p>{t("createYourOwnLuck.filter.empty")}</p>
           ) : (
-            <div className="cyol-card-grid">
-              {visibleEntries.map((entry) => (
-                <RaffleCard key={entry.index} address={entry.address} index={entry.index} summary={entry.summary} />
-              ))}
-            </div>
+            <>
+              <CyolListSection
+                titleKey="createYourOwnLuck.raffleListTitle"
+                entries={raffleEntries}
+                open={rafflesOpen}
+                onToggle={() => setRafflesOpen((o) => !o)}
+              />
+              <CyolListSection
+                titleKey="createYourOwnLuck.airdropListTitle"
+                entries={airdropEntries}
+                open={airdropsOpen}
+                onToggle={() => setAirdropsOpen((o) => !o)}
+              />
+            </>
           )}
         </>
       )}
