@@ -666,6 +666,8 @@
     "empty": "Empty",
     "viewExplorer": "View on explorer",
     "grandTotal": "Estimated total: ~${{amount}} USD",
-    "pricesError": "Couldn't load live prices for the total."
+    "pricesError": "Couldn't load live prices for the total.",
+    "totalIncomplete": "Some chains or assets couldn't be included — actual total may be higher.",
+    "close": "Close"
   }
 }

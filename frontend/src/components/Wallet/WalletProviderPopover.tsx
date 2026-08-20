@@ -48,9 +48,30 @@ export function WalletProviderPopover({
       if (menuRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
       onClose();
     }
+    // Escape + returning focus to the trigger - missing entirely before
+    // (found in CodeRabbit review, PR #35): a keyboard-only user had no way
+    // to close this menu or move focus into it, since it renders into
+    // document.body after the trigger in DOM order (Tab from the trigger
+    // skipped past it to whatever's next in the page, not into the menu).
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      anchorRef.current?.focus();
+      onClose();
+    }
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [anchorRef, onClose]);
+
+  // Focus the first option once the menu has a measured position, so Tab
+  // order continues inside the portal instead of skipping past it.
+  useEffect(() => {
+    if (!style) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [style]);
 
   return createPortal(
     <div

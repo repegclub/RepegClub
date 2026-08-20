@@ -11,6 +11,8 @@ import { symbolForDenom, TREASURY_CHAINS, type TreasuryChain } from "../../lib/t
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+type ChainReportStatus = "ok" | "partial" | "error";
+
 // Lives in Shared/, rendered once from SocialLinks.tsx (App.tsx, outside
 // <Routes>) so it's reachable from every page - not onramp-specific
 // anymore, since Wheel of Repeg/Weekly Round/CYOL are all meant to feed
@@ -53,18 +55,30 @@ export function TreasuryPanel() {
   // here so the modal can show one combined estimate - lets each row stay a
   // self-contained component (same pattern as this site's other per-chain
   // rows, eg. DirectOriginForm) instead of hoisting all 4 useAllBalances
-  // calls into this component keyed by array position.
-  const [chainTotals, setChainTotals] = useState<Record<string, number>>({});
-  const reportChainTotal = useCallback((chainId: string, usd: number) => {
-    setChainTotals((prev) => (prev[chainId] === usd ? prev : { ...prev, [chainId]: usd }));
+  // calls into this component keyed by array position. Each report also
+  // carries a status - a chain whose balance query failed never used to
+  // report anything at all, which left allChainsReported permanently false
+  // and the total stuck on "Loading…" forever instead of surfacing the
+  // failure (found in CodeRabbit review, PR #35). "partial" covers the
+  // other gap the same review flagged: an unpriced denom is silently
+  // skipped from that chain's own subtotal, so a chain can finish "ok" by
+  // this component's bookkeeping while still under-counting.
+  const [chainReports, setChainReports] = useState<Record<string, { status: ChainReportStatus; usd: number }>>({});
+  const reportChain = useCallback((chainId: string, report: { status: ChainReportStatus; usd: number }) => {
+    setChainReports((prev) => {
+      const existing = prev[chainId];
+      if (existing && existing.status === report.status && existing.usd === report.usd) return prev;
+      return { ...prev, [chainId]: report };
+    });
   }, []);
   useEffect(() => {
-    if (!isOpen) setChainTotals({});
+    if (!isOpen) setChainReports({});
   }, [isOpen]);
 
-  const allChainsReported = TREASURY_CHAINS.every((c) => c.chainId in chainTotals);
+  const allChainsReported = TREASURY_CHAINS.every((c) => c.chainId in chainReports);
+  const anyIncomplete = TREASURY_CHAINS.some((c) => chainReports[c.chainId]?.status !== "ok");
   const grandTotal = allChainsReported
-    ? TREASURY_CHAINS.reduce((sum, c) => sum + (chainTotals[c.chainId] ?? 0), 0)
+    ? TREASURY_CHAINS.reduce((sum, c) => sum + (chainReports[c.chainId]?.usd ?? 0), 0)
     : null;
 
   // Same focus-trap/Escape/restore-focus pattern as OriginOptionsPanel.tsx -
@@ -145,7 +159,7 @@ export function TreasuryPanel() {
                       type="button"
                       className="verify-modal-close"
                       onClick={() => setIsOpen(false)}
-                      aria-label="Close"
+                      aria-label={t("treasury.close")}
                     >
                       &times;
                     </button>
@@ -159,13 +173,18 @@ export function TreasuryPanel() {
                           key={chain.chainId}
                           chain={chain}
                           prices={prices}
-                          onUsdTotal={reportChainTotal}
+                          onReport={reportChain}
                         />
                       ))}
                     </div>
                     <div className="treasury-grand-total">
                       {grandTotal !== null ? (
-                        <p>{t("treasury.grandTotal", { amount: grandTotal.toFixed(2) })}</p>
+                        <>
+                          <p>{t("treasury.grandTotal", { amount: grandTotal.toFixed(2) })}</p>
+                          {anyIncomplete && (
+                            <p className="origin-option-path">{t("treasury.totalIncomplete")}</p>
+                          )}
+                        </>
                       ) : pricesFailed ? (
                         <p className="origin-option-path">{t("treasury.pricesError")}</p>
                       ) : (
@@ -186,23 +205,36 @@ export function TreasuryPanel() {
 function TreasuryChainRow({
   chain,
   prices,
-  onUsdTotal,
+  onReport,
 }: {
   chain: TreasuryChain;
   prices: TokenPrices | null;
-  onUsdTotal: (chainId: string, usd: number) => void;
+  onReport: (chainId: string, report: { status: ChainReportStatus; usd: number }) => void;
 }) {
   const { t } = useTranslation();
   const state = useAllBalances(chain.address, chain.lcd);
 
   useEffect(() => {
+    // A failed balance query used to never report at all, leaving the
+    // parent's "every chain reported" check permanently false and the
+    // grand total stuck on "Loading…" - report it as $0/"error" instead,
+    // so the total (and the incomplete-total note) can still render.
+    if (state.status === "error") {
+      onReport(chain.chainId, { status: "error", usd: 0 });
+      return;
+    }
     if (state.status !== "loaded" || !prices) return;
+    let allPriced = true;
     const usd = state.balances.reduce((sum, b) => {
       const price = priceForSymbol(symbolForDenom(b.denom), prices);
-      return price === null ? sum : sum + microToDisplay(BigInt(b.amount)) * price;
+      if (price === null) {
+        allPriced = false;
+        return sum;
+      }
+      return sum + microToDisplay(BigInt(b.amount)) * price;
     }, 0);
-    onUsdTotal(chain.chainId, usd);
-    // onUsdTotal is a stable useCallback from the parent - omitted here so
+    onReport(chain.chainId, { status: allPriced ? "ok" : "partial", usd });
+    // onReport is a stable useCallback from the parent - omitted here so
     // this doesn't re-run every render just because the parent re-created
     // an inline function (it doesn't, but this is the same defensive
     // pattern already used elsewhere in this project's hooks).

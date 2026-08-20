@@ -24,7 +24,10 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
   {
     id: "galaxystation",
     name: "Galaxy Station",
-    installUrl: "https://station.hexxagon.io/",
+    // Chrome Web Store, not station.hexxagon.io - that domain is the web
+    // app, not the browser-extension download (found in CodeRabbit review,
+    // PR #35 - confirmed live via web search before fixing).
+    installUrl: "https://chromewebstore.google.com/detail/galaxy-station-wallet/akckefnapafjbpphkefbpkpcamkoaoai",
     create: (wcProjectId) => new GalaxyStationController(wcProjectId),
   },
 ];

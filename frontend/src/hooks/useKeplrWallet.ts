@@ -21,13 +21,28 @@ export function useKeplrWallet() {
   // extension and WalletConnect (mobile/QR) paths internally, so this map
   // isn't keyed by connection type too.
   const controllersRef = useRef<Map<WalletProviderId, WalletController>>(new Map());
+  // Read (not captured) inside onDisconnect below, so it always sees the
+  // latest render's state rather than whatever was current when the
+  // controller (and its callback closure) was first created.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   function getController(providerId: WalletProviderId): WalletController {
     let controller = controllersRef.current.get(providerId);
     if (!controller) {
       const info = WALLET_PROVIDERS.find((p) => p.id === providerId)!;
       controller = info.create(WC_PROJECT_ID);
-      controller.onDisconnect(() => setState({ status: "disconnected" }));
+      // Scoped to the provider that's actually active in state - without
+      // this, a controller for a provider the user tried and abandoned (eg.
+      // Keplr failed, then Galaxy Station connected successfully) could
+      // still fire its own onDisconnect later and wipe out the unrelated,
+      // currently-active session (found in CodeRabbit review, PR #35).
+      controller.onDisconnect(() => {
+        const current = stateRef.current;
+        if (current.status !== "disconnected" && current.providerId === providerId) {
+          setState({ status: "disconnected" });
+        }
+      });
       controllersRef.current.set(providerId, controller);
     }
     return controller;

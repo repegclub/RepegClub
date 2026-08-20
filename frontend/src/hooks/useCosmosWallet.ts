@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WalletType, type ConnectedWallet, type WalletController } from "@goblinhunt/cosmes/wallet";
 import type { DirectOriginChain } from "../lib/onrampConfig";
 import { WC_PROJECT_ID } from "../lib/walletConnectConfig";
@@ -24,13 +24,30 @@ export type CosmosWalletState =
 export function useCosmosWallet(chain: DirectOriginChain) {
   const [state, setState] = useState<CosmosWalletState>({ status: "disconnected" });
   const controllersRef = useRef<Map<string, WalletController>>(new Map());
-  // Always holds the currently-selected chain id, read (not captured) inside
-  // connect()'s post-await checks - `chain` itself is fine to read normally
-  // everywhere else, but a value closed over at call time would still be the
-  // OLD chain if the user switches tabs while a wallet popup is pending,
-  // which is exactly the race this guards against.
-  const chainIdRef = useRef(chain.chainId);
-  chainIdRef.current = chain.chainId;
+  // Read (not captured) inside onDisconnect/connect()'s post-await checks so
+  // they always see the latest render's state, not whatever was current
+  // when the closure was created.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // DirectTransferCard.tsx remounts the component owning this hook on every
+  // tab switch (key={selected.chainId}), so a NEW hook instance always
+  // means a genuinely new chain - the old instance's `chain` prop can never
+  // change out from under it, only unmount. A connect() already in flight
+  // when that unmount happens doesn't get cancelled by React (promises
+  // don't know about component lifecycles): without this guard, it would
+  // eventually call setState on a hook instance nobody can reach anymore,
+  // and - worse - leave a real wallet session (a WalletConnect pairing, an
+  // approved extension `enable()`) established with no UI left to manage
+  // or disconnect it (found in CodeRabbit review, PR #35; the previous
+  // per-render chainIdRef guard here could never actually trigger, since it
+  // compared the instance's own chain id against itself).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function getController(chainId: string, providerId: WalletProviderId): WalletController {
     const key = `${chainId}:${providerId}`;
@@ -38,8 +55,17 @@ export function useCosmosWallet(chain: DirectOriginChain) {
     if (!controller) {
       const info = WALLET_PROVIDERS.find((p) => p.id === providerId)!;
       controller = info.create(WC_PROJECT_ID);
+      // Scoped to the provider that's actually active in state, not just
+      // the chain - without this, a controller for a provider the user
+      // tried and abandoned (eg. Keplr failed, then Galaxy Station
+      // connected successfully) could still fire its own onDisconnect
+      // later and wipe out the unrelated, currently-active session (found
+      // in CodeRabbit review, PR #35).
       controller.onDisconnect(() => {
-        if (chainIdRef.current === chainId) setState({ status: "disconnected" });
+        const current = stateRef.current;
+        if (current.status !== "disconnected" && current.providerId === providerId) {
+          setState({ status: "disconnected" });
+        }
       });
       controllersRef.current.set(key, controller);
     }
@@ -53,7 +79,7 @@ export function useCosmosWallet(chain: DirectOriginChain) {
       setState({ status: "connecting", providerId, type });
       try {
         const installed = await controller.isInstalled(type);
-        if (chainIdRef.current !== chainId) return;
+        if (!mountedRef.current) return;
         if (!installed) {
           setState({ status: "error", kind: "notInstalled", providerId, type });
           return;
@@ -61,7 +87,13 @@ export function useCosmosWallet(chain: DirectOriginChain) {
         const wallets = await controller.connect(type, [
           { chainId, rpc: chain.rpc, gasPrice: chain.gasPrice, sdkVersion: chain.sdkVersion },
         ]);
-        if (chainIdRef.current !== chainId) return;
+        if (!mountedRef.current) {
+          // The owning tab was switched away from mid-connect - nothing
+          // left to show this session in, so tear it down instead of
+          // leaving it dangling.
+          controller.disconnect([chainId]);
+          return;
+        }
         const wallet = wallets.get(chainId);
         if (!wallet) {
           setState({ status: "error", kind: "connectFailed", providerId, type });
@@ -69,7 +101,7 @@ export function useCosmosWallet(chain: DirectOriginChain) {
         }
         setState({ status: "connected", address: wallet.address, wallet, providerId });
       } catch {
-        if (chainIdRef.current !== chainId) return;
+        if (!mountedRef.current) return;
         setState({ status: "error", kind: "rejected", providerId, type });
       }
     },
