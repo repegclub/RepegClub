@@ -4,17 +4,20 @@ import { Link } from "react-router-dom";
 
 // Lives in the sticky wallet-bar now (not its own row below the hero) so
 // it's always reachable while scrolling, same as Connect Keplr/History/My
-// Bag. A dropdown at every width, not just narrow - with only 2 games in it
+// Bag. A dropdown at every width, not just narrow - with only 3 games in it
 // today there'd be room for separate chips on wide screens, but that means
 // two different layouts to maintain for no real benefit, and it already has
 // to be a dropdown on narrow (nothing else fits next to the wallet
 // controls, which themselves expand once connected). Add an entry here when
-// a new minigame gets its own page. Create Your Own Luck is a separate
-// "Creators" link, not part of this dropdown - different audience (people
-// running a raffle, not playing one).
+// a new minigame gets its own page. Raffles (Create Your Own Luck's play
+// side) belongs here, same as any other game - the separate "Creators" link
+// below is for the OTHER audience of that same product (people running a
+// raffle, or using any other creator tool), not a second entry for the same
+// one.
 const GAMES: { path: string; labelKey: string; icon?: string }[] = [
   { path: "/", labelKey: "gameSwitcher.wheelOfRepeg", icon: "/wheel-pixel/wheel-emoji.png" },
   { path: "/weekly-round", labelKey: "gameSwitcher.weeklyRound", icon: "/wheel-pixel/crown-emoji.png" },
+  { path: "/create-your-own-luck", labelKey: "gameSwitcher.raffles", icon: "/wheel-pixel/clover-emoji.png" },
 ];
 
 export function GameNav({ current }: { current: string }) {
@@ -69,10 +72,10 @@ export function GameNav({ current }: { current: string }) {
         )}
       </div>
       <Link
-        to="/create-your-own-luck"
-        className={`game-nav-creators${current === "/create-your-own-luck" ? " active" : ""}`}
+        to="/creators"
+        className={`game-nav-creators${current === "/creators" ? " active" : ""}`}
       >
-        <img src="/wheel-pixel/clover-emoji.png" alt="" className="game-nav-creators-icon" />
+        <img src="/wheel-pixel/creators-icon.png" alt="" className="game-nav-creators-icon" />
         {t("gameSwitcher.creators")}
       </Link>
       {/* Not shown on /onramp itself - unlike Games/Create, there's nowhere

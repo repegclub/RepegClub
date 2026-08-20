@@ -318,9 +318,15 @@
   "gameSwitcher": {
     "wheelOfRepeg": "Wheel of Repeg",
     "weeklyRound": "Weekly Round",
+    "raffles": "Raffles",
     "gamesToggle": "Games",
     "creators": "Create",
     "onramp": "Onramp"
+  },
+  "creatorTools": {
+    "pageTitle": "Creator Tools",
+    "raffleFormTitle": "Create a raffle",
+    "airdropFormTitle": "Create an airdrop"
   },
   "createYourOwnLuck": {
     "pageTitle": "Create Your Own Luck",
@@ -354,8 +360,10 @@
       "cancelled": "Cancelled"
     },
     "creatorToggle": "🎪 I'm a creator",
+    "creatorToggleAirdrop": "🎁 I'm launching an airdrop",
+    "creatorIntroRaffle": "Create your own raffle, sell tickets, and offer a prize worth talking about. A great tool for fundraising — every raffle you run is public and verifiable on-chain, so a track record builds as you go.",
+    "creatorIntroAirdrop": "Create an airdrop for your community — any CW20 token welcome. Airdrops with a CW20 prize are free to enter. Want to charge a ticket instead? You can, as long as the prize is LUNC, USDC, or USTC.",
     "form": {
-      "raffleTypeLabel": "Raffle type",
       "ticketPriceLabel": "Ticket price (USDC)",
       "minPlayersLabel": "Minimum {{unit}}",
       "maxPlayersLabel": "Maximum {{unit}} (up to {{limit}})",
