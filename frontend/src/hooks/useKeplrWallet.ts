@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WalletType, type ConnectedWallet, type WalletController } from "@goblinhunt/cosmes/wallet";
 import { CHAIN_ID, RPC, GAS_PRICE } from "../lib/chainConfig";
 import { WC_PROJECT_ID } from "../lib/walletConnectConfig";
@@ -26,6 +26,23 @@ export function useKeplrWallet() {
   // controller (and its callback closure) was first created.
   const stateRef = useRef(state);
   stateRef.current = state;
+  // WalletProvider (WalletContext.tsx) wraps the whole app above <Routes>,
+  // so this hook instance only unmounts if the entire page unloads - a
+  // lower-probability window than the onramp's per-tab remounts, but the
+  // same race is possible in principle: connect() awaiting isInstalled()/
+  // connect() with no guard could still call setState after unmount, and a
+  // connect() that resolves after that point would leave a live wallet
+  // session with nothing left to manage or disconnect it (found in
+  // CodeRabbit review, PR #35; same fix already applied to
+  // useCosmosWallet.ts, re-armed on setup here too - a cleanup-only reset
+  // stays false forever after React Strict Mode's dev-only double-invoke).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function getController(providerId: WalletProviderId): WalletController {
     let controller = controllersRef.current.get(providerId);
@@ -38,6 +55,7 @@ export function useKeplrWallet() {
       // still fire its own onDisconnect later and wipe out the unrelated,
       // currently-active session (found in CodeRabbit review, PR #35).
       controller.onDisconnect(() => {
+        if (!mountedRef.current) return;
         const current = stateRef.current;
         if (current.status !== "disconnected" && current.providerId === providerId) {
           setState({ status: "disconnected" });
@@ -53,6 +71,7 @@ export function useKeplrWallet() {
     setState({ status: "connecting", providerId, type });
     try {
       const installed = await controller.isInstalled(type);
+      if (!mountedRef.current) return;
       if (!installed) {
         setState({ status: "error", kind: "notInstalled", providerId, type });
         return;
@@ -60,6 +79,12 @@ export function useKeplrWallet() {
       const wallets = await controller.connect(type, [
         { chainId: CHAIN_ID, rpc: RPC, gasPrice: GAS_PRICE, sdkVersion: "sdk53" },
       ]);
+      if (!mountedRef.current) {
+        // The page unloaded mid-connect - nothing left to show this
+        // session in, so tear it down instead of leaving it dangling.
+        controller.disconnect([CHAIN_ID]);
+        return;
+      }
       const wallet = wallets.get(CHAIN_ID);
       if (!wallet) {
         setState({ status: "error", kind: "connectFailed", providerId, type });
@@ -67,6 +92,7 @@ export function useKeplrWallet() {
       }
       setState({ status: "connected", address: wallet.address, wallet, providerId });
     } catch {
+      if (!mountedRef.current) return;
       setState({ status: "error", kind: "rejected", providerId, type });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

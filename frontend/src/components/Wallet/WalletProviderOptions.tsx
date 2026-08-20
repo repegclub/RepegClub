@@ -20,7 +20,11 @@ export function WalletProviderOptions({
     // structure invalid for assistive tech (found in CodeRabbit review, PR
     // #35). The 📱 in each mobile option's own aria-hidden span for the
     // same reason - without it, a screen reader announced the emoji as
-    // part of the option's name.
+    // part of the option's name. Each button's own aria-label repeats the
+    // connection type too (not just the presentational group label above
+    // it) - without it, a screen reader user tabbing button-to-button
+    // heard "Keplr" twice with no way to tell the extension option from
+    // the mobile one apart (found in CodeRabbit review, PR #35).
     <>
       <div className="wallet-provider-group-label" role="presentation">
         {t("wallet.groupExtension")}
@@ -31,6 +35,7 @@ export function WalletProviderOptions({
           type="button"
           role="menuitem"
           className="wallet-provider-option"
+          aria-label={`${provider.name} — ${t("wallet.groupExtension")}`}
           onClick={() => onSelect(provider.id, WalletType.EXTENSION)}
         >
           {provider.name}
@@ -46,6 +51,7 @@ export function WalletProviderOptions({
           type="button"
           role="menuitem"
           className="wallet-provider-option"
+          aria-label={`${provider.name} — ${t("wallet.groupMobile")}`}
           onClick={() => onSelect(provider.id, WalletType.WALLETCONNECT)}
         >
           <span aria-hidden="true">📱</span> {provider.name}

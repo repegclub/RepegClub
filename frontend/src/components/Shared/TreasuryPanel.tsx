@@ -45,9 +45,22 @@ export function TreasuryPanel() {
     if (!isOpen) return;
     setPrices(null);
     setPricesFailed(false);
+    // Guards against a stale response landing after the panel closed and
+    // reopened (open -> close -> reopen fast enough that the first fetch
+    // is still in flight) - without this, that late response could
+    // overwrite the second open's own state (found in CodeRabbit review,
+    // PR #35).
+    let active = true;
     fetchTokenPrices()
-      .then(setPrices)
-      .catch(() => setPricesFailed(true));
+      .then((result) => {
+        if (active) setPrices(result);
+      })
+      .catch(() => {
+        if (active) setPricesFailed(true);
+      });
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
 
   // Each TreasuryChainRow queries its own chain independently (own loading/
