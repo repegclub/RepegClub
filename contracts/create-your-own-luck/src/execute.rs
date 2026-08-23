@@ -986,12 +986,35 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
 }
 
 /// Self-service refund for a wallet's own tickets, callable only while
-/// `min_players` hasn't been reached yet - deliberately no minimum wait time
-/// before a second player shows up, since the player can simply leave
-/// whenever they lose interest instead of being locked in. Once `min_players`
-/// is reached this stops working, the same way `CloseRound`/`DrawWinner`
-/// treat that as the point the raffle is genuinely "in play" for everyone in
-/// it. Mirrors Wheel Manager's `WithdrawTicket` exactly.
+/// `min_players` hasn't been reached yet for SingleWinner/Podium -
+/// deliberately no minimum wait time before a second player shows up, since
+/// the player can simply leave whenever they lose interest instead of being
+/// locked in. Once `min_players` is reached this stops working there, the
+/// same way `CloseRound`/`DrawWinner` treat that as the point the raffle is
+/// genuinely "in play" for everyone in it - specifically, the point past
+/// which letting someone see the live wallet concentration and bail lets
+/// them dodge unfavorable draw odds unfairly. Mirrors Wheel Manager's
+/// `WithdrawTicket` exactly for those two types.
+///
+/// Airdrop is exempt from the `min_players` lock entirely (2026-08-23 fix,
+/// found live by the user testing a real airdrop) - there's no draw to
+/// protect the integrity of, since every payout is a deterministic
+/// `prize_amount / unique_players` split, not odds. The lock's real
+/// justification above simply doesn't exist here, and keeping it created a
+/// genuine honeypot: `ticket_revenue` refunds to the creator in full
+/// regardless of raffle_type (see `perform_draw`), so a creator could buy
+/// just enough of their own tickets to hit `min_players` in two
+/// transactions, instantly and permanently locking any real participant who
+/// joins afterward into a split they can never exit, even a guaranteed-loss
+/// one their own worst-case disclosure already warned them about before
+/// their `min_players`-reaching ticket ever committed. Letting a wallet
+/// leave a locked Airdrop costs the platform nothing new: it's the same
+/// refund-your-own-tickets path already used pre-lock, and it can only ever
+/// shrink `unique_players`/`ticket_revenue`, the same direction `CloseRound`
+/// already re-checks `min_players` for at close time (see its own comment) -
+/// a raffle that dips below the minimum this way simply can't close until
+/// it's topped back up or the `MAX_RAFFLE_AGE_SECONDS` abandonment backstop
+/// takes over, not a fund-safety issue.
 pub fn execute_withdraw_ticket(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
@@ -1001,7 +1024,7 @@ pub fn execute_withdraw_ticket(deps: DepsMut, info: MessageInfo) -> Result<Respo
     if raffle.status != RaffleStatus::Open {
         return Err(ContractError::RaffleNotOpen {});
     }
-    if raffle.unique_players.len() as u32 >= config.min_players {
+    if config.raffle_type != RaffleType::Airdrop && raffle.unique_players.len() as u32 >= config.min_players {
         return Err(ContractError::RaffleAlreadyLocked {});
     }
 

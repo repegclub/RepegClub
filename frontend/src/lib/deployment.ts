@@ -42,28 +42,33 @@ export const WEEKLY_ROUND_ADDRESS =
   "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
-// Weekly Round above). Redeployed 2026-07-23 (raffle code ID 2377, factory
-// 2378), see scripts/testnet/deployment-cyol-factory-frontenddev8.json.
-// Also added `GetEntrants` (mirrors wheel-manager's GetRoundEntrants
-// exactly) - a player buying tickets had no way to see their own ticket
-// count, only the raffle-wide totals, found live by a real user testing the
-// buy flow. Three real fixes since the previous (2026-07-22) deploy:
-// (1) Every raffle created through the factory had its own config.creator
-// silently set to the FACTORY's address instead of the real human wallet -
-// CosmWasm submessage semantics make info.sender the calling contract at
-// instantiate time, and a contract address can never sign DepositPrize/
-// DrawWinner/etc, so every raffle was permanently unfundable. Found live by
-// a real user hitting it. Fixed with a new `creator: Option<String>` field
-// on the raffle's InstantiateMsg, explicitly passed through by the factory.
-// (2) USDC_DENOM (contracts/create-your-own-luck/src/contract.rs) was
-// "utestusdc", a placeholder with zero total supply anywhere on this chain
-// - nobody could ever pay the service fee required by every raffle, free or
-// paid. Set to "uluna" instead, same testnet stand-in convention already
-// used for Wheel Manager/Weekly Round's "USDC". Both validated live end-to-
-// end (scripts/testnet/src/checkCreatorFix.ts): create -> real creator ->
-// pay fee -> deposit prize -> buy ticket, all succeeding on real chain.
+// Weekly Round above). Redeployed 2026-08-23 (raffle code ID 2419, factory
+// 2420), see scripts/testnet/deployment-cyol-factory-frontenddev10.json.
+// This is the contract redesign from 14 rounds of audit (PR #38): soft-close
+// deadline (creator-window + anti-snipe extension + 60-day hard cap)
+// replacing the old fixed post-min_players timeout; CW20 whitelist/blacklist
+// moved into this factory (checked at raffle instantiate and again at CW20
+// deposit) instead of living per-raffle; prize/airdrop payouts switched from
+// all-or-nothing `add_message` to `SubMsg`+`reply` to close a grind-and-
+// retry exploit and a class of locked-funds bugs, with a permissionless
+// RetryPrizePayout and a 3-strike auto-blacklist for malicious tokens; a
+// 20%/80% cancellation penalty (bps configurable on this factory) for
+// Single Winner/Podium, waived for Airdrop and for platform-driven CW20
+// revocation; and, found live-testing the redeployed PR #38 code the same
+// day, Airdrop is now exempt from the min_players withdrawal lock entirely
+// (WithdrawTicket) - there's no draw to protect there, just a deterministic
+// prize/unique_players split, so the lock only created a honeypot (a
+// creator could hit min_players with 2 of their own wallets - refunded via
+// ticket_revenue regardless of raffle_type - and permanently trap any real
+// participant who joined after, even in a guaranteed-loss share). Full
+// history in the "Create Your Own Luck (seguridad, hallazgos y exploits)"
+// project note. This is a schema-breaking change - every raffle
+// instantiated by a previous factory is orphaned, InstantiateMsg shape
+// changed on both contracts (and this redeploy specifically orphans the
+// PREVIOUS redeploy from earlier today, ...zddm5mg0sd46d8e, whose raffles
+// still carry the old, lockable WithdrawTicket).
 // Any change to either contract needs a fresh factory deploy too, since the
 // raffle code ID is fixed at the factory's own instantiate time
 // (contracts/create-your-own-luck-factory/src/state.rs, RAFFLE_CODE_ID).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra106g4cys3elv7um7d9rz6xlp7dderyg3shw0fu9hz5dlatymhuy4sg0es07";
+  "terra1hzrnvy0d6njzjrwnx3f6kedruqgkl2rardhw9p6fdarh84v7994q8p7zfq";

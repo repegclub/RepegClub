@@ -315,7 +315,12 @@ export function RaffleDetailPage() {
   const canBuyTicket = raffleStatus.status === "open";
   const ticketCap = maxTicketsPerWallet(config.raffle_type, config.max_players, config.ticket_price);
   const maxMoreTickets = Math.max(0, ticketCap - (myTicketCount ?? 0));
-  const canWithdrawTicket = raffleStatus.status === "open" && !hasMin;
+  // Airdrop is exempt from the min_players lock entirely (2026-08-23 fix,
+  // execute.rs's execute_withdraw_ticket) - there's no draw to protect,
+  // just a deterministic prize/unique_players split, so a participant can
+  // always leave before the airdrop closes instead of being trapped in a
+  // guaranteed-loss share by whoever happened to buy after them.
+  const canWithdrawTicket = raffleStatus.status === "open" && (isAirdrop || !hasMin);
   const canCloseRound =
     raffleStatus.status === "open" && (reachedMax || (timeoutElapsed && hasMin) || (isCreator && hasMin));
   const canExpireRaffle = raffleStatus.status === "open" && !hasMin && ageReached;

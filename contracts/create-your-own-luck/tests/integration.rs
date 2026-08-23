@@ -2175,6 +2175,47 @@ fn withdraw_ticket_rejects_once_min_players_is_reached() {
 }
 
 #[test]
+fn withdraw_ticket_stays_open_for_airdrop_even_after_min_players_is_reached() {
+    // 2026-08-23 fix: Airdrop has no draw to protect (payout is a
+    // deterministic prize/unique_players split, not odds), so the
+    // min_players lock that makes sense for SingleWinner/Podium was instead
+    // a honeypot here - a creator could reach min_players with two of their
+    // own wallets (refunded via ticket_revenue regardless of raffle_type,
+    // see perform_draw) and permanently trap any real participant who
+    // joined afterward. This is the regression test for the fix, not just
+    // "withdraw still works before min_players" (already covered above).
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 10, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap(); // reaches min_players=2
+
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("player1", &[]),
+        ExecuteMsg::WithdrawTicket {},
+    )
+    .unwrap();
+    assert_eq!(res.messages.len(), 1);
+    match &res.messages[0].msg {
+        CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+            assert_eq!(to_address, "player1");
+            assert_eq!(amount, &coins(1_000_000, USDC_DENOM));
+        }
+        other => panic!("expected BankMsg::Send, got {other:?}"),
+    }
+
+    let status = raffle_status(&deps, &env);
+    assert_eq!(status.unique_player_count, 1); // back below min_players=2
+    assert_eq!(status.ticket_count, 1);
+
+    // player2 (still in) remains locked out of nothing - SingleWinner/Podium
+    // are the only types this gate ever applied to, and are covered by
+    // withdraw_ticket_rejects_once_min_players_is_reached above.
+    execute(deps.as_mut(), env, mock_info("player2", &[]), ExecuteMsg::WithdrawTicket {}).unwrap();
+}
+
+#[test]
 fn withdraw_ticket_rejects_unexpected_funds() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 3, 10, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();

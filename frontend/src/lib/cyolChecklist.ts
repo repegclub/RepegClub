@@ -107,3 +107,32 @@ export function cooldownBand(cooldown: CreatorCooldownResponse, nowSec: number):
   const staleAt = cooldown.next_unsafe_allowed_at + UNSAFE_STREAK_STALE_AFTER_DAYS * 86400;
   return nowSec >= staleAt ? "green" : "yellow"; // cooldown served, but streak not stale yet
 }
+
+// Airdrop's live equivalent of wallet concentration (which doesn't carry
+// over - see the withdraw-lock fix's own comment in execute.rs: Airdrop's
+// payout is a deterministic prize/unique_players split, not draw odds, so
+// ticket concentration among a fixed pool isn't a fairness signal here; a
+// SMALL unique-player count actually means a BIGGER guaranteed share, the
+// opposite of what "high concentration = bad" implies for a lottery).
+// This instead tracks the thing that's actually true right now: with the
+// current unique_players count (which can only grow while Open, or shrink
+// via WithdrawTicket - unrestricted for Airdrop since 2026-08-23), what
+// would each wallet's share be worth today? Distinct from the worst-case
+// row (prize/max_players, "if it fills up completely") - this is "as of
+// this moment", useful precisely because Airdrop withdrawal now stays open
+// the whole time, so a participant can watch this and decide to leave.
+export const AIRDROP_LIVE_SHARE_YELLOW_BAND = 0.1; // +/-10% of ticket price, user-confirmed 2026-08-23
+
+export function airdropLiveShareBand(
+  prizeUsdc: number | null,
+  uniquePlayers: number,
+  ticketPriceUsdc: number
+): ChecklistBand {
+  if (uniquePlayers === 0 || prizeUsdc === null) return "neutral";
+  const shareUsdc = prizeUsdc / uniquePlayers;
+  const lowerBound = ticketPriceUsdc * (1 - AIRDROP_LIVE_SHARE_YELLOW_BAND);
+  const upperBound = ticketPriceUsdc * (1 + AIRDROP_LIVE_SHARE_YELLOW_BAND);
+  if (shareUsdc < lowerBound) return "red";
+  if (shareUsdc <= upperBound) return "yellow";
+  return "green";
+}
