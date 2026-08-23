@@ -6,6 +6,7 @@ import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { NetworkBadge } from "../Wallet/NetworkBadge";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { CreatorForm } from "./CreatorForm";
+import { CyolOptionsPanel } from "./CyolOptionsPanel";
 
 // Split off CreateYourOwnLuckPage (2026-08-20, direct request) - that page
 // mixed the raffle-creation form with the raffle list to play, forcing
@@ -46,6 +47,8 @@ export function CreatorToolsPage() {
           <img src="/characters/creators-lab-banner.jpg" alt="" className="cyol-page-banner pixel-stepped-corners" />
         </div>
       </div>
+
+      <CyolOptionsPanel />
 
       {/* 2 separate tools, not 1 form with a type switch (direct request,
           2026-08-20) - an Airdrop has no winner, so folding it under the

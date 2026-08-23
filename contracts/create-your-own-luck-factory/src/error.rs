@@ -17,4 +17,10 @@ pub enum ContractError {
 
     #[error("This wallet is on cooldown for creating another small paid raffle - try again after {available_at} (unix seconds). Creating a safe-shaped raffle (free, or max_players large enough) in the meantime is fine, but does not shorten this cooldown")]
     CreatorOnCooldown { available_at: u64 },
+
+    #[error("Unauthorized")]
+    Unauthorized {},
+
+    #[error("base_bps + late_additional_bps must not exceed 10000 (100%)")]
+    InvalidCancellationPenaltyBps {},
 }

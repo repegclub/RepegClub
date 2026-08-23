@@ -10,15 +10,25 @@ const MEMO = "REPEG CLUB";
 // already used platform-wide (Wheel Manager/Weekly Round's own redeploys):
 // draw_window_blocks comfortably covers a keeper crash/restart before the
 // draw window would need to auto-rearm; unclaimed_deadline_days matches the
-// platform's standard unclaimed-prize sweep window everywhere else;
-// max_raffle_age_seconds matches Wheel Manager's max_round_age_seconds
-// (48h) - same "pure housekeeping" backstop for a raffle stuck below
-// min_players with an unresponsive creator, see ExpireRaffle.
-const ROUND_TIMEOUT_SECONDS = 3600;
+// platform's standard unclaimed-prize sweep window everywhere else. No
+// max_raffle_age_seconds here anymore (2026-08-20 soft-close redesign) - the
+// raffle's max age is now a fixed platform-wide constant
+// (MAX_RAFFLE_AGE_SECONDS, 60 days) baked into the contract itself, not a
+// per-raffle field the factory's CreateRaffle accepts - sending it would be
+// an unknown field and get the whole message rejected (cw_serde's
+// deny_unknown_fields).
+// 24h, the contract's MIN_ROUND_TIMEOUT_SECONDS (round-10 audit fix, raised
+// from 1h): at exactly ANTI_SNIPE_EXTENSION_SECONDS (also 1h), the anti-snipe
+// extension guard (`seconds_remaining <= ANTI_SNIPE_EXTENSION_SECONDS`) was
+// satisfied from the moment a raffle opened, so literally every purchase
+// extended the deadline - the "final hour" became the raffle's entire
+// lifetime, exactly the rolling-deadline behavior soft-close exists to
+// prevent. Every raffle this app creates hit this, since the value isn't yet
+// creator-configurable (see the field's own comment above).
+const ROUND_TIMEOUT_SECONDS = 86_400;
 const DRAW_DELAY_BLOCKS = 2;
 const DRAW_WINDOW_BLOCKS = 60;
 const UNCLAIMED_DEADLINE_DAYS = 90;
-const MAX_RAFFLE_AGE_SECONDS = 172800;
 
 export type CreateRaffleParams = {
   raffleType: "single_winner" | "podium" | "airdrop";
@@ -53,7 +63,6 @@ export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffle
             draw_delay_blocks: DRAW_DELAY_BLOCKS,
             draw_window_blocks: DRAW_WINDOW_BLOCKS,
             unclaimed_deadline_days: UNCLAIMED_DEADLINE_DAYS,
-            max_raffle_age_seconds: MAX_RAFFLE_AGE_SECONDS,
             prize_native_denom: params.prizeNativeDenom,
             prize_cw20_address: null,
             podium_shares_bps: params.podiumSharesBps,

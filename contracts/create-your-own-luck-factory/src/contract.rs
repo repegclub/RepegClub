@@ -1,25 +1,44 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult};
+use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Reply, Response, StdResult};
 use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
-use crate::execute::{execute_create_raffle, CREATE_RAFFLE_REPLY_ID};
+use crate::execute::{
+    execute_add_cw20_to_whitelist, execute_create_raffle, execute_remove_cw20_from_whitelist,
+    execute_report_cw20_failure, execute_set_cancellation_penalty_bps, execute_unblacklist_cw20,
+    CREATE_RAFFLE_REPLY_ID,
+};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
-use crate::state::{RaffleRecord, PENDING_CREATOR, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT};
+use crate::state::{
+    RaffleRecord, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS,
+    KNOWN_RAFFLES, PENDING_CREATOR, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT,
+};
+
+/// Starting cancellation-penalty split (20% forfeited on any cancel once
+/// the fee is paid, another 80% - 100% total - once `min_players` is
+/// reached) - the exact figures confirmed with the user, 2026-08-20. Admin-
+/// updatable from here via `SetCancellationPenaltyBps`.
+const DEFAULT_CANCELLATION_PENALTY_BASE_BPS: u64 = 2_000;
+const DEFAULT_CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS: u64 = 8_000;
 
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     RAFFLE_CODE_ID.save(deps.storage, &msg.raffle_code_id)?;
     RAFFLE_COUNT.save(deps.storage, &0u64)?;
+    ADMIN.save(deps.storage, &info.sender)?;
+    CANCELLATION_PENALTY_BASE_BPS.save(deps.storage, &DEFAULT_CANCELLATION_PENALTY_BASE_BPS)?;
+    CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS
+        .save(deps.storage, &DEFAULT_CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS)?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
-        .add_attribute("raffle_code_id", msg.raffle_code_id.to_string()))
+        .add_attribute("raffle_code_id", msg.raffle_code_id.to_string())
+        .add_attribute("admin", info.sender))
 }
 
 #[entry_point]
@@ -41,7 +60,6 @@ pub fn execute(
             draw_delay_blocks,
             draw_window_blocks,
             unclaimed_deadline_days,
-            max_raffle_age_seconds,
             prize_native_denom,
             prize_cw20_address,
             podium_shares_bps,
@@ -59,11 +77,20 @@ pub fn execute(
             draw_delay_blocks,
             draw_window_blocks,
             unclaimed_deadline_days,
-            max_raffle_age_seconds,
             prize_native_denom,
             prize_cw20_address,
             podium_shares_bps,
         ),
+        ExecuteMsg::AddCw20ToWhitelist { address } => execute_add_cw20_to_whitelist(deps, info, address),
+        ExecuteMsg::RemoveCw20FromWhitelist { address } => {
+            execute_remove_cw20_from_whitelist(deps, info, address)
+        }
+        ExecuteMsg::UnblacklistCw20 { address } => execute_unblacklist_cw20(deps, info, address),
+        ExecuteMsg::ReportCw20Failure { address } => execute_report_cw20_failure(deps, info, address),
+        ExecuteMsg::SetCancellationPenaltyBps {
+            base_bps,
+            late_additional_bps,
+        } => execute_set_cancellation_penalty_bps(deps, info, base_bps, late_additional_bps),
     }
 }
 
@@ -97,6 +124,7 @@ fn handle_create_raffle_reply(
         },
     )?;
     RAFFLE_COUNT.save(deps.storage, &(index + 1))?;
+    KNOWN_RAFFLES.save(deps.storage, &raffle_address, &Empty {})?;
 
     Ok(Response::new()
         .add_attribute("action", "raffle_created")
@@ -137,7 +165,6 @@ mod tests {
             draw_delay_blocks: 2,
             draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
-            max_raffle_age_seconds: 604800,
             prize_native_denom: Some("uustc".to_string()),
             prize_cw20_address: None,
             podium_shares_bps: vec![],
@@ -157,7 +184,6 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
@@ -173,11 +199,11 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
             },
+            _ => unreachable!("sample_create_raffle_msg always returns CreateRaffle"),
         }
     }
 
@@ -194,7 +220,6 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
@@ -210,11 +235,11 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
             },
+            _ => unreachable!("sample_create_raffle_msg always returns CreateRaffle"),
         }
     }
 
@@ -231,7 +256,6 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
@@ -247,11 +271,11 @@ mod tests {
                 draw_delay_blocks,
                 draw_window_blocks,
                 unclaimed_deadline_days,
-                max_raffle_age_seconds,
                 prize_native_denom,
                 prize_cw20_address,
                 podium_shares_bps,
             },
+            _ => unreachable!("sample_create_raffle_msg always returns CreateRaffle"),
         }
     }
 
@@ -653,5 +677,187 @@ mod tests {
         let last: RaffleRecordResponse = page2.raffles[0].clone();
         assert_eq!(last.index, 0);
         assert_eq!(last.address, Addr::unchecked(addresses[0]));
+    }
+
+    fn instantiate_factory(deps: cosmwasm_std::DepsMut) {
+        instantiate(
+            deps,
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn admin_can_manage_the_cw20_whitelist_but_nobody_else_can() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("not-admin", &[]),
+            ExecuteMsg::AddCw20ToWhitelist { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::AddCw20ToWhitelist { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+
+        let bin = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::IsCw20Whitelisted { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+        assert!(from_json::<bool>(bin).unwrap());
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("not-admin", &[]),
+            ExecuteMsg::RemoveCw20FromWhitelist { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::RemoveCw20FromWhitelist { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+
+        let bin = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::IsCw20Whitelisted { address: "terra1cw20token00000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+        assert!(!from_json::<bool>(bin).unwrap());
+    }
+
+    #[test]
+    fn only_a_raffle_this_factory_deployed_can_report_a_cw20_failure() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+
+        // A wallet that never went through CreateRaffle - not in KNOWN_RAFFLES.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("random-wallet", &[]),
+            ExecuteMsg::ReportCw20Failure { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        // Register a real raffle the same way CreateRaffle's reply does.
+        execute(deps.as_mut(), mock_env(), mock_info("creator1", &[]), sample_create_raffle_msg()).unwrap();
+        let raffle_addr = "terra1newraffle0000000000000000000000000000000";
+        reply(deps.as_mut(), mock_env(), fake_reply(CREATE_RAFFLE_REPLY_ID, raffle_addr)).unwrap();
+
+        // Even the admin can't call this directly - only a known raffle address.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::ReportCw20Failure { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info(raffle_addr, &[]),
+            ExecuteMsg::ReportCw20Failure { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+
+        let bin = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::IsCw20Blacklisted { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+        assert!(from_json::<bool>(bin).unwrap());
+
+        // Admin can manually clear a wrongly-caught token.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("not-admin", &[]),
+            ExecuteMsg::UnblacklistCw20 { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::UnblacklistCw20 { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+
+        let bin = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::IsCw20Blacklisted { address: "terra1badtoken000000000000000000000000000000000".to_string() },
+        )
+        .unwrap();
+        assert!(!from_json::<bool>(bin).unwrap());
+    }
+
+    #[test]
+    fn cancellation_penalty_bps_defaults_20_80_and_is_admin_tunable_within_100_percent() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+
+        let bin = query(deps.as_ref(), mock_env(), QueryMsg::GetCancellationPenaltyBps {}).unwrap();
+        let penalty: crate::msg::CancellationPenaltyResponse = from_json(bin).unwrap();
+        assert_eq!(penalty.base_bps, 2_000);
+        assert_eq!(penalty.late_additional_bps, 8_000);
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("not-admin", &[]),
+            ExecuteMsg::SetCancellationPenaltyBps { base_bps: 1_000, late_additional_bps: 9_000 },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        // Over 100% combined - rejected even for the admin.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::SetCancellationPenaltyBps { base_bps: 5_000, late_additional_bps: 6_000 },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::InvalidCancellationPenaltyBps {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::SetCancellationPenaltyBps { base_bps: 1_000, late_additional_bps: 9_000 },
+        )
+        .unwrap();
+
+        let bin = query(deps.as_ref(), mock_env(), QueryMsg::GetCancellationPenaltyBps {}).unwrap();
+        let penalty: crate::msg::CancellationPenaltyResponse = from_json(bin).unwrap();
+        assert_eq!(penalty.base_bps, 1_000);
+        assert_eq!(penalty.late_additional_bps, 9_000);
     }
 }

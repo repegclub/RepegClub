@@ -1,8 +1,14 @@
 use cosmwasm_std::{to_json_binary, Binary, Deps, Order, StdResult};
 use cw_storage_plus::Bound;
 
-use crate::msg::{ConfigResponse, CreatorCooldownResponse, QueryMsg, RaffleRecordResponse, RafflesResponse};
-use crate::state::{CREATOR_COOLDOWNS, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT};
+use crate::msg::{
+    CancellationPenaltyResponse, ConfigResponse, CreatorCooldownResponse, QueryMsg, RaffleRecordResponse,
+    RafflesResponse,
+};
+use crate::state::{
+    CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, CREATOR_COOLDOWNS,
+    CW20_BLACKLIST, CW20_WHITELIST, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT,
+};
 
 pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -13,7 +19,31 @@ pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetCreatorCooldown { creator } => {
             to_json_binary(&query_creator_cooldown(deps, creator)?)
         }
+        QueryMsg::IsCw20Whitelisted { address } => {
+            to_json_binary(&query_is_cw20_whitelisted(deps, address)?)
+        }
+        QueryMsg::IsCw20Blacklisted { address } => {
+            to_json_binary(&query_is_cw20_blacklisted(deps, address)?)
+        }
+        QueryMsg::GetCancellationPenaltyBps {} => to_json_binary(&query_cancellation_penalty_bps(deps)?),
     }
+}
+
+fn query_is_cw20_whitelisted(deps: Deps, address: String) -> StdResult<bool> {
+    let addr = deps.api.addr_validate(&address)?;
+    Ok(CW20_WHITELIST.has(deps.storage, &addr))
+}
+
+fn query_is_cw20_blacklisted(deps: Deps, address: String) -> StdResult<bool> {
+    let addr = deps.api.addr_validate(&address)?;
+    Ok(CW20_BLACKLIST.has(deps.storage, &addr))
+}
+
+fn query_cancellation_penalty_bps(deps: Deps) -> StdResult<CancellationPenaltyResponse> {
+    Ok(CancellationPenaltyResponse {
+        base_bps: CANCELLATION_PENALTY_BASE_BPS.load(deps.storage)?,
+        late_additional_bps: CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS.load(deps.storage)?,
+    })
 }
 
 fn query_raffles(

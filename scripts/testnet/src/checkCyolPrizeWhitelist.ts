@@ -24,7 +24,7 @@ const FAKE_CW20_ADDRESS = "terra15dv0f2rykyp6gyvuhawk8qgfd7ypm4lgkm4z39";
 
 const baseFields = {
   raffle_type: "single_winner" as const,
-  ticket_denom: "utestusdc", // paid raffles must use the platform's USDC (2026-07-21), this script predates that; fine for the free case too (any denom is allowed there)
+  ticket_denom: "uluna", // paid raffles must use the platform's USDC, which is "uluna" on this testnet (see checkBatchBuyTicket.ts) - "utestusdc" doesn't exist and the factory would reject it; fine for the free case too (any denom is allowed there)
   allowed_entrants: null,
   min_players: 2,
   // >= UNSAFE_MAX_PLAYERS_THRESHOLD (20) in the factory's cooldown check
@@ -33,11 +33,10 @@ const baseFields = {
   // repeat unsafe-shaped raffles from the same admin wallet. Unrelated to
   // what this script tests (prize whitelist).
   max_players: 25,
-  round_timeout_seconds: 3600,
+  round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
   draw_delay_blocks: 2,
   draw_window_blocks: 60,
   unclaimed_deadline_days: 90,
-  max_raffle_age_seconds: 604800, // required field added 2026-07-21, this script predates it
   podium_shares_bps: [] as number[],
 };
 
@@ -69,15 +68,34 @@ async function tryCreateRaffle(
 
 async function expectRejected(label: string, run: () => Promise<unknown>) {
   console.log(`\n${label} - expecting rejection...`);
+  // succeeded, not caught below (round-11 audit fix): this used to throw
+  // from inside the same try it's paired with, so its own catch immediately
+  // re-wrapped it as "Failed, but not with the expected error: Expected ...
+  // but it succeeded" - the wrong diagnosis (looks like a wrong-error case,
+  // when it's actually a no-error-at-all case) for whoever has to debug a
+  // real whitelist regression later.
+  let succeeded = false;
   try {
     await run();
-    throw new Error(`Expected ${label} to fail, but it succeeded`);
+    succeeded = true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (!message.includes("PrizeAssetNotAllowlisted") && !message.includes("prize")) {
+    // "prize" alone (round-10 audit fix, found independently by two
+    // reviewers) matched almost any failure - notably the unknown-field
+    // error text, which enumerates the expected field names including
+    // "prize_native_denom"/"prize_cw20_address". That would have made this
+    // script print "OK: rejected" for the wrong reason if a stale field
+    // (like the old max_raffle_age_seconds) snuck back into baseFields,
+    // masking exactly the class of regression round 4 found. Matched on the
+    // contract's real error text instead - see error.rs's
+    // PrizeAssetNotAllowlisted doc comment.
+    if (!message.includes("PrizeAssetNotAllowlisted") && !message.includes("can only offer")) {
       throw new Error(`Failed, but not with the expected error: ${message}`);
     }
     console.log(`OK: rejected (${message.split("\n")[0].slice(0, 120)})`);
+  }
+  if (succeeded) {
+    throw new Error(`Expected ${label} to fail, but it succeeded`);
   }
 }
 

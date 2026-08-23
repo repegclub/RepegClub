@@ -523,8 +523,7 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   max < 2 ||
                   max > maxPlayersLimit(raffleType) ||
                   !Number.isFinite(prize) ||
-                  prize < 0 ||
-                  tokenPrices.status !== "loaded"
+                  prize < 0
                 ) {
                   return null;
                 }
@@ -537,6 +536,31 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                 if (price > 0) {
                   const priceMicros = Number(displayNumberToUluna(price));
                   if (priceMicros < 1_000_000 || priceMicros % 10_000 !== 0) return null;
+                }
+                // Airdrop fairness check - only meaningful once a ticket
+                // actually costs something (see the free-airdrop skip
+                // below). Checked up front so the round-9 fix below (the
+                // price-unknown case) also only applies here, not to
+                // SingleWinner's disclosure, which makes no fairness claim.
+                if (raffleType === "airdrop" && price <= 0) return null;
+                if (tokenPrices.status === "loading") return null;
+                // Round-9 audit fix: same silent-skip gap closed on
+                // RaffleDetailPage (fundValueUnknown/buyValueUnknown/
+                // singleWinnerPrizeUnknown) - a failed price feed used to
+                // hide this box entirely instead of disclosing that
+                // fairness couldn't be verified. Airdrop only: the
+                // mandatory DepositPrize-time disclaimer already covers
+                // this case fully, so this is a creation-time heads-up, not
+                // the only safeguard.
+                if (tokenPrices.status === "error") {
+                  if (raffleType === "airdrop") {
+                    return (
+                      <div className="cyol-airdrop-fairness-box">
+                        {t("createYourOwnLuck.form.airdropCalcUnknown", { ticketUsd: price.toFixed(2) })}
+                      </div>
+                    );
+                  }
+                  return null;
                 }
                 // The prize amount is in whatever asset was chosen above,
                 // not necessarily USDC - convert to real USD before
@@ -559,15 +583,6 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   );
                 }
 
-                // Airdrop fairness check - only meaningful once a ticket
-                // actually costs something (see the free-airdrop skip
-                // above). Same math as RaffleDetailPage.tsx's own
-                // fundValueMismatch/buyValueMismatch (worst-case share =
-                // prize / max_players, the whole point being "how bad can
-                // this get if it fills up completely") - shown here too so
-                // a creator sees it before ever instantiating the raffle,
-                // not only after, at the DepositPrize step.
-                if (price <= 0) return null;
                 const worstCaseShareUsd = prizeUsd / max;
                 const fair = worstCaseShareUsd >= price;
                 return (

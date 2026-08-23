@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Timestamp};
+use cosmwasm_std::{Addr, Empty, Timestamp};
 use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -42,3 +42,55 @@ pub struct CreatorCooldown {
 }
 
 pub const CREATOR_COOLDOWNS: Map<Addr, CreatorCooldown> = Map::new("creator_cooldowns");
+
+/// Set once at instantiate to `info.sender` (the same `ADMIN_MNEMONIC`
+/// wallet already used to deploy every contract in this project - see
+/// wheel-manager's identical `admin: info.sender.clone()` pattern). Gates
+/// `AddCw20ToWhitelist`/`RemoveCw20FromWhitelist`/`UnblacklistCw20`/
+/// `SetCancellationPenaltyBps`. `ReportCw20Failure` is deliberately NOT
+/// admin-gated - see its own doc comment on `ExecuteMsg`.
+pub const ADMIN: Item<Addr> = Item::new("admin");
+
+/// CW20 tokens approved as prizes for PAID raffles - added only after
+/// manual review (liquidity, volume, community standing, confirmed non-
+/// malicious transfer behavior), the same bar create-your-own-luck's own
+/// `ALLOWED_PAID_NATIVE_PRIZE_DENOMS` already applies to natives, extended
+/// to CW20 via this admin-updatable registry instead of a code constant so
+/// approving a new token doesn't need a contract redeploy. Presence as a
+/// key means whitelisted - the `Empty` value carries no data.
+pub const CW20_WHITELIST: Map<&Addr, Empty> = Map::new("cw20_whitelist");
+
+/// CW20 tokens blocked as prizes for FREE raffles/airdrops - opt-OUT, not
+/// opt-in like the paid whitelist above (default: any CW20 is allowed).
+/// Populated automatically by a raffle instance reporting 3 consecutive
+/// prize-transfer failures against the same token via `ReportCw20Failure`
+/// (see create-your-own-luck's reply-handler doc comment for the detection
+/// logic) - never touched by admin directly except `UnblacklistCw20`, for
+/// the case a legitimate token got wrongly caught.
+pub const CW20_BLACKLIST: Map<&Addr, Empty> = Map::new("cw20_blacklist");
+
+/// Every raffle address this factory has ever deployed, indexed for O(1)
+/// membership lookup (unlike `RAFFLES`, keyed by index, not address) - lets
+/// `ReportCw20Failure` authenticate "this call really came from a raffle
+/// this factory itself deployed" without a separate bot key or scanning
+/// `RAFFLES` linearly. Saved alongside `RAFFLES` in the create-raffle reply
+/// handler, never removed.
+pub const KNOWN_RAFFLES: Map<&Addr, Empty> = Map::new("known_raffles");
+
+/// Cancellation-penalty percentages on the SERVICE FEE (never the prize),
+/// SingleWinner/Podium raffles only - see create-your-own-luck's own
+/// `execute_cancel_raffle` for the full logic. `BASE` applies to any
+/// cancellation once the fee is paid; `LATE_ADDITIONAL` stacks on top once
+/// `min_players` is reached (base + late_additional = 100% forfeited then).
+/// In basis points (10000 = 100%); admin-updatable so the platform can tune
+/// this without a redeploy - but each raffle reads these ONCE, at its own
+/// instantiate, and keeps that value for its lifetime, so a later admin
+/// change never retroactively changes the number a creator is warned about
+/// (round-8 audit fix: corrected wording - a prior version of this comment
+/// claimed a "fund-time disclaimer checkbox" already existed; nothing on
+/// the frontend disclosed this bps at all until this round added a
+/// confirm-with-checkbox warning at CANCEL time, not fund time - see
+/// `RaffleDetailPage.tsx`'s `cancelPenaltyBps`).
+pub const CANCELLATION_PENALTY_BASE_BPS: Item<u64> = Item::new("cancellation_penalty_base_bps");
+pub const CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS: Item<u64> =
+    Item::new("cancellation_penalty_late_additional_bps");

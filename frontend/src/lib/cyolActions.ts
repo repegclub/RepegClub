@@ -131,7 +131,19 @@ export function cancelRaffle(wallet: ConnectedWallet, contractAddress: string) {
 }
 
 // Permissionless safety net if the raffle never reached min_players within
-// max_raffle_age_seconds.
+// the contract's fixed max age (MAX_RAFFLE_AGE_SECONDS, 60 days - not a
+// per-raffle field since the 2026-08-20 soft-close redesign).
 export function expireRaffle(wallet: ConnectedWallet, contractAddress: string) {
   return execute(wallet, contractAddress, { expire_raffle: {} });
+}
+
+// Permissionless retry for any winner(s) whose payout SubMsg reply came back
+// Err (an honest prize-token transfer failure, not a fund lock - see
+// execute.rs's own doc comment on RetryPrizePayout). Round-10 audit fix
+// (Opus): this action existed on-chain since round 1 but had no frontend or
+// script client at all - RaffleDetailPage.tsx's "payout pending, check back
+// shortly" copy implied something would eventually resolve it, but nothing
+// in the product ever broadcast this message.
+export function retryPrizePayout(wallet: ConnectedWallet, contractAddress: string) {
+  return execute(wallet, contractAddress, { retry_prize_payout: {} });
 }

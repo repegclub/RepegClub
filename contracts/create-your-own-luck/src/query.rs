@@ -20,10 +20,13 @@ fn query_raffle_status(deps: Deps, env: Env) -> StdResult<RaffleStatusResponse> 
     let config = CONFIG.load(deps.storage)?;
     let raffle = RAFFLE.load(deps.storage)?;
 
-    let seconds_remaining = match (raffle.status, raffle.opened_at) {
-        (RaffleStatus::Open, Some(opened_at)) => {
-            let deadline = opened_at.seconds() + config.round_timeout_seconds;
-            Some(deadline.saturating_sub(env.block.time.seconds()))
+    // `None` until `min_players` is first reached (see `RaffleState::
+    // deadline`'s own doc comment) - there's no meaningful countdown before
+    // that point under the soft-close design, unlike the old fixed-from-
+    // opened_at timeout this replaces.
+    let seconds_remaining = match (raffle.status, raffle.deadline) {
+        (RaffleStatus::Open, Some(deadline)) => {
+            Some(deadline.seconds().saturating_sub(env.block.time.seconds()))
         }
         _ => None,
     };
@@ -49,6 +52,7 @@ fn query_winners(deps: Deps) -> StdResult<WinnersResponse> {
     Ok(WinnersResponse {
         winners: raffle.winners,
         prize_shares: raffle.prize_shares,
+        prize_paid: raffle.prize_paid,
     })
 }
 
@@ -85,12 +89,14 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         draw_delay_blocks: config.draw_delay_blocks,
         draw_window_blocks: config.draw_window_blocks,
         unclaimed_deadline_days: config.unclaimed_deadline_days,
-        max_raffle_age_seconds: config.max_raffle_age_seconds,
         prize_asset: config.prize_asset,
         fee_amount_usdc: config.fee_amount_usdc,
         usdc_denom: config.usdc_denom,
         founder_fee_address: config.founder_fee_address,
         treasury_address: config.treasury_address,
+        factory_address: config.factory_address,
         podium_shares_bps: config.podium_shares_bps,
+        cancellation_penalty_base_bps: config.cancellation_penalty_base_bps,
+        cancellation_penalty_late_additional_bps: config.cancellation_penalty_late_additional_bps,
     })
 }

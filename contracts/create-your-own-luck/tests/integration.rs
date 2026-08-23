@@ -1,8 +1,12 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{coin, coins, from_json, to_json_binary, CosmosMsg, Uint128, WasmMsg};
+use cosmwasm_std::{
+    coin, coins, from_json, to_json_binary, ContractResult, CosmosMsg, Reply, ReplyOn, SubMsgResponse,
+    SubMsgResult, SystemError, SystemResult, Uint128, WasmMsg, WasmQuery,
+};
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
-use create_your_own_luck::contract::{execute, instantiate, query};
+use create_your_own_luck::contract::{execute, instantiate, query, reply};
+use create_your_own_luck::factory_msgs::{CancellationPenaltyResponse, FactoryQueryMsg};
 use create_your_own_luck::msg::{
     ConfigResponse, Cw20HookMsg, EntrantsResponse, ExecuteMsg, InstantiateMsg,
     MyAirdropShareResponse, QueryMsg, RaffleStatusResponse, WinnersResponse,
@@ -22,12 +26,56 @@ const TICKET_DENOM: &str = USDC_DENOM;
 const PRIZE_DENOM: &str = "uusd";
 const USDC_DENOM: &str = "uluna"; // must match the hardcoded USDC_DENOM constant in contract.rs
 const FEE_AMOUNT_USDC: u128 = 3_000_000; // "$3", charged directly - no oracle conversion anymore
+/// Stand-in `create-your-own-luck-factory` address - every `InstantiateMsg`
+/// in this suite points at it, and `mock_deps_with_factory` below answers
+/// its whitelist/blacklist/cancellation-penalty queries (2026-08-20 CW20
+/// whitelist/blacklist + cancellation-penalty redesign).
+const FACTORY_ADDRESS: &str = "factory";
+/// Real platform defaults (confirmed with the user, 2026-08-20) - see
+/// create-your-own-luck-factory's own `DEFAULT_CANCELLATION_PENALTY_*_BPS`.
+const CANCELLATION_PENALTY_BASE_BPS: u64 = 2_000;
+const CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS: u64 = 8_000;
 
 type Deps = cosmwasm_std::OwnedDeps<
     cosmwasm_std::testing::MockStorage,
     cosmwasm_std::testing::MockApi,
     cosmwasm_std::testing::MockQuerier,
 >;
+
+/// `mock_dependencies()` plus a `WasmQuery::Smart` handler standing in for
+/// `FACTORY_ADDRESS` - every raffle instantiate (SingleWinner/Podium always,
+/// Airdrop never) queries `GetCancellationPenaltyBps`, and any CW20 prize
+/// queries `IsCw20Blacklisted` (always) / `IsCw20Whitelisted` (paid only) -
+/// both at instantiate and again at CW20 deposit time. Defaults: nothing is
+/// whitelisted or blacklisted (an arbitrary, unreviewed CW20 in a paid
+/// raffle is correctly rejected, matching the real "admin review required"
+/// behavior - see `instantiate_rejects_cw20_prize_for_a_paid_raffle`), and
+/// the penalty is the real platform default.
+fn mock_deps_with_factory() -> Deps {
+    let mut deps = mock_dependencies();
+    deps.querier.update_wasm(|query| match query {
+        WasmQuery::Smart { contract_addr, msg } if contract_addr == FACTORY_ADDRESS => {
+            let parsed: FactoryQueryMsg = from_json(msg).unwrap();
+            let bin = match parsed {
+                FactoryQueryMsg::IsCw20Whitelisted { .. } => to_json_binary(&false).unwrap(),
+                FactoryQueryMsg::IsCw20Blacklisted { .. } => to_json_binary(&false).unwrap(),
+                FactoryQueryMsg::GetCancellationPenaltyBps {} => to_json_binary(&CancellationPenaltyResponse {
+                    base_bps: CANCELLATION_PENALTY_BASE_BPS,
+                    late_additional_bps: CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS,
+                })
+                .unwrap(),
+            };
+            SystemResult::Ok(ContractResult::Ok(bin))
+        }
+        WasmQuery::Smart { contract_addr, .. } => {
+            SystemResult::Err(SystemError::NoSuchContract { addr: contract_addr.clone() })
+        }
+        other => SystemResult::Err(SystemError::UnsupportedRequest {
+            kind: format!("unmocked wasm query: {other:?}"),
+        }),
+    });
+    deps
+}
 
 fn setup(
     raffle_type: RaffleType,
@@ -36,7 +84,7 @@ fn setup(
     ticket_price: u128,
     podium_shares_bps: Vec<u32>,
 ) -> (Deps, cosmwasm_std::Env) {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -46,11 +94,11 @@ fn setup(
         allowed_entrants: None,
         min_players,
         max_players,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps,
@@ -80,9 +128,22 @@ fn raffle_status(deps: &Deps, env: &cosmwasm_std::Env) -> RaffleStatusResponse {
     from_json(bin).unwrap()
 }
 
+/// Simulates the chain resolving a dispatched prize-transfer `SubMsg`'s
+/// reply - needed for every test exercising the 2026-08-20 audit fix (the
+/// payout/claim isn't finalized until this runs, unlike the pre-fix code
+/// which finalized it before dispatch).
+fn simulate_reply(deps: &mut Deps, env: &cosmwasm_std::Env, id: u64, ok: bool) -> cosmwasm_std::Response {
+    let result = if ok {
+        SubMsgResult::Ok(SubMsgResponse { events: vec![], data: None })
+    } else {
+        SubMsgResult::Err("mock prize transfer failure".to_string())
+    };
+    reply(deps.as_mut(), env.clone(), Reply { id, result }).unwrap()
+}
+
 #[test]
 fn podium_needs_min_players_covering_all_places() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -92,11 +153,11 @@ fn podium_needs_min_players_covering_all_places() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![5000, 3000, 2000], // 3 places, but min_players is only 2
@@ -107,7 +168,7 @@ fn podium_needs_min_players_covering_all_places() {
 
 #[test]
 fn podium_shares_must_sum_to_10000() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -117,11 +178,11 @@ fn podium_shares_must_sum_to_10000() {
         allowed_entrants: None,
         min_players: 3,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![5000, 3000, 1000], // sums to 9000, not 10000
@@ -132,7 +193,7 @@ fn podium_shares_must_sum_to_10000() {
 
 #[test]
 fn podium_shares_reject_a_zero_percent_place() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -142,11 +203,11 @@ fn podium_shares_reject_a_zero_percent_place() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![10_000, 0], // sums to 10000, but a 0% "winner" is deceptive
@@ -157,7 +218,7 @@ fn podium_shares_reject_a_zero_percent_place() {
 
 #[test]
 fn podium_shares_reject_too_many_places() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     // 11 places (1 more than MAX_PODIUM_PLACES), summing to exactly 10000 so
     // the place-count cap is the only reason this is rejected.
@@ -171,11 +232,11 @@ fn podium_shares_reject_too_many_places() {
         allowed_entrants: None,
         min_players: 11,
         max_players: 15,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: too_many,
@@ -186,7 +247,7 @@ fn podium_shares_reject_too_many_places() {
 
 #[test]
 fn podium_shares_rejected_for_non_podium_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -196,11 +257,11 @@ fn podium_shares_rejected_for_non_podium_raffle() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![10_000], // not applicable - raffle_type isn't Podium
@@ -231,7 +292,7 @@ fn airdrop_fee_scales_by_max_players_tier() {
 
 #[test]
 fn airdrop_rejects_max_players_over_1000_for_free_raffles() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -241,11 +302,11 @@ fn airdrop_rejects_max_players_over_1000_for_free_raffles() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 1001,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -261,7 +322,7 @@ fn airdrop_rejects_max_players_over_1000_for_free_raffles() {
 
 #[test]
 fn single_winner_and_podium_reject_max_players_over_100() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -271,11 +332,11 @@ fn single_winner_and_podium_reject_max_players_over_100() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 101,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -283,7 +344,7 @@ fn single_winner_and_podium_reject_max_players_over_100() {
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
     assert!(matches!(err, ContractError::MaxPlayersTooHighForRaffleType { max: 100 }));
 
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -293,11 +354,11 @@ fn single_winner_and_podium_reject_max_players_over_100() {
         allowed_entrants: None,
         min_players: 3,
         max_players: 101,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![5000, 3000, 2000],
@@ -382,7 +443,7 @@ fn free_ticket_raffle_lets_anyone_enter_without_funds() {
 
 #[test]
 fn allowlist_rejects_wallets_not_on_the_list() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -392,11 +453,11 @@ fn allowlist_rejects_wallets_not_on_the_list() {
         allowed_entrants: Some(vec!["allowed1".to_string()]),
         min_players: 2,
         max_players: 2,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -712,7 +773,21 @@ fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
     assert_eq!(share.share, Uint128::new(500));
     assert!(!share.claimed);
 
-    execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    let claim_res = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert_eq!(claim_res.messages.len(), 1);
+    // NOT marked claimed yet - only the reply confirming the transfer
+    // succeeded finalizes it (2026-08-20 audit fix: the old code marked it
+    // claimed before dispatch, so an honest transfer failure permanently
+    // stranded the share with no retry and no reclaim).
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert!(!share.claimed);
+
+    simulate_reply(&mut deps, &env, claim_res.messages[0].id, true);
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert!(share.claimed);
+
     let err = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap_err();
     assert!(matches!(err, ContractError::AlreadyClaimed {}));
 
@@ -730,14 +805,629 @@ fn airdrop_splits_equally_and_supports_claim_and_reclaim() {
 }
 
 #[test]
-fn cancel_raffle_refunds_prize_fee_and_tickets() {
+fn airdrop_claim_failure_does_not_strand_the_share_and_allows_retry() {
+    // 2026-08-20 audit fix regression test: an honest (non-malicious)
+    // transfer failure used to permanently mark the claimant as "already
+    // claimed" without ever paying them - no retry, and ReclaimUnclaimed
+    // wouldn't sweep it either since it thought the share was handled.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let claim_res = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    simulate_reply(&mut deps, &env, claim_res.messages[0].id, false);
+
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert!(!share.claimed, "a failed transfer must not mark the share claimed");
+
+    // Retry works - AlreadyClaimed does NOT fire, since the first attempt
+    // never actually finalized.
+    let retry_res = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert_eq!(retry_res.messages.len(), 1);
+    simulate_reply(&mut deps, &env, retry_res.messages[0].id, true);
+
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert!(share.claimed);
+}
+
+#[test]
+fn airdrop_zero_share_is_marked_claimed_without_dispatching_a_transfer() {
+    // 2026-08-20 audit fix regression test: a tiny prize split among many
+    // players used to dispatch a doomed zero-amount transfer, whose
+    // rejection (the CW20 standard itself rejects zero-amount transfers)
+    // would count as a real failure toward the 3-strikes auto-blacklist -
+    // letting anyone permanently blacklist any CW20 platform-wide for the
+    // cost of one free raffle with a tiny prize and 3+ throwaway wallets.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 3, 3, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1, FEE_AMOUNT_USDC).unwrap(); // 1 unit / 3 players floors to 0
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert_eq!(share.share, Uint128::zero());
+
+    let claim_res = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert!(claim_res.messages.is_empty());
+
+    let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: "player1".to_string() }).unwrap();
+    let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+    assert!(share.claimed);
+}
+
+#[test]
+fn retry_prize_payout_resends_an_unpaid_single_winner_share_after_a_failed_transfer() {
+    // 2026-08-20 audit fix regression test: a failed SingleWinner/Podium
+    // payout used to have no recovery path at all - the prize just sat
+    // stuck in the contract forever.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    // Sellout draws immediately, in the same transaction as this ticket.
+    let draw_res = buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
+    assert_eq!(winners.prize_paid, vec![false]);
+
+    let payout_id = draw_res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { amount, .. }) if amount[0].denom == PRIZE_DENOM))
+        .expect("draw should dispatch a prize payout")
+        .id;
+    simulate_reply(&mut deps, &env, payout_id, false);
+
+    let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
+    assert_eq!(winners.prize_paid, vec![false], "a failed transfer must not be marked paid");
+
+    // Nothing else can retry this but RetryPrizePayout - permissionless.
+    let retry_res = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::RetryPrizePayout {}).unwrap();
+    assert_eq!(retry_res.messages.len(), 1);
+    simulate_reply(&mut deps, &env, retry_res.messages[0].id, true);
+
+    let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
+    assert_eq!(winners.prize_paid, vec![true]);
+
+    let err = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::RetryPrizePayout {}).unwrap_err();
+    assert!(matches!(err, ContractError::NothingToRetry {}));
+}
+
+#[test]
+fn retry_prize_payout_failures_do_not_count_toward_the_auto_blacklist_threshold() {
+    // 2026-08-20 audit fix (2nd round): `RetryPrizePayout` is permissionless
+    // and unrate-limited - if its failures counted toward the 3-strikes
+    // auto-blacklist the same way an original draw failure does, anyone
+    // could cheaply force any CW20 prize token to get permanently
+    // blacklisted platform-wide just by calling `RetryPrizePayout` and
+    // failing it 3 times. Confirmed exploitable end-to-end by an
+    // independent reviewer before this fix (before `RetryPrizePayout`
+    // existed at all, SingleWinner only ever attempted its one payout once
+    // per raffle, so 3 failures was structurally unreachable).
+    let (mut deps, env) = instantiate_with_prize(None, Some("cw20token"));
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("creator", &coins(FEE_AMOUNT_USDC, USDC_DENOM)),
+        ExecuteMsg::PayServiceFee {},
+    )
+    .unwrap();
+    let hook = to_json_binary(&Cw20HookMsg::DepositPrize {}).unwrap();
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("cw20token", &[]),
+        ExecuteMsg::Receive(Cw20ReceiveMsg {
+            sender: "creator".to_string(),
+            amount: Uint128::new(1000),
+            msg: hook,
+        }),
+    )
+    .unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    let draw_res = buy_ticket(&mut deps, &env, "player2", 0).unwrap(); // sellout draws immediately
+
+    let payout_id = draw_res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { .. })))
+        .expect("draw should dispatch the CW20 prize transfer")
+        .id;
+    // Original draw attempt fails once - this one DOES count.
+    simulate_reply(&mut deps, &env, payout_id, false);
+
+    // Fail via RetryPrizePayout 5 more times - none of these should ever
+    // push the raffle to prize_blocked, since retries don't count. If they
+    // did, one of these calls would eventually error with PrizeBlocked
+    // instead of dispatching a fresh SubMsg, or a second (ReportCw20Failure)
+    // submessage would show up alongside the retry.
+    for _ in 0..5 {
+        let retry_res = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::RetryPrizePayout {}).unwrap();
+        assert_eq!(retry_res.messages.len(), 1, "a blocked raffle would reject this or add a report submessage");
+        simulate_reply(&mut deps, &env, retry_res.messages[0].id, false);
+    }
+}
+
+#[test]
+fn airdrop_claim_reply_ids_are_unique_per_dispatch_so_concurrent_pending_claims_cannot_clobber_each_other() {
+    // 2026-08-20 audit fix (2nd round, found independently by two
+    // reviewers): the original design used a single shared storage slot for
+    // "the claimer currently in flight" - safe for ordinary sequential
+    // calls, but not if a malicious CW20 prize reenters ClaimAirdropShare
+    // from inside its own Transfer handler before the outer call's reply
+    // resolves (free/Airdrop CW20 prizes are unrestricted, and the token
+    // could arrange to be a participant itself). This mock harness can't
+    // simulate true nested reentrancy (no multi-contract dispatch), but this
+    // test proves the underlying fix: two claims can have their SubMsg
+    // dispatched without either resolving first (the same "two pending
+    // claims coexist" state reentrancy would produce), and resolving them in
+    // EITHER order still finalizes the right wallet - proof the per-id map
+    // can't be clobbered the way the old single `Item` slot could (the old
+    // design would have used the exact same id for both, and the second
+    // reply to resolve would find the slot already cleared by the first).
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let claim1 = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    let claim2 = execute(deps.as_mut(), env.clone(), mock_info("player2", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert_ne!(claim1.messages[0].id, claim2.messages[0].id, "each dispatch must get its own reply id");
+
+    // Resolve OUT OF ORDER - player2's reply first, exactly the ordering a
+    // reentrant nested call would produce.
+    simulate_reply(&mut deps, &env, claim2.messages[0].id, true);
+    simulate_reply(&mut deps, &env, claim1.messages[0].id, true);
+
+    for player in ["player1", "player2"] {
+        let share_bin = query(deps.as_ref(), env.clone(), QueryMsg::GetMyAirdropShare { wallet: player.to_string() }).unwrap();
+        let share: MyAirdropShareResponse = from_json(share_bin).unwrap();
+        assert!(share.claimed, "{player} should be marked claimed regardless of reply resolution order");
+    }
+}
+
+#[test]
+fn airdrop_claim_rejects_a_second_dispatch_for_the_same_wallet_while_the_first_is_still_in_flight() {
+    // 2026-08-20 audit fix (round 4, found independently by two reviewers):
+    // the reply-id-map fix above stops a reentrant nested claim from
+    // clobbering ANOTHER wallet's pending entry, but on its own did nothing
+    // to stop the SAME wallet from dispatching a SECOND payout before the
+    // first one's reply resolves - AIRDROP_CLAIMS only gets set `true` in
+    // the reply (see the honest-retry test above for why), so AlreadyClaimed
+    // alone read `false` for both. A malicious CW20 prize that is also a
+    // unique_player could reenter ClaimAirdropShare as itself from inside
+    // its own Transfer handler and get paid twice (or more) out of the
+    // raffle's real prize balance, at other honest claimants' expense. This
+    // mock harness can't simulate true nested reentrancy, but it proves the
+    // guard itself: calling ClaimAirdropShare again for a wallet with an
+    // unresolved dispatch must be rejected, not silently dispatch another
+    // transfer.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let claim1 = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert_eq!(claim1.messages.len(), 1);
+
+    // Same wallet, same raffle, before the first dispatch's reply resolves -
+    // must be rejected, not dispatch a second payout.
+    let err = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap_err();
+    assert!(matches!(err, ContractError::ClaimAlreadyInFlight {}));
+
+    // Resolving the original dispatch clears the in-flight marker; a THIRD
+    // call afterward correctly falls through to AlreadyClaimed instead
+    // (the share is genuinely paid now, not just in flight).
+    simulate_reply(&mut deps, &env, claim1.messages[0].id, true);
+    let err = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap_err();
+    assert!(matches!(err, ContractError::AlreadyClaimed {}));
+}
+
+#[test]
+fn native_prize_transfer_failures_never_count_toward_the_auto_blacklist_threshold() {
+    // 2026-08-20 audit fix (round 4): RaffleState::prize_transfer_failures's
+    // own doc comment already claimed a native BankMsg::Send "can never
+    // count as a failure" - true in practice (a valid-address native send
+    // doesn't fail), but nothing in handle_prize_transfer_failure actually
+    // enforced it before this fix; it counted unconditionally regardless of
+    // asset type. If a native prize transfer ever DID fail 3 times (e.g. a
+    // Podium with all 3 places failing on the original draw dispatch, the
+    // same single-transaction path an independent reviewer flagged for the
+    // CW20 case), prize_blocked would have latched permanently: unlike a
+    // CW20, maybe_clear_prize_blocked has no blacklist to re-check for
+    // Native, and none of Cancel/Expire/Reclaim accept a Drawn raffle - the
+    // prize would be stuck forever, for an asset type that was never
+    // supposed to be able to reach the threshold at all.
+    let (mut deps, env) = setup(RaffleType::Podium, 3, 3, 0, vec![5000, 3000, 2000]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    // Selling out draws immediately, dispatching all 3 native payouts at
+    // once - the same-transaction path this test is about.
+    let draw_res = buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+
+    let payout_ids: Vec<u64> = draw_res
+        .messages
+        .iter()
+        .filter(|m| matches!(&m.msg, CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { amount, .. }) if amount[0].denom == PRIZE_DENOM))
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(payout_ids.len(), 3, "all 3 podium places should dispatch a native payout");
+
+    // Fail all 3 - if native counted like CW20 does, this alone would hit
+    // PRIZE_TRANSFER_FAILURE_THRESHOLD (3) in a single transaction.
+    for id in &payout_ids {
+        simulate_reply(&mut deps, &env, *id, false);
+    }
+
+    let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
+    assert_eq!(winners.prize_paid, vec![false, false, false]);
+
+    // Not blocked - RetryPrizePayout still dispatches fresh SubMsgs for all
+    // 3 instead of erroring with PrizeBlocked.
+    let retry_res = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::RetryPrizePayout {}).unwrap();
+    assert_eq!(retry_res.messages.len(), 3);
+    for m in &retry_res.messages {
+        simulate_reply(&mut deps, &env, m.id, true);
+    }
+
+    let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
+    assert_eq!(winners.prize_paid, vec![true, true, true]);
+}
+
+#[test]
+fn reclaim_unclaimed_rejects_while_a_claim_is_still_in_flight() {
+    // 2026-08-21 audit fix (round 5): ReclaimUnclaimed's sweep only excludes
+    // wallets already in AIRDROP_CLAIMS (confirmed paid) - a claim that's
+    // been dispatched but hasn't had its reply resolve yet isn't in that map
+    // yet, so without this guard the sweep would wrongly count that share as
+    // unclaimed and take it too, stranding the in-flight claimant once their
+    // reply finally resolves against an already-drained balance.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+
+    let claim1 = execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+    assert_eq!(claim1.messages.len(), 1);
+
+    let mut after_deadline_env = env.clone();
+    after_deadline_env.block.time = after_deadline_env.block.time.plus_seconds(91 * 86400);
+    let err = execute(
+        deps.as_mut(),
+        after_deadline_env.clone(),
+        mock_info("creator", &[]),
+        ExecuteMsg::ReclaimUnclaimed {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::ClaimsStillInFlight {}));
+
+    // Resolving the pending claim clears the in-flight marker - reclaim
+    // works normally afterward, and correctly excludes player1's now-paid
+    // share from the sweep.
+    simulate_reply(&mut deps, &env, claim1.messages[0].id, true);
+    let reclaim_res = execute(
+        deps.as_mut(),
+        after_deadline_env,
+        mock_info("creator", &[]),
+        ExecuteMsg::ReclaimUnclaimed {},
+    )
+    .unwrap();
+    assert_eq!(reclaim_res.attributes.iter().find(|a| a.key == "amount").unwrap().value, "500");
+}
+
+#[test]
+fn reclaim_unclaimed_sweeps_the_full_prize_when_every_share_floors_to_zero() {
+    // 2026-08-20 audit fix (2nd round): the old formula (airdrop_share *
+    // unclaimed_count) swept 0 in this degenerate case - every wallet is
+    // marked "claimed" immediately with nothing owed (see the zero-share
+    // guard), so unclaimed_count lands on 0 even though the whole deposited
+    // prize never moved anywhere. Confirmed end-to-end by an independent
+    // reviewer. The fix sweeps the true remainder (prize_amount minus what
+    // was actually paid out), recovering the full amount regardless.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 3, 3, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1, FEE_AMOUNT_USDC).unwrap(); // 1 unit / 3 players floors to 0
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+
+    // player1 actually calls ClaimAirdropShare (auto-marked claimed, zero
+    // owed); player2/player3 never bother - both paths must still recover
+    // the full 1 unit.
+    execute(deps.as_mut(), env.clone(), mock_info("player1", &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+
+    let mut after_deadline_env = env.clone();
+    after_deadline_env.block.time = after_deadline_env.block.time.plus_seconds(91 * 86400);
+    let reclaim_res = execute(
+        deps.as_mut(),
+        after_deadline_env,
+        mock_info("creator", &[]),
+        ExecuteMsg::ReclaimUnclaimed {},
+    )
+    .unwrap();
+    assert_eq!(reclaim_res.attributes.iter().find(|a| a.key == "amount").unwrap().value, "1");
+}
+
+#[test]
+fn reclaim_unclaimed_also_recovers_the_floor_division_remainder() {
+    // General correctness check for the same 2026-08-20 fix: prize=1000
+    // split 3 ways floors to 333 each (1 unit of dust the old formula never
+    // recovered). 2 wallets claim (666 total), 1 doesn't - reclaim should
+    // recover 334 (the dust unit PLUS the unclaimed share), not just the
+    // unclaimed share (333) the old formula would have given.
+    let (mut deps, env) = setup(RaffleType::Airdrop, 3, 3, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+
+    for player in ["player1", "player2"] {
+        let claim_res = execute(deps.as_mut(), env.clone(), mock_info(player, &[]), ExecuteMsg::ClaimAirdropShare {}).unwrap();
+        simulate_reply(&mut deps, &env, claim_res.messages[0].id, true);
+    }
+    // player3 never claims.
+
+    let mut after_deadline_env = env.clone();
+    after_deadline_env.block.time = after_deadline_env.block.time.plus_seconds(91 * 86400);
+    let reclaim_res = execute(
+        deps.as_mut(),
+        after_deadline_env,
+        mock_info("creator", &[]),
+        ExecuteMsg::ReclaimUnclaimed {},
+    )
+    .unwrap();
+    assert_eq!(reclaim_res.attributes.iter().find(|a| a.key == "amount").unwrap().value, "334");
+}
+
+#[test]
+fn soft_close_deadline_is_clamped_to_the_60_day_hard_cap_even_when_min_players_is_reached_late() {
+    // 2026-08-20 audit fix regression test: the initial deadline used to
+    // have no clamp at all against the 60-day hard cap - only the extension
+    // branch consulted it. A creator-chosen 31-day window reached late (55
+    // days in) would land the deadline on day 86, past the cap it's
+    // supposed to be bounded by.
+    let mut deps = mock_deps_with_factory();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        creator: None,
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 4,
+        round_timeout_seconds: 2_678_400, // 31 days, the creator-chosen maximum
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        factory_address: FACTORY_ADDRESS.to_string(),
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap(); // opened_at = T0
+
+    let mut late_env = env.clone();
+    late_env.block.time = late_env.block.time.plus_seconds(55 * 86_400); // T0 + 55 days
+    buy_ticket(&mut deps, &late_env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &late_env, "player2", 0).unwrap(); // reaches min_players here
+
+    let mut query_env = env.clone();
+    query_env.block.time = late_env.block.time;
+    let status = raffle_status(&deps, &query_env);
+    // Hard cap is T0 + 60 days; querying at T0 + 55 days should leave
+    // exactly 5 days, not the unclamped ~31 days round_timeout_seconds
+    // alone would imply.
+    assert_eq!(status.seconds_remaining, Some(5 * 86_400));
+}
+
+#[test]
+fn soft_close_extension_never_pushes_the_deadline_past_the_hard_cap_or_backwards() {
+    // 2026-08-20 audit fix regression test: the old extension math
+    // (`min(extended, hard_cap)` with no floor against the current
+    // deadline) could move the deadline BACKWARDS once it was already past
+    // the hard cap (reachable via the bug above), letting anyone close the
+    // raffle immediately - the opposite of what the anti-snipe extension
+    // exists to prevent.
+    let mut deps = mock_deps_with_factory();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        creator: None,
+        raffle_type: RaffleType::SingleWinner,
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        allowed_entrants: None,
+        min_players: 2,
+        max_players: 4,
+        round_timeout_seconds: 2_678_400,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        factory_address: FACTORY_ADDRESS.to_string(),
+        prize_native_denom: Some(PRIZE_DENOM.to_string()),
+        prize_cw20_address: None,
+        podium_shares_bps: vec![],
+    };
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap(); // opened_at = T0
+
+    let mut late_env = env.clone();
+    late_env.block.time = late_env.block.time.plus_seconds(55 * 86_400);
+    buy_ticket(&mut deps, &late_env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &late_env, "player2", 0).unwrap(); // deadline pinned at T0 + 60 days
+
+    // 30 minutes before that deadline - inside the final hour, triggers the
+    // anti-snipe extension.
+    let mut snipe_env = env.clone();
+    snipe_env.block.time = env.block.time.plus_seconds(60 * 86_400 - 1_800);
+    buy_ticket(&mut deps, &snipe_env, "player3", 0).unwrap();
+
+    let mut query_env = env.clone();
+    query_env.block.time = snipe_env.block.time;
+    let status = raffle_status(&deps, &query_env);
+    // Still pinned at the hard cap - 30 minutes remain, neither pushed past
+    // it nor yanked backward toward 0.
+    assert_eq!(status.seconds_remaining, Some(1_800));
+}
+
+#[test]
+fn buying_a_ticket_after_the_deadline_already_passed_does_not_extend_it() {
+    // Found by a third, independent free-tier audit pass (2026-08-20,
+    // pre-existing since the original soft-close design, not introduced by
+    // any of this session's fixes): the anti-snipe extension check
+    // (`seconds_remaining &lt;= ANTI_SNIPE_EXTENSION_SECONDS`) used
+    // `saturating_sub`, which floors at 0 once the deadline has already
+    // elapsed - indistinguishable from genuinely being inside the final
+    // hour. Since BuyTicket never checks the deadline itself (only
+    // CloseRound does - the raffle stays legally Open and purchasable until
+    // someone closes it), ANY ticket bought after the deadline had already
+    // passed would extend it another hour, letting anyone keep a raffle
+    // open indefinitely (up to the 60-day hard cap) just by buying tickets
+    // periodically - exactly the "well-timed late purchases stretch the
+    // raffle out" failure mode soft-close was built to prevent in the first
+    // place, reopened through the extension branch instead of a full reset.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 4, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap(); // opened_at = T0
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap(); // min_players reached, deadline = T0 + 86400
+
+    // 2 hours past that deadline - well past both the deadline itself and
+    // any legitimate "final hour" window.
+    let mut late_env = env.clone();
+    late_env.block.time = late_env.block.time.plus_seconds(86_400 + 7200);
+    buy_ticket(&mut deps, &late_env, "player3", 0).unwrap();
+
+    let mut query_env = env.clone();
+    query_env.block.time = late_env.block.time;
+    let status = raffle_status(&deps, &query_env);
+    // Deadline must still be the original T0+86400, not extended - so
+    // seconds_remaining floors at 0 (already elapsed), not a fresh hour.
+    assert_eq!(status.seconds_remaining, Some(0));
+}
+
+#[test]
+fn round_timeout_seconds_at_the_new_minimum_does_not_degenerate_into_a_rolling_deadline() {
+    // Round-10 audit fix regression test (found by Opus, proven with a live
+    // probe before this fix landed): the old MIN_ROUND_TIMEOUT_SECONDS (1h)
+    // equaled ANTI_SNIPE_EXTENSION_SECONDS exactly, so a raffle instantiated
+    // at that floor started life already inside the anti-snipe window -
+    // EVERY purchase, at any point, extended the deadline, turning the
+    // "final hour" into the raffle's entire lifetime. This is exactly the
+    // rolling-deadline behavior soft-close was designed to prevent (see
+    // `Config::round_timeout_seconds`'s doc comment), and it's what the real
+    // frontend always instantiated with. Confirms the new floor (24h) keeps
+    // a real, non-extending period for casual purchases well before the
+    // final hour.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 50, 0, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap(); // opened_at = T0
+    buy_ticket(&mut deps, &env, "player1", 0).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap(); // min_players reached, deadline = T0 + 86400
+
+    // 10 hours in - well outside the final-hour anti-snipe zone.
+    let mut mid_env = env.clone();
+    mid_env.block.time = mid_env.block.time.plus_seconds(10 * 3_600);
+    buy_ticket(&mut deps, &mid_env, "player3", 0).unwrap();
+
+    let mut query_env = env.clone();
+    query_env.block.time = mid_env.block.time;
+    let status = raffle_status(&deps, &query_env);
+    // Ticking down normally toward the original T0+86400 deadline, not
+    // pinned at a rolling +3600 from the purchase - proves the deadline
+    // wasn't extended by a purchase nowhere near the final hour.
+    assert_eq!(status.seconds_remaining, Some(86_400 - 10 * 3_600));
+
+    // A permissionless CloseRound must still be refused this early - the
+    // window genuinely hasn't elapsed (distinct from the old bug, where it
+    // never would have been refused for the right reason for the entire
+    // 86400s, since every purchase kept resetting it moot).
+    let close_err = execute(
+        deps.as_mut(),
+        query_env,
+        mock_info("anyone", &[]),
+        ExecuteMsg::CloseRound {},
+    )
+    .unwrap_err();
+    assert!(matches!(close_err, ContractError::CannotCloseRound {}));
+}
+
+#[test]
+fn cancel_raffle_prize_refund_failure_does_not_block_the_ticket_and_fee_refunds() {
+    // 2026-08-20 audit fix regression test: the prize-to-creator refund used
+    // to be a plain message bundled with the ticket/fee refunds - if the
+    // prize token reverted for EVERYONE (e.g. paused by its own admin, not
+    // an attack), the entire CancelRaffle/ExpireRaffle transaction aborted,
+    // stranding real players' ticket refunds too.
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
 
     let res = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap();
-    // prize refund + fee refund + player1's ticket refund = 3
-    assert_eq!(res.messages.len(), 3);
+    let prize_submsg = res
+        .messages
+        .iter()
+        .find(|m| m.reply_on != ReplyOn::Never)
+        .expect("the prize refund should be the one reply-tracked submessage");
+    assert!(
+        matches!(&prize_submsg.msg, CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { amount, .. }) if amount[0].amount == Uint128::new(1000))
+    );
+
+    // Simulating the prize refund itself failing must not propagate as an
+    // error - the ticket/fee refunds bundled in the same response are
+    // already dispatched separately and don't depend on this outcome.
+    simulate_reply(&mut deps, &env, prize_submsg.id, false);
+
+    let status = raffle_status(&deps, &env);
+    assert_eq!(status.status, RaffleStatus::Cancelled);
+}
+
+#[test]
+fn cancel_raffle_refunds_prize_fee_and_tickets() {
+    // min_players=2, only 1 ticket bought - cancelling BEFORE min_players is
+    // reached, so only the base 20% cancellation penalty applies (not the
+    // additional 80% "late" layer) - see the 2026-08-20 cancellation-penalty
+    // redesign. This raffle's real required fee floors at the $1 minimum
+    // (max_players=3 -> max_entrants=3 -> 1% of $3 potential = $0.03,
+    // floored to $1 = 1_000_000 micros - the extra 2_000_000 sent at
+    // deposit_prize was already refunded then as overpayment, unrelated to
+    // this cancellation): 20% penalty = 200_000, fee_refund = 800_000,
+    // split 50/50 founder/treasury = 100_000 each.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+
+    let res = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap();
+    // prize refund + partial fee refund + player1's ticket refund + founder
+    // cut + treasury cut of the forfeited penalty = 5
+    assert_eq!(res.messages.len(), 5);
+
+    let bank_sends: Vec<(String, Vec<cosmwasm_std::Coin>)> = res
+        .messages
+        .iter()
+        .map(|m| match &m.msg {
+            CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+                (to_address.clone(), amount.clone())
+            }
+            other => panic!("expected only BankMsg::Send, got {other:?}"),
+        })
+        .collect();
+    let sent_amount = |addr: &str, denom: &str| -> Option<Uint128> {
+        bank_sends
+            .iter()
+            .filter(|(a, coins)| a == addr && coins.iter().any(|c| c.denom == denom))
+            .flat_map(|(_, coins)| coins.iter().filter(|c| c.denom == denom).map(|c| c.amount))
+            .next()
+    };
+    assert_eq!(sent_amount("creator", PRIZE_DENOM), Some(Uint128::new(1000)));
+    assert_eq!(sent_amount("creator", USDC_DENOM), Some(Uint128::new(800_000)));
+    assert_eq!(sent_amount("player1", USDC_DENOM), Some(Uint128::new(1_000_000)));
+
+    let config: ConfigResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetConfig {}).unwrap()).unwrap();
+    assert_eq!(sent_amount(config.founder_fee_address.as_str(), USDC_DENOM), Some(Uint128::new(100_000)));
+    assert_eq!(sent_amount(config.treasury_address.as_str(), USDC_DENOM), Some(Uint128::new(100_000)));
 
     let status = raffle_status(&deps, &env);
     assert_eq!(status.status, RaffleStatus::Cancelled);
@@ -781,7 +1471,7 @@ fn explicit_creator_field_overrides_info_sender() {
     // that actually asked for the raffle - without this field, every raffle
     // created through the factory would end up with an unreachable creator
     // (a contract address can never sign DepositPrize/DrawWinner/etc.).
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: Some("real_human_wallet".to_string()),
@@ -791,11 +1481,11 @@ fn explicit_creator_field_overrides_info_sender() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 2,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -813,7 +1503,7 @@ fn instantiate_with_prize(
     prize_native_denom: Option<&str>,
     prize_cw20_address: Option<&str>,
 ) -> (Deps, cosmwasm_std::Env) {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -823,11 +1513,11 @@ fn instantiate_with_prize(
         allowed_entrants: None,
         min_players: 2,
         max_players: 2,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
         prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
         podium_shares_bps: vec![],
@@ -946,7 +1636,7 @@ fn native_prize_same_denom_as_usdc_fee_needs_pay_service_fee_first() {
 
 #[test]
 fn instantiate_rejects_degenerate_player_bounds() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let base_msg = |min_players: u32, max_players: u32| InstantiateMsg {
         creator: None,
@@ -956,11 +1646,11 @@ fn instantiate_rejects_degenerate_player_bounds() {
         allowed_entrants: None,
         min_players,
         max_players,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -975,7 +1665,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
 
 #[test]
 fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let base_msg = |unclaimed_deadline_days: u64| InstantiateMsg {
         creator: None,
@@ -985,11 +1675,11 @@ fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -1008,7 +1698,7 @@ fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
 
 #[test]
 fn instantiate_rejects_round_timeout_seconds_out_of_range() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let base_msg = |round_timeout_seconds: u64| InstantiateMsg {
         creator: None,
@@ -1022,7 +1712,7 @@ fn instantiate_rejects_round_timeout_seconds_out_of_range() {
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -1034,14 +1724,25 @@ fn instantiate_rejects_round_timeout_seconds_out_of_range() {
     let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
 
-    // Boundaries are inclusive.
-    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(60)).unwrap();
-    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(31_536_000)).unwrap();
+    // Boundaries are inclusive - 24h to 31 days (2026-08-20 soft-close
+    // redesign, narrowed from the old 60s-365day generic overflow-safety
+    // range now that this is the creator's real marketing-window choice;
+    // floor raised from 1h to 24h in the round-10 audit fix - see
+    // `MIN_ROUND_TIMEOUT_SECONDS`'s own doc comment).
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(86_400)).unwrap();
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(2_678_400)).unwrap();
+
+    // The old 1h floor (round-10 audit fix regression check): still a
+    // syntactically valid u64, but now below MIN_ROUND_TIMEOUT_SECONDS, so
+    // it must be rejected rather than silently accepted like it was before
+    // this fix.
+    let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(3_600)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
 }
 
 #[test]
 fn instantiate_rejects_draw_delay_blocks_out_of_range() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let base_msg = |draw_delay_blocks: u64| InstantiateMsg {
         creator: None,
@@ -1051,11 +1752,11 @@ fn instantiate_rejects_draw_delay_blocks_out_of_range() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -1074,7 +1775,7 @@ fn instantiate_rejects_draw_delay_blocks_out_of_range() {
 
 #[test]
 fn instantiate_rejects_draw_window_blocks_out_of_range() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let base_msg = |draw_window_blocks: u64| InstantiateMsg {
         creator: None,
@@ -1084,11 +1785,11 @@ fn instantiate_rejects_draw_window_blocks_out_of_range() {
         allowed_entrants: None,
         min_players: 2,
         max_players: 5,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
         prize_cw20_address: None,
         podium_shares_bps: vec![],
@@ -1150,11 +1851,11 @@ fn paid_raffle_prize_msg(prize_native_denom: Option<&str>, prize_cw20_address: O
         allowed_entrants: None,
         min_players: 2,
         max_players: 2,
-        round_timeout_seconds: 3600,
+        round_timeout_seconds: 86_400,
         draw_delay_blocks: 5,
         draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
-        max_raffle_age_seconds: 604800,
+        factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
         prize_cw20_address: prize_cw20_address.map(|s| s.to_string()),
         podium_shares_bps: vec![],
@@ -1163,7 +1864,7 @@ fn paid_raffle_prize_msg(prize_native_denom: Option<&str>, prize_cw20_address: O
 
 #[test]
 fn instantiate_rejects_cw20_prize_for_a_paid_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = paid_raffle_prize_msg(None, Some("cw20token"));
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
@@ -1172,7 +1873,7 @@ fn instantiate_rejects_cw20_prize_for_a_paid_raffle() {
 
 #[test]
 fn instantiate_rejects_non_whitelisted_native_prize_for_a_paid_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = paid_raffle_prize_msg(Some("unft"), None);
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap_err();
@@ -1186,7 +1887,7 @@ fn instantiate_allows_all_three_whitelisted_native_prizes_for_a_paid_raffle() {
     // lists both symbolically rather than hardcoding literals, so it stays
     // correct if that ever changes back to a distinct value.
     for denom in ["uluna", USDC_DENOM, "uusd"] {
-        let mut deps = mock_dependencies();
+        let mut deps = mock_deps_with_factory();
         let env = mock_env();
         let msg = paid_raffle_prize_msg(Some(denom), None);
         instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap();
@@ -1195,7 +1896,7 @@ fn instantiate_allows_all_three_whitelisted_native_prizes_for_a_paid_raffle() {
 
 #[test]
 fn instantiate_allows_any_prize_asset_for_a_free_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let mut msg = paid_raffle_prize_msg(None, Some("some_random_cw20"));
     msg.ticket_price = Uint128::zero();
@@ -1328,7 +2029,7 @@ fn cancel_raffle_rejects_unexpected_funds() {
 
 #[test]
 fn instantiate_rejects_non_usdc_ticket_denom_for_a_paid_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -1341,7 +2042,7 @@ fn instantiate_rejects_non_usdc_ticket_denom_for_a_paid_raffle() {
 
 #[test]
 fn instantiate_allows_any_ticket_denom_for_a_free_raffle() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let mut msg = paid_raffle_prize_msg(Some(PRIZE_DENOM), None);
     msg.ticket_price = Uint128::zero();
@@ -1351,7 +2052,7 @@ fn instantiate_allows_any_ticket_denom_for_a_free_raffle() {
 
 #[test]
 fn instantiate_rejects_ticket_price_below_the_one_dollar_minimum() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -1364,7 +2065,7 @@ fn instantiate_rejects_ticket_price_below_the_one_dollar_minimum() {
 
 #[test]
 fn instantiate_rejects_ticket_price_with_sub_cent_dust() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     let msg = InstantiateMsg {
         creator: None,
@@ -1378,7 +2079,7 @@ fn instantiate_rejects_ticket_price_with_sub_cent_dust() {
 #[test]
 fn instantiate_allows_ticket_price_at_the_minimum_and_in_whole_cent_increments() {
     for ticket_price in [1_000_000u128, 1_010_000, 1_100_000, 2_000_000] {
-        let mut deps = mock_dependencies();
+        let mut deps = mock_deps_with_factory();
         let env = mock_env();
         let msg = InstantiateMsg {
             creator: None,
@@ -1387,27 +2088,6 @@ fn instantiate_allows_ticket_price_at_the_minimum_and_in_whole_cent_increments()
         };
         instantiate(deps.as_mut(), env, mock_info("creator", &[]), msg).unwrap();
     }
-}
-
-#[test]
-fn instantiate_rejects_max_raffle_age_seconds_out_of_range() {
-    let mut deps = mock_dependencies();
-    let env = mock_env();
-    let base_msg = |max_raffle_age_seconds: u64| InstantiateMsg {
-        creator: None,
-        max_raffle_age_seconds,
-        ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
-    };
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidMaxRaffleAgeSeconds { .. }));
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidMaxRaffleAgeSeconds { .. }));
-
-    // Boundaries are inclusive.
-    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(60)).unwrap();
-    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(31_536_000)).unwrap();
 }
 
 #[test]
@@ -1420,7 +2100,7 @@ fn paid_raffle_fee_floors_at_one_dollar_for_small_potential_revenue() {
         ticket_price: Uint128::new(1_000_000),
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
@@ -1443,7 +2123,7 @@ fn paid_raffle_fee_scales_as_one_percent_of_max_potential_revenue() {
         ticket_price: Uint128::new(10_000_000),
         ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
     };
-    let mut deps = mock_dependencies();
+    let mut deps = mock_deps_with_factory();
     let env = mock_env();
     instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
     let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
@@ -1528,7 +2208,7 @@ fn expire_raffle_rejects_once_min_players_is_reached_even_past_the_age_limit() {
     buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap(); // reaches min_players=2
 
     let mut later_env = env.clone();
-    later_env.block.time = later_env.block.time.plus_seconds(604801); // past max_raffle_age_seconds
+    later_env.block.time = later_env.block.time.plus_seconds(5_184_001); // past MAX_RAFFLE_AGE_SECONDS (60 days, fixed platform-wide)
     let err = execute(deps.as_mut(), later_env, mock_info("anyone", &[]), ExecuteMsg::ExpireRaffle {}).unwrap_err();
     assert!(matches!(err, ContractError::CannotExpireRaffle {}));
 }
@@ -1542,7 +2222,7 @@ fn expire_raffle_refunds_everyone_once_stale_and_permissionless() {
     buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap(); // 2 unique wallets, still below min_players=3
 
     let mut later_env = env.clone();
-    later_env.block.time = later_env.block.time.plus_seconds(604801); // past max_raffle_age_seconds
+    later_env.block.time = later_env.block.time.plus_seconds(5_184_001); // past MAX_RAFFLE_AGE_SECONDS (60 days, fixed platform-wide)
 
     // Permissionless - a random wallet (not the creator) can trigger it.
     let res = execute(
