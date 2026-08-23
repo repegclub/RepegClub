@@ -1,9 +1,13 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, DepsMut, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{to_json_binary, DepsMut, Empty, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg};
 
 use crate::error::ContractError;
 use crate::msg::RaffleType;
-use crate::state::{CreatorCooldown, CREATOR_COOLDOWNS, PENDING_CREATOR, RAFFLE_CODE_ID, RAFFLE_COUNT};
+use crate::state::{
+    CreatorCooldown, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS,
+    CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, KNOWN_RAFFLES, PENDING_CREATOR, RAFFLE_CODE_ID,
+    RAFFLE_COUNT,
+};
 
 pub const CREATE_RAFFLE_REPLY_ID: u64 = 1;
 
@@ -55,6 +59,11 @@ struct RaffleInstantiateMsg {
     // this factory would end up permanently unfundable. Found live
     // (2026-07-23) after the first version shipped without this field.
     creator: Option<String>,
+    // This factory's own address (`env.contract.address`) - lets the raffle
+    // query `IsCw20Whitelisted`/`IsCw20Blacklisted`/`GetCancellationPenaltyBps`
+    // against the real factory, not a value the caller could otherwise spoof.
+    // See create-your-own-luck's own `Config::factory_address` doc comment.
+    factory_address: String,
     raffle_type: RaffleType,
     ticket_price: Uint128,
     ticket_denom: String,
@@ -65,7 +74,6 @@ struct RaffleInstantiateMsg {
     draw_delay_blocks: u64,
     draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
-    max_raffle_age_seconds: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
     podium_shares_bps: Vec<u32>,
@@ -86,7 +94,6 @@ pub fn execute_create_raffle(
     draw_delay_blocks: u64,
     draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
-    max_raffle_age_seconds: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
     podium_shares_bps: Vec<u32>,
@@ -148,6 +155,7 @@ pub fn execute_create_raffle(
 
     let instantiate_msg = RaffleInstantiateMsg {
         creator: Some(info.sender.to_string()),
+        factory_address: env.contract.address.to_string(),
         raffle_type,
         ticket_price,
         ticket_denom,
@@ -158,7 +166,6 @@ pub fn execute_create_raffle(
         draw_delay_blocks,
         draw_window_blocks,
         unclaimed_deadline_days,
-        max_raffle_age_seconds,
         prize_native_denom,
         prize_cw20_address,
         podium_shares_bps,
@@ -180,4 +187,91 @@ pub fn execute_create_raffle(
         .add_submessage(sub_msg)
         .add_attribute("action", "create_raffle")
         .add_attribute("creator", info.sender))
+}
+
+fn require_admin(deps: &DepsMut, info: &MessageInfo) -> Result<(), ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    if info.sender != admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    Ok(())
+}
+
+pub fn execute_add_cw20_to_whitelist(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    require_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    CW20_WHITELIST.save(deps.storage, &addr, &Empty {})?;
+    Ok(Response::new()
+        .add_attribute("action", "add_cw20_to_whitelist")
+        .add_attribute("address", addr))
+}
+
+pub fn execute_remove_cw20_from_whitelist(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    require_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    CW20_WHITELIST.remove(deps.storage, &addr);
+    Ok(Response::new()
+        .add_attribute("action", "remove_cw20_from_whitelist")
+        .add_attribute("address", addr))
+}
+
+pub fn execute_unblacklist_cw20(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    require_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    CW20_BLACKLIST.remove(deps.storage, &addr);
+    Ok(Response::new()
+        .add_attribute("action", "unblacklist_cw20")
+        .add_attribute("address", addr))
+}
+
+/// Not admin-gated - authenticated instead by `KNOWN_RAFFLES` membership, so
+/// only a raffle this factory itself deployed can report a token (closes
+/// off any other wallet blacklisting a token to sabotage an unrelated,
+/// legitimate raffle). See `KNOWN_RAFFLES`'s and `ExecuteMsg::
+/// ReportCw20Failure`'s own doc comments for why this replaces an off-chain
+/// bot entirely.
+pub fn execute_report_cw20_failure(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    if !KNOWN_RAFFLES.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+    let addr = deps.api.addr_validate(&address)?;
+    CW20_BLACKLIST.save(deps.storage, &addr, &Empty {})?;
+    Ok(Response::new()
+        .add_attribute("action", "report_cw20_failure")
+        .add_attribute("reported_by", info.sender)
+        .add_attribute("address", addr))
+}
+
+pub fn execute_set_cancellation_penalty_bps(
+    deps: DepsMut,
+    info: MessageInfo,
+    base_bps: u64,
+    late_additional_bps: u64,
+) -> Result<Response, ContractError> {
+    require_admin(&deps, &info)?;
+    if base_bps.saturating_add(late_additional_bps) > 10_000 {
+        return Err(ContractError::InvalidCancellationPenaltyBps {});
+    }
+    CANCELLATION_PENALTY_BASE_BPS.save(deps.storage, &base_bps)?;
+    CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS.save(deps.storage, &late_additional_bps)?;
+    Ok(Response::new()
+        .add_attribute("action", "set_cancellation_penalty_bps")
+        .add_attribute("base_bps", base_bps.to_string())
+        .add_attribute("late_additional_bps", late_additional_bps.to_string()))
 }

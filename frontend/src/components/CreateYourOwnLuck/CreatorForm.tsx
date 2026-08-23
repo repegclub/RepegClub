@@ -5,7 +5,14 @@ import { useWallet } from "../../contexts/WalletContext";
 import { createRaffle, type CreateRaffleParams } from "../../lib/createRaffle";
 import { displayNumberToUluna } from "../../lib/format";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
-import { worstCaseTicketRevenueProfit, requiredFeeUsdc, maxEntrants, maxTicketsPerWallet } from "../../lib/cyolFundingDisclosure";
+import {
+  worstCaseTicketRevenueProfit,
+  requiredFeeUsdc,
+  maxEntrants,
+  maxTicketsPerWallet,
+  AIRDROP_FEE_TIERS_USDC,
+  MAX_PLAYERS_AIRDROP,
+} from "../../lib/cyolFundingDisclosure";
 import { PRIZE_ASSET_CHOICES, PRIZE_ASSET_DENOMS, PRIZE_ASSET_LABELS, type PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
 import { priceForAsset } from "../../lib/tokenPrices";
@@ -31,32 +38,26 @@ const TICKET_DENOM = "uluna";
 type RaffleType = Exclude<CreateRaffleParams["raffleType"], "podium">;
 
 // Mirrors contracts/create-your-own-luck-factory's MAX_PLAYERS_SINGLE_WINNER_PODIUM
-// and AIRDROP_FEE_TIERS_USDC exactly (contracts/create-your-own-luck/src/
-// contract.rs) - SingleWinner/Podium are capped at 100 max_players, while
-// Airdrop can go up to 1000 but the service fee (paid later, via
-// DepositPrize/PayServiceFee) scales with the ceiling chosen here. The
-// contract enforces both server-side regardless, but validating client-side
-// avoids a creator paying gas for a signed tx that's guaranteed to be
-// rejected on-chain.
+// exactly (contracts/create-your-own-luck/src/contract.rs) - SingleWinner/
+// Podium are capped at 100 max_players, while Airdrop can go up to
+// MAX_PLAYERS_AIRDROP (imported from cyolFundingDisclosure.ts, the same
+// table requiredFeeUsdc itself now reads for the Airdrop tier-floor fix -
+// one copy, not two that could drift). The contract enforces both
+// server-side regardless, but validating client-side avoids a creator
+// paying gas for a signed tx that's guaranteed to be rejected on-chain.
 const MAX_PLAYERS_SINGLE_WINNER_PODIUM = 100;
-const AIRDROP_FEE_TIERS_USDC: [number, number][] = [
-  [100, 3],
-  [300, 7],
-  [600, 12],
-  [1000, 18],
-];
-const MAX_PLAYERS_AIRDROP = AIRDROP_FEE_TIERS_USDC[AIRDROP_FEE_TIERS_USDC.length - 1][0];
 
 function maxPlayersLimit(raffleType: RaffleType): number {
   return raffleType === "airdrop" ? MAX_PLAYERS_AIRDROP : MAX_PLAYERS_SINGLE_WINNER_PODIUM;
 }
 
-// Free (ticket_price=0) uses the community-size tier table; a paid Airdrop
-// uses the same 1%-of-max-potential-revenue formula as SingleWinner/Podium
-// instead (mirrors contract.rs's required_fee_usdc exactly - it branches on
-// ticket_price.is_zero(), not on raffle type). The form's own price field
-// defaults Airdrop to $0, so this only diverges from the tier table if the
-// creator types a manual price.
+// Free (ticket_price=0) uses the community-size tier table directly; a paid
+// Airdrop calls requiredFeeUsdc, which since the 2026-08-23 fix already
+// applies that same tier table as a floor under the revenue-based formula
+// (mirrors contract.rs's required_fee_usdc exactly). The form's own price
+// field defaults Airdrop to $0, so most creators only ever see the tier
+// number - this only diverges if they type a manual price high enough for
+// real revenue to exceed the tier floor.
 function airdropFeeForMaxPlayers(max: number, ticketPriceUsdc: number): number | null {
   if (ticketPriceUsdc > 0) {
     return max <= MAX_PLAYERS_AIRDROP ? requiredFeeUsdc("airdrop", max, ticketPriceUsdc) : null;
@@ -523,8 +524,7 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   max < 2 ||
                   max > maxPlayersLimit(raffleType) ||
                   !Number.isFinite(prize) ||
-                  prize < 0 ||
-                  tokenPrices.status !== "loaded"
+                  prize < 0
                 ) {
                   return null;
                 }
@@ -538,6 +538,31 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   const priceMicros = Number(displayNumberToUluna(price));
                   if (priceMicros < 1_000_000 || priceMicros % 10_000 !== 0) return null;
                 }
+                // Airdrop fairness check - only meaningful once a ticket
+                // actually costs something (see the free-airdrop skip
+                // below). Checked up front so the round-9 fix below (the
+                // price-unknown case) also only applies here, not to
+                // SingleWinner's disclosure, which makes no fairness claim.
+                if (raffleType === "airdrop" && price <= 0) return null;
+                if (tokenPrices.status === "loading") return null;
+                // Round-9 audit fix: same silent-skip gap closed on
+                // RaffleDetailPage (fundValueUnknown/buyValueUnknown/
+                // singleWinnerPrizeUnknown) - a failed price feed used to
+                // hide this box entirely instead of disclosing that
+                // fairness couldn't be verified. Airdrop only: the
+                // mandatory DepositPrize-time disclaimer already covers
+                // this case fully, so this is a creation-time heads-up, not
+                // the only safeguard.
+                if (tokenPrices.status === "error") {
+                  if (raffleType === "airdrop") {
+                    return (
+                      <div className="cyol-airdrop-fairness-box">
+                        {t("createYourOwnLuck.form.airdropCalcUnknown", { ticketUsd: price.toFixed(2) })}
+                      </div>
+                    );
+                  }
+                  return null;
+                }
                 // The prize amount is in whatever asset was chosen above,
                 // not necessarily USDC - convert to real USD before
                 // comparing against ticket revenue (also in USDC, the only
@@ -548,35 +573,38 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                 // 2026-07-26: LUNC was silently priced as USDC otherwise).
                 const prizeUsd = prize * priceForAsset(prizeAssetChoice, tokenPrices.prices);
 
-                if (raffleType === "single_winner") {
-                  const profit = worstCaseTicketRevenueProfit("single_winner", max, price, prizeUsd);
-                  return (
-                    <span className="cyol-hint">
-                      {profit > 0
-                        ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
-                        : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
-                    </span>
-                  );
-                }
+                // Applies to Airdrop too, not just SingleWinner (2026-08-23
+                // fix, same gap as CyolSafetyChecklist's fundraiserProfit -
+                // ticket_revenue refunds to the creator in full regardless
+                // of raffle_type, so "does selling tickets alone profit me"
+                // is just as real a question here; it doesn't depend on who
+                // ends up with the prize afterward). By this point price > 0
+                // is already guaranteed for both types (SingleWinner always,
+                // Airdrop via the price<=0 early return above), so this
+                // reuses the exact same call, just with the real raffleType
+                // instead of a hardcoded literal.
+                const profit = worstCaseTicketRevenueProfit(raffleType, max, price, prizeUsd);
+                const fundraiserHint = (
+                  <span className="cyol-hint">
+                    {profit > 0
+                      ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
+                      : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
+                  </span>
+                );
+                if (raffleType === "single_winner") return fundraiserHint;
 
-                // Airdrop fairness check - only meaningful once a ticket
-                // actually costs something (see the free-airdrop skip
-                // above). Same math as RaffleDetailPage.tsx's own
-                // fundValueMismatch/buyValueMismatch (worst-case share =
-                // prize / max_players, the whole point being "how bad can
-                // this get if it fills up completely") - shown here too so
-                // a creator sees it before ever instantiating the raffle,
-                // not only after, at the DepositPrize step.
-                if (price <= 0) return null;
                 const worstCaseShareUsd = prizeUsd / max;
                 const fair = worstCaseShareUsd >= price;
                 return (
-                  <div className={`cyol-airdrop-fairness-box${fair ? "" : " cyol-airdrop-fairness-box-unfair"}`}>
-                    {t("createYourOwnLuck.form.airdropCalcWorstCase", { shareUsd: worstCaseShareUsd.toFixed(2) })}{" "}
-                    {t(fair ? "createYourOwnLuck.form.airdropCalcFair" : "createYourOwnLuck.form.airdropCalcUnfair", {
-                      ticketUsd: price.toFixed(2),
-                    })}
-                  </div>
+                  <>
+                    {fundraiserHint}
+                    <div className={`cyol-airdrop-fairness-box${fair ? "" : " cyol-airdrop-fairness-box-unfair"}`}>
+                      {t("createYourOwnLuck.form.airdropCalcWorstCase", { shareUsd: worstCaseShareUsd.toFixed(2) })}{" "}
+                      {t(fair ? "createYourOwnLuck.form.airdropCalcFair" : "createYourOwnLuck.form.airdropCalcUnfair", {
+                        ticketUsd: price.toFixed(2),
+                      })}
+                    </div>
+                  </>
                 );
               })()}
             </label>

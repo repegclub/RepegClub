@@ -13,24 +13,33 @@ const RULES: { test: RegExp; friendly: string }[] = [
   { test: /ticket_price must be a whole number of usdc cents/i, friendly: "Ticket price can't have fractions of a cent — use at most 2 decimal places." },
   { test: /paid raffles.*must set ticket_denom to the platform's usdc/i, friendly: "Paid raffles must be priced in USDC." },
   { test: /min_players must be at least 2/i, friendly: "Minimum players must be at least 2, and maximum can't be less than the minimum." },
+  // Must come before the generic max_players rule below - CreatorOnCooldown's
+  // own text ("...Creating a safe-shaped raffle (free, or max_players large
+  // enough) in the meantime is fine...") contains the substring "max_players",
+  // so the generic rule would otherwise shadow it and show the wrong message
+  // to a creator who is actually on cooldown.
+  { test: /wallet is on cooldown for creating another small paid raffle/i, friendly: "You're on cooldown for creating another small paid raffle — try a free raffle, a bigger one, or wait it out." },
   { test: /max_players|maxplayersexceedsfreeraffle/i, friendly: "Maximum players is too high for this raffle type." },
   { test: /podium_shares_bps must be non-empty/i, friendly: "Podium shares must add up to exactly 100%." },
   { test: /podium raffles need min_players/i, friendly: "This raffle needs more minimum players to fit every podium place." },
-  { test: /can only offer lunc, usdc, or ustc/i, friendly: "This prize isn't on the allowed list (LUNC, USDC, or USTC) for a paid raffle." },
+  { test: /can only offer lunc, usdc, ustc, or a cw20/i, friendly: "This prize isn't on the allowed list (LUNC, USDC, USTC, or a reviewed CW20) for a paid raffle." },
   { test: /unclaimed_deadline_days must be between/i, friendly: "The unclaimed-funds deadline is out of the allowed range." },
   { test: /round_timeout_seconds must be between/i, friendly: "The round timeout is out of the allowed range." },
   { test: /draw_delay_blocks must be between/i, friendly: "The draw delay is out of the allowed range." },
   { test: /draw_window_blocks must be between/i, friendly: "The draw window is out of the allowed range." },
-  { test: /max_raffle_age_seconds must be between/i, friendly: "The raffle's maximum age is out of the allowed range." },
-  { test: /wallet is on cooldown for creating another small paid raffle/i, friendly: "You're on cooldown for creating another small paid raffle — try a free raffle, a bigger one, or wait it out." },
 
   // Funding
   { test: /prize amount must be greater than zero/i, friendly: "Prize amount must be greater than zero." },
   { test: /prize has already been deposited/i, friendly: "This raffle has already been funded." },
-  { test: /pay payservicefee first/i, friendly: "Pay the service fee first, then fund the raffle." },
+  { test: /call payservicefee first/i, friendly: "Pay the service fee first, then fund the raffle." },
   { test: /wrong fee payment/i, friendly: "Wrong service fee amount sent." },
   { test: /this raffle's prize is a cw20 token/i, friendly: "This raffle's prize is a different kind of token — funding it isn't supported here yet." },
+  { test: /this raffle's prize is a native token/i, friendly: "This raffle's prize is a native token, not a CW20 — fund it with DepositPrize instead." },
   { test: /unexpected denom attached/i, friendly: "You attached a token this action doesn't expect — double-check the amount and try again." },
+  { test: /raffle creation does not accept attached funds/i, friendly: "Don't attach any funds when creating a raffle — fund it separately once it's created." },
+  { test: /this cw20 has been blocked as a raffle prize/i, friendly: "This token has been blocked as a raffle prize after repeated payout failures — contact the platform if this seems wrong." },
+  { test: /prize can no longer be paid out.*blocked after 3 consecutive transfer failures/i, friendly: "This prize can no longer be paid out — it was blocked after repeated transfer failures. If the platform clears the token, this unblocks automatically." },
+  { test: /ticket_price is too high to compute the service fee/i, friendly: "That ticket price is too high to compute a fee for — try a lower price." },
 
   // Tickets
   { test: /raffle is not open/i, friendly: "This raffle isn't open for ticket sales right now." },
@@ -51,8 +60,15 @@ const RULES: { test: RegExp; friendly: string }[] = [
   { test: /only for airdrop raffles/i, friendly: "This action is only for Airdrop raffles." },
   { test: /did not participate in this raffle/i, friendly: "This wallet didn't participate in this raffle." },
   { test: /already claimed its airdrop share/i, friendly: "You already claimed your share." },
+  { test: /already has an airdrop claim in flight/i, friendly: "You already have a claim in progress — wait for it to confirm before retrying." },
+  { test: /at least one airdrop claim is still in flight/i, friendly: "At least one claim is still in progress — wait for it to confirm before reclaiming unclaimed funds." },
   { test: /unclaimed-funds deadline has not passed/i, friendly: "It's too early to reclaim unclaimed shares — the deadline hasn't passed yet." },
   { test: /already reclaimed unclaimed funds/i, friendly: "Unclaimed shares were already reclaimed for this raffle." },
+
+  // Retry payout (round-10 audit fix: RetryPrizePayout had no client and no
+  // translated errors until this round added the button)
+  { test: /every winner's prize share has already been confirmed paid/i, friendly: "Every prize has already been confirmed paid — nothing to retry." },
+  { test: /this action is not valid for airdrop raffles/i, friendly: "Retrying a payout only applies to Single Winner/Podium raffles — use Claim for an Airdrop instead." },
 
   // Cancel / expire
   { test: /already been cancelled/i, friendly: "This raffle was already cancelled." },

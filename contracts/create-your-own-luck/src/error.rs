@@ -81,6 +81,12 @@ pub enum ContractError {
     #[error("This wallet already claimed its airdrop share")]
     AlreadyClaimed {},
 
+    #[error("This wallet already has an airdrop claim in flight - wait for it to confirm before retrying")]
+    ClaimAlreadyInFlight {},
+
+    #[error("At least one airdrop claim is still in flight (dispatched, not yet confirmed) - wait for it to resolve before reclaiming unclaimed funds")]
+    ClaimsStillInFlight {},
+
     #[error("The unclaimed-funds deadline has not passed yet")]
     UnclaimedDeadlineNotReached {},
 
@@ -102,8 +108,17 @@ pub enum ContractError {
     #[error("draw_window_blocks must be between {min} and {max}")]
     InvalidDrawWindowBlocks { min: u64, max: u64 },
 
-    #[error("Paid raffles (ticket_price > 0) can only offer LUNC, USDC, or USTC as the prize - no CW20 tokens and no other native denoms yet. Free raffles (ticket_price = 0) have no restriction. Contact the platform to get a new asset reviewed and allowlisted")]
+    #[error("Paid raffles (ticket_price > 0) can only offer LUNC, USDC, USTC, or a CW20 the platform has reviewed and whitelisted - contact the platform to get a new CW20 reviewed")]
     PrizeAssetNotAllowlisted {},
+
+    #[error("This CW20 has been blocked as a raffle prize after repeated prize-transfer failures - contact the platform if you believe this is a mistake")]
+    PrizeAssetBlacklisted {},
+
+    #[error("This raffle's prize can no longer be paid out - it was blocked after 3 consecutive transfer failures against the prize token. If the platform clears the token on the factory's CW20 blacklist, this unblocks automatically")]
+    PrizeBlocked {},
+
+    #[error("Unexpected reply id: {id}")]
+    UnknownReplyId { id: u64 },
 
     #[error("This raffle's prize is a CW20 token - use the CW20 token's Send instead of DepositPrize")]
     PrizeIsCw20 {},
@@ -120,9 +135,6 @@ pub enum ContractError {
     #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd be stuck in the contract with no way to recover them")]
     UnexpectedFundsAttached { denom: String },
 
-    #[error("max_raffle_age_seconds must be between {min} and {max}")]
-    InvalidMaxRaffleAgeSeconds { min: u64, max: u64 },
-
     #[error("Paid raffles (ticket_price > 0) must set ticket_denom to the platform's USDC - otherwise the ticket price can't be compared in real dollar terms (needed for the fee calculation, and to avoid a cheap-looking ticket priced in a near-worthless denom)")]
     PaidTicketMustBeUsdc {},
 
@@ -135,7 +147,7 @@ pub enum ContractError {
     #[error("Tickets can only be withdrawn before min_players is reached")]
     RaffleAlreadyLocked {},
 
-    #[error("Raffle cannot be expired yet: either min_players was already reached, or max_raffle_age_seconds hasn't elapsed")]
+    #[error("Raffle cannot be expired yet: either min_players was already reached, or the raffle's 60-day maximum age hasn't elapsed")]
     CannotExpireRaffle {},
 
     #[error("ticket_price must be either exactly 0 (free) or at least {min} USDC micros ($1) - no dust pricing in between")]
@@ -143,4 +155,7 @@ pub enum ContractError {
 
     #[error("ticket_price must be a whole number of USDC cents ({cent} micros) - fractional-cent pricing isn't a real price point")]
     TicketPriceNotWholeCents { cent: u128 },
+
+    #[error("Every winner's prize share has already been confirmed paid - nothing to retry")]
+    NothingToRetry {},
 }

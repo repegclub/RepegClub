@@ -23,17 +23,32 @@ pub struct InstantiateMsg {
     /// silently set to the factory's own address, so DepositPrize could never
     /// succeed for anyone.
     pub creator: Option<String>,
+    /// The `create-your-own-luck-factory` deploying this raffle - see
+    /// `state::Config::factory_address`'s own doc comment for what this is
+    /// used for and the residual risk of a direct-instantiate bypass lying
+    /// about it. Required, not defaulted to `info.sender`, unlike `creator`
+    /// above - a raffle instantiated with no real, responding factory behind
+    /// it can't be created at all for any non-Airdrop raffle_type (native or
+    /// CW20 prize alike): instantiate() queries `GetCancellationPenaltyBps`
+    /// on this address unconditionally for SingleWinner/Podium (round-11
+    /// audit fix - this comment used to understate the impact as "can't
+    /// offer a CW20 prize", but the whitelist/blacklist queries are only the
+    /// CW20-specific half of the dependency). An honest failure mode for a
+    /// bypass attempt rather than something to default around.
+    pub factory_address: String,
     pub raffle_type: RaffleType,
     pub ticket_price: Uint128,
     pub ticket_denom: String,
     pub allowed_entrants: Option<Vec<String>>,
     pub min_players: u32,
     pub max_players: u32,
+    /// Creator-chosen soft-close window - see `state::Config::
+    /// round_timeout_seconds`'s doc comment for the full mechanism and the
+    /// 24h-31day bounds enforced in contract.rs.
     pub round_timeout_seconds: u64,
     pub draw_delay_blocks: u64,
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
-    pub max_raffle_age_seconds: u64,
     /// Exactly one of these two must be set: a native prize (simple, single
     /// `DepositPrize` call) or a CW20 prize (needs `PayServiceFee` first, then
     /// the CW20 token's own `Send` to this contract).
@@ -60,14 +75,25 @@ pub enum ExecuteMsg {
     WithdrawTicket {},
     CloseRound {},
     DrawWinner {},
+    /// SingleWinner/Podium only, permissionless: re-sends the prize share for
+    /// any winner whose payout hasn't been confirmed paid yet (see
+    /// `state::RaffleState::prize_paid`) - added 2026-08-20 audit fix so a
+    /// transfer that failed for an honest reason (not just a malicious
+    /// token) isn't stranded forever with no way for anyone to retry it.
+    /// Also re-checks the factory's current CW20 blacklist status and clears
+    /// this raffle's own `prize_blocked` flag if the admin has since cleared
+    /// it there.
+    RetryPrizePayout {},
     ClaimAirdropShare {},
     ReclaimUnclaimed {},
     CancelRaffle {},
     /// Permissionless: if the raffle never reached `min_players` within
-    /// `max_raffle_age_seconds`, anyone can force a full refund (prize+fee to
-    /// the creator, tickets to each buyer) - the safety net for a stalled
-    /// raffle whose creator is unresponsive, mirroring `CancelRaffle`'s own
-    /// refund logic but without needing the creator to act.
+    /// `MAX_RAFFLE_AGE_SECONDS` (fixed platform-wide, not creator-chosen -
+    /// see that constant's own doc comment), anyone can force a full refund
+    /// (prize+fee to the creator, tickets to each buyer) - the safety net
+    /// for a stalled raffle whose creator is unresponsive, mirroring
+    /// `CancelRaffle`'s own refund logic but without needing the creator to
+    /// act.
     ExpireRaffle {},
 }
 
@@ -119,6 +145,11 @@ pub struct RaffleStatusResponse {
 pub struct WinnersResponse {
     pub winners: Vec<Addr>,
     pub prize_shares: Vec<Uint128>,
+    /// Parallel to the two fields above - see `state::RaffleState::
+    /// prize_paid`'s doc comment. Lets the frontend show "payout pending,
+    /// retry available" instead of implying a drawn winner has already been
+    /// paid.
+    pub prize_paid: Vec<bool>,
 }
 
 #[cw_serde]
@@ -145,11 +176,13 @@ pub struct ConfigResponse {
     pub draw_delay_blocks: u64,
     pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
-    pub max_raffle_age_seconds: u64,
     pub prize_asset: PrizeAsset,
     pub fee_amount_usdc: Uint128,
     pub usdc_denom: String,
     pub founder_fee_address: Addr,
     pub treasury_address: Addr,
+    pub factory_address: Addr,
     pub podium_shares_bps: Vec<u32>,
+    pub cancellation_penalty_base_bps: u64,
+    pub cancellation_penalty_late_additional_bps: u64,
 }

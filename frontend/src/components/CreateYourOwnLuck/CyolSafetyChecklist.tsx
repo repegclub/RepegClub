@@ -10,6 +10,7 @@ import {
   cooldownBand,
   creatorSelfBuy,
   creatorSelfBuyBand,
+  airdropLiveShareBand,
   UNSAFE_MAX_PLAYERS_THRESHOLD,
   type ChecklistBand,
 } from "../../lib/cyolChecklist";
@@ -76,6 +77,7 @@ export function CyolSafetyChecklist({
   if (config.raffle_type === "podium") return null;
 
   const isAirdrop = config.raffle_type === "airdrop";
+  const isPaid = config.ticket_price !== "0";
   const ticketPriceUsdc = ulunaToDisplayNumber(config.ticket_price);
   // The contract allows a paid raffle's prize to be LUNC/USDC/USTC (see
   // ALLOWED_PAID_NATIVE_PRIZE_DENOMS in contract.rs), not just USDC - mixing
@@ -94,12 +96,25 @@ export function CyolSafetyChecklist({
       ? ulunaToDisplayNumber(raffleStatus.prize_amount) * prizeAssetPrice
       : null;
 
+  // Applies to Airdrop too, not just SingleWinner (2026-08-23 fix, found by
+  // the user reading fundraiserNotApplicable's own copy and questioning it):
+  // worstCaseTicketRevenueProfit/worstCaseMinParticipationProfit ask "does
+  // ticket revenue alone profit the creator", which never depended on WHO
+  // receives the prize afterward - ticket_revenue refunds to the creator in
+  // full regardless of raffle_type (perform_draw, execute.rs), and both
+  // helper functions already branch on raffleType === "airdrop" internally
+  // (maxTicketsPerWallet caps at 1, mirroring the contract's own
+  // max_tickets_per_wallet/max_entrants/required_fee_usdc, which are
+  // equally raffle_type-generic on-chain). The stale reasoning ("Airdrop has
+  // no single winner, so this doesn't apply") confused "who gets the prize"
+  // with "does the creator profit from selling tickets" - unrelated
+  // questions.
   const fundraiserProfit =
-    !isAirdrop && prizeUsdc !== null
+    prizeUsdc !== null
       ? worstCaseTicketRevenueProfit(config.raffle_type, config.max_players, ticketPriceUsdc, prizeUsdc)
       : null;
   const minParticipationProfit =
-    !isAirdrop && prizeUsdc !== null
+    prizeUsdc !== null
       ? worstCaseMinParticipationProfit(
           config.min_players,
           ticketPriceUsdc,
@@ -118,9 +133,7 @@ export function CyolSafetyChecklist({
     <div className="cyol-checklist">
       <p className="cyol-checklist-title">{t("createYourOwnLuck.checklist.title")}</p>
       <ul className="cyol-checklist-list">
-        {isAirdrop ? (
-          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserNotApplicable")}</Row>
-        ) : fundraiserProfit === null || minParticipationProfit === null ? (
+        {fundraiserProfit === null || minParticipationProfit === null ? (
           <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
         ) : (
           <Row band="neutral">
@@ -159,6 +172,32 @@ export function CyolSafetyChecklist({
           </Row>
         )}
 
+        {/* Airdrop's equivalent of the row above - not "whole prize vs one
+            ticket" (Airdrop has no single winner) but "guaranteed per-wallet
+            share in the worst case (raffle fills up) vs the ticket". Same
+            worst-case math as fundValueMismatch/buyValueMismatch's warning
+            modals in RaffleDetailPage.tsx, which only fire once, right
+            before a signature - this makes the same signal a standing,
+            reputation-facing checklist row instead, found missing live by
+            the user 2026-08-23 (created a real $1 ticket / 500 LUNC / max
+            100 airdrop - worth ~$0.0002/wallet worst-case - and saw 3 green
+            rows with nothing flagging it). A free Airdrop risks nothing, so
+            it's neutral there (airdropWorstCaseNotApplicable). */}
+        {isAirdrop && (
+          <Row band={!isPaid ? "neutral" : prizeUsdc === null ? "neutral" : prizeUsdc / config.max_players < ticketPriceUsdc ? "red" : "green"}>
+            {!isPaid
+              ? t("createYourOwnLuck.checklist.airdropWorstCaseNotApplicable")
+              : prizeUsdc === null
+                ? t("createYourOwnLuck.checklist.airdropWorstCaseUnknown")
+                : prizeUsdc / config.max_players < ticketPriceUsdc
+                  ? t("createYourOwnLuck.checklist.airdropWorstCaseUnfair", {
+                      share: (prizeUsdc / config.max_players).toFixed(4),
+                      ticket: ticketPriceUsdc.toFixed(2),
+                    })
+                  : t("createYourOwnLuck.checklist.airdropWorstCaseFair")}
+          </Row>
+        )}
+
         <Row band={selfBuyBand}>
           {selfBuy === null
             ? t(isAirdrop ? "createYourOwnLuck.checklist.creatorSelfBuyNoneAirdrop" : "createYourOwnLuck.checklist.creatorSelfBuyNone")
@@ -174,22 +213,80 @@ export function CyolSafetyChecklist({
               )}
         </Row>
 
-        <Row band={smallShape ? "yellow" : "green"}>
-          {smallShape
-            ? t("createYourOwnLuck.checklist.maxPlayersSmall", {
-                max: config.max_players,
-                threshold: UNSAFE_MAX_PLAYERS_THRESHOLD,
-              })
-            : t("createYourOwnLuck.checklist.maxPlayersFine", { max: config.max_players })}
-        </Row>
+        {/* SingleWinner/Podium only - isSmallUnsafeShape is hardcoded
+            raffleType !== "airdrop" (mirrors the factory's own cooldown
+            exemption, execute.rs's is_unsafe_shape), so this would always
+            render green for Airdrop regardless of max_players - not
+            backwards like concentration was, just structurally a no-op.
+            The exemption itself is correct: the exploit this flags (small
+            max_players minimizing the fixed fee while the creator
+            concentrates tickets to guarantee winning their own prize back)
+            requires odds to concentrate - Airdrop has no draw, every unique
+            wallet gets the same deterministic share regardless of ticket
+            count. Airdrop's own max_players-driven risk (dilution) is
+            already covered by the worst-case and live-share rows above.
+            Found by the user live-testing 2026-08-23, same session as the
+            concentration fix. */}
+        {!isAirdrop && (
+          <Row band={smallShape ? "yellow" : "green"}>
+            {smallShape
+              ? t("createYourOwnLuck.checklist.maxPlayersSmall", {
+                  max: config.max_players,
+                  threshold: UNSAFE_MAX_PLAYERS_THRESHOLD,
+                })
+              : t("createYourOwnLuck.checklist.maxPlayersFine", { max: config.max_players })}
+          </Row>
+        )}
 
-        <Row band={cBand}>
-          {concentration === null
-            ? t("createYourOwnLuck.checklist.concentrationNone")
-            : t(`createYourOwnLuck.checklist.concentration${cBand === "green" ? "Green" : cBand === "yellow" ? "Yellow" : "Red"}`, {
-                percent: Math.round(concentration.share * 100),
-              })}
-        </Row>
+        {/* SingleWinner/Podium only - a large ticket share for one wallet
+            means better odds of winning the draw, a real fairness signal.
+            Doesn't carry over to Airdrop: share there is prize/unique_players
+            (per wallet, not per ticket), so a SMALL participant count drives
+            this same ticket-share fraction up for reasons that are actually
+            good for whoever joined (a bigger guaranteed slice each) - the
+            opposite of what "high concentration" implies for a lottery.
+            Found by the user live-testing 2026-08-23. Airdrop's equivalent
+            risk (a full raffle diluting each share toward/under the ticket
+            price) is the worst-case row above, not this one. */}
+        {!isAirdrop && (
+          <Row band={cBand}>
+            {concentration === null
+              ? t("createYourOwnLuck.checklist.concentrationNone")
+              : t(`createYourOwnLuck.checklist.concentration${cBand === "green" ? "Green" : cBand === "yellow" ? "Yellow" : "Red"}`, {
+                  percent: Math.round(concentration.share * 100),
+                })}
+          </Row>
+        )}
+
+        {/* Airdrop's live replacement for the concentration row above -
+            same reasoning as the worst-case row's own comment, but computed
+            against unique_player_count *right now* instead of max_players.
+            Meaningful the whole time the raffle is Open, not just before
+            funding, precisely because WithdrawTicket stays open for Airdrop
+            for its entire life (2026-08-23 fix, execute.rs) - a participant
+            can watch this flip and decide to leave before the raffle
+            closes, which is the whole point of leaving the lock open. */}
+        {isAirdrop &&
+          isPaid &&
+          (() => {
+            const liveBand = airdropLiveShareBand(prizeUsdc, raffleStatus.unique_player_count, ticketPriceUsdc);
+            return (
+              <Row band={liveBand}>
+                {raffleStatus.unique_player_count === 0
+                  ? t("createYourOwnLuck.checklist.airdropLiveShareNone")
+                  : prizeUsdc === null
+                    ? t("createYourOwnLuck.checklist.airdropLiveShareUnknown")
+                    : t(
+                        `createYourOwnLuck.checklist.airdropLiveShare${liveBand === "green" ? "Green" : liveBand === "yellow" ? "Yellow" : "Red"}`,
+                        {
+                          count: raffleStatus.unique_player_count,
+                          share: (prizeUsdc / raffleStatus.unique_player_count).toFixed(4),
+                          ticket: ticketPriceUsdc.toFixed(2),
+                        }
+                      )}
+              </Row>
+            );
+          })()}
 
         <Row band={cooldownState.status === "loaded" ? cooldownBand(cooldownState.cooldown, Date.now() / 1000) : "neutral"}>
           {cooldownState.status === "loading" && t("createYourOwnLuck.checklist.cooldownLoading")}

@@ -33,13 +33,15 @@ export type CyolConfigResponse = {
   draw_delay_blocks: number;
   draw_window_blocks: number;
   unclaimed_deadline_days: number;
-  max_raffle_age_seconds: number;
   prize_asset: CyolPrizeAsset;
   fee_amount_usdc: string;
   usdc_denom: string;
   founder_fee_address: string;
   treasury_address: string;
+  factory_address: string;
   podium_shares_bps: number[];
+  cancellation_penalty_base_bps: number;
+  cancellation_penalty_late_additional_bps: number;
 };
 
 export function getRaffleStatus(contractAddress: string) {
@@ -59,6 +61,7 @@ export function getRaffleConfig(contractAddress: string) {
 export type CyolWinnersResponse = {
   winners: string[];
   prize_shares: string[];
+  prize_paid: boolean[];
 };
 
 export function getWinners(contractAddress: string) {

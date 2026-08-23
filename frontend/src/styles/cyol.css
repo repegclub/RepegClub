@@ -781,3 +781,57 @@
   margin-top: 0.4rem;
   align-self: flex-start;
 }
+
+/* "Understand your options" guide (CyolOptionsPanel) - reuses the onramp's
+   .origin-options-btn/.origin-options-modal-title/.verify-modal-* chrome,
+   these are just the per-block content styles specific to this guide. */
+.cyol-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.cyol-option-block {
+  padding: 0.7rem 0.8rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+/* Set apart from the 4 core paths above it - a layer that combines with
+   any of them, not a 5th option of its own (direct request, 2026-08-20). */
+.cyol-option-block-crosscutting {
+  border-style: dashed;
+  border-color: var(--border-bright);
+}
+
+.cyol-option-title {
+  margin: 0 0 0.4rem;
+  font-family: var(--display);
+  font-size: 1rem;
+  color: var(--gold);
+}
+
+.cyol-option-bullets {
+  margin: 0 0 0.5rem;
+  padding-left: 1.1rem;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* No font-style: italic - the site already disables font synthesis
+   globally (wheel.css body rule) since --body/VT323 has no real italic or
+   bold face, so a requested italic just renders upright anyway - it wasn't
+   doing anything. Gold color marks "this line is different" instead. The
+   "thick" look reported live (2026-08-20) turned out to be VT323 itself at
+   this size, not a synthesized weight - bumped size + letter-spacing gives
+   the pixel strokes room to read clearly instead of blurring together. */
+.cyol-option-suggestion {
+  margin: 0;
+  font-size: 0.98rem;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}

@@ -25,6 +25,17 @@ if (!label || !raffleType || !minPlayersArg || !maxPlayersArg || !ticketPriceArg
 if (!["SingleWinner", "Podium", "Airdrop"].includes(raffleType)) {
   throw new Error(`Invalid raffle type: ${raffleType} (expected SingleWinner, Podium, or Airdrop)`);
 }
+// RaffleType is #[serde(rename_all = "snake_case")] (state.rs) - the wire
+// value the contract actually deserializes is "single_winner"/"podium"/
+// "airdrop", not the PascalCase this script's own CLI args use (round-12
+// audit fix, Opus). Every other CYOL script that builds a create_raffle msg
+// already sends the correct snake_case literal directly; this is the only
+// one deriving it from a CLI arg, which is how the mismatch went unnoticed.
+const RAFFLE_TYPE_WIRE: Record<string, string> = {
+  SingleWinner: "single_winner",
+  Podium: "podium",
+  Airdrop: "airdrop",
+};
 if (podiumSharesArg && raffleType !== "Podium") {
   throw new Error("podiumSharesBps is only valid for Podium raffles");
 }
@@ -41,10 +52,22 @@ if (raffleType === "Podium") {
   }
 }
 const deploymentPath = path.resolve(__dirname, `../deployment-cyol-${label}.json`);
+// Required since the CW20 whitelist/blacklist redesign - InstantiateMsg's
+// factory_address is a mandatory field (msg.rs), and instantiate() live-
+// queries GetCancellationPenaltyBps on it for every non-Airdrop raffle
+// (contract.rs), so this script needs a real, already-deployed factory
+// under the same label (round-11 audit fix - this script bypasses the
+// factory's own CreateRaffle and instantiates the raffle code directly, so
+// nothing else here supplied this field; without it, InstantiateMsg fails
+// JSON deserialization and the instantiate can never succeed).
+const factoryDeploymentPath = path.resolve(__dirname, `../deployment-cyol-factory-${label}.json`);
 
 async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin (creator) address:", admin.address);
+
+  const { contractAddress: factoryAddress } = JSON.parse(readFileSync(factoryDeploymentPath, "utf8"));
+  console.log("Factory address:", factoryAddress);
 
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));
   console.log(`Storing create-your-own-luck code (${wasmByteCode.length} bytes)...`);
@@ -66,16 +89,17 @@ async function main() {
         codeId,
         label: `create-your-own-luck-${label}`,
         msg: {
-          raffle_type: raffleType,
+          raffle_type: RAFFLE_TYPE_WIRE[raffleType],
           ticket_price: ticketPriceArg,
           ticket_denom: "uluna",
           allowed_entrants: null,
           min_players: Number(minPlayersArg),
           max_players: Number(maxPlayersArg),
-          round_timeout_seconds: 3600,
+          round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
           draw_delay_blocks: 2,
           draw_window_blocks: 10,
           unclaimed_deadline_days: 90,
+          factory_address: factoryAddress,
           prize_native_denom: "uluna",
           prize_cw20_address: null,
           podium_shares_bps: podiumSharesBps,

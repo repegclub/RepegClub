@@ -20,15 +20,14 @@ const [, , label = "frontenddev5"] = process.argv;
 const unsafeFields = {
   raffle_type: "single_winner" as const,
   ticket_price: "1000000",
-  ticket_denom: "utestusdc",
+  ticket_denom: "uluna", // paid raffles must use the platform's USDC, which is "uluna" on this testnet (see checkBatchBuyTicket.ts) - "utestusdc" doesn't exist and the factory would reject it
   allowed_entrants: null,
   min_players: 2,
   max_players: 10, // < 20 -> unsafe shape
-  round_timeout_seconds: 3600,
+  round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
   draw_delay_blocks: 2,
   draw_window_blocks: 60,
   unclaimed_deadline_days: 90,
-  max_raffle_age_seconds: 604800,
   prize_native_denom: "uluna",
   prize_cw20_address: null,
   podium_shares_bps: [] as number[],
@@ -71,6 +70,17 @@ async function main() {
   }
 
   console.log("\n2. Second unsafe-shaped raffle right away - expecting rejection (cooldown)...");
+  // succeeded/errorMessage, both checked strictly after the try/catch
+  // (round-13 audit fix, Opus): round 12 only hoisted the "but it
+  // succeeded" case out of the try - the "wrong error" throw was still
+  // inside it, so a non-cooldown rejection (e.g. out of gas, a stale
+  // factory code_id) still got caught by this same block's own catch and
+  // double-wrapped into "Failed, but not with the expected error: Failed,
+  // but not with the expected error: <rawLog>". Neither check runs until
+  // both possible outcomes (a rejected tx response, or a thrown exception)
+  // have been reduced to one plain message first.
+  let secondSucceeded = false;
+  let secondErrorMessage: string | null = null;
   try {
     const second = await wallet.broadcastTxSync({
       msgs: [
@@ -83,19 +93,20 @@ async function main() {
       ],
     });
     if (second.txResponse.code === 0) {
-      throw new Error("Expected the second unsafe-shaped raffle to fail, but it succeeded");
+      secondSucceeded = true;
+    } else {
+      secondErrorMessage = second.txResponse.rawLog;
     }
-    if (!second.txResponse.rawLog.includes("cooldown")) {
-      throw new Error(`Failed, but not with the expected error: ${second.txResponse.rawLog}`);
-    }
-    console.log("OK: rejected with a cooldown message.");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!message.includes("cooldown")) {
-      throw new Error(`Failed, but not with the expected error: ${message}`);
-    }
-    console.log("OK: rejected with a cooldown message.");
+    secondErrorMessage = err instanceof Error ? err.message : String(err);
   }
+  if (secondSucceeded) {
+    throw new Error("Expected the second unsafe-shaped raffle to fail, but it succeeded");
+  }
+  if (!secondErrorMessage?.includes("cooldown")) {
+    throw new Error(`Failed, but not with the expected error: ${secondErrorMessage}`);
+  }
+  console.log("OK: rejected with a cooldown message.");
 
   console.log(
     "\n3. A safe-shaped raffle right away - expecting success, and the active cooldown must NOT be touched..."
@@ -129,6 +140,18 @@ async function main() {
   }
 
   console.log("\n4. A second unsafe-shaped raffle right after the safe one - must STILL be rejected...");
+  // fourthSucceeded/fourthErrorMessage, both checked strictly after the
+  // try/catch (round-12 audit fix, Opus, for the false-pass half; round-13
+  // audit fix, Opus, for the remaining double-wrap half - same reasoning as
+  // step 2 above). Round 12 closed the real bug here: the old "but it
+  // succeeded" throw's own message contained the substring "cooldown"
+  // ("...the safe-shaped raffle must not have reset the cooldown..."), so a
+  // regression of the free-reset bug this step exists to catch (the
+  // cooldown wrongly cleared, so the 4th create_raffle actually succeeds)
+  // would have been swallowed by this block's own catch and printed as a
+  // false "OK: still rejected" / "All checks passed."
+  let fourthSucceeded = false;
+  let fourthErrorMessage: string | null = null;
   try {
     const fourth = await wallet.broadcastTxSync({
       msgs: [
@@ -141,21 +164,22 @@ async function main() {
       ],
     });
     if (fourth.txResponse.code === 0) {
-      throw new Error(
-        "Expected this unsafe-shaped raffle to still be rejected (the safe-shaped raffle must not have reset the cooldown), but it succeeded"
-      );
+      fourthSucceeded = true;
+    } else {
+      fourthErrorMessage = fourth.txResponse.rawLog;
     }
-    if (!fourth.txResponse.rawLog.includes("cooldown")) {
-      throw new Error(`Failed, but not with the expected error: ${fourth.txResponse.rawLog}`);
-    }
-    console.log("OK: still rejected with a cooldown message - the safe-shaped raffle did not reset it.");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!message.includes("cooldown")) {
-      throw new Error(`Failed, but not with the expected error: ${message}`);
-    }
-    console.log("OK: still rejected with a cooldown message - the safe-shaped raffle did not reset it.");
+    fourthErrorMessage = err instanceof Error ? err.message : String(err);
   }
+  if (fourthSucceeded) {
+    throw new Error(
+      "Expected this unsafe-shaped raffle to still be rejected (the safe-shaped raffle must not have reset the cooldown), but it succeeded"
+    );
+  }
+  if (!fourthErrorMessage?.includes("cooldown")) {
+    throw new Error(`Failed, but not with the expected error: ${fourthErrorMessage}`);
+  }
+  console.log("OK: still rejected with a cooldown message - the safe-shaped raffle did not reset it.");
 
   console.log("\nAll checks passed.");
 }

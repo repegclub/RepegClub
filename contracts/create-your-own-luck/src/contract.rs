@@ -1,13 +1,15 @@
 use cosmwasm_std::{
-    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult, Uint128,
 };
 
 use crate::error::ContractError;
 use crate::execute::{
     execute_buy_ticket, execute_cancel_raffle, execute_claim_airdrop_share, execute_close_round,
     execute_deposit_prize, execute_draw_winner, execute_expire_raffle, execute_pay_service_fee,
-    execute_reclaim_unclaimed, execute_receive, execute_withdraw_ticket, max_tickets_per_wallet,
+    execute_reclaim_unclaimed, execute_receive, execute_retry_prize_payout, execute_withdraw_ticket,
+    max_tickets_per_wallet, reply as reply_impl,
 };
+use crate::factory_msgs::{CancellationPenaltyResponse, FactoryQueryMsg};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, PrizeAsset, RaffleState, RaffleStatus, RaffleType, CONFIG, RAFFLE};
@@ -42,7 +44,7 @@ const MAX_PLAYERS_SINGLE_WINNER_PODIUM: u32 = 100;
 /// at the time. Splitting the fee formula by free-vs-paid silently dropped
 /// that ceiling for paid Airdrops (the % formula has no upper bound of its
 /// own), reopening exactly the gas blowup class `MAX_PLAYERS_SINGLE_WINNER_PODIUM`
-/// above was created to prevent: `full_refund_messages`
+/// above was created to prevent: `cancel_refund_messages`
 /// (Cancel/ExpireRaffle) emits one message per unique player, and
 /// `ReclaimUnclaimed` loops every unique player too - both O(max_players) in
 /// a single transaction, which a large-enough paid Airdrop could push past
@@ -74,10 +76,13 @@ const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 /// `draw_window_blocks` - three more creator-chosen fields (like
 /// `unclaimed_deadline_days` above) that were left unvalidated at instantiate
 /// until an Opus+Fable review (2026-07-21) of *that* fix pointed out the same
-/// bug class was still open here. All three feed timestamp/height addition in
-/// `execute_close_round`/`execute_draw_winner` (`opened_at.seconds() +
-/// round_timeout_seconds`, `env.block.height + draw_delay_blocks`); with
-/// `overflow-checks = true` an astronomical value panics that addition,
+/// bug class was still open here. All three feed timestamp/height addition -
+/// `round_timeout_seconds` in `execute_buy_ticket`'s soft-close deadline
+/// (`env.block.time.plus_seconds(round_timeout_seconds)`, moved here from
+/// `execute_close_round` by the 2026-08-20 soft-close redesign),
+/// `draw_delay_blocks`/`draw_window_blocks` in `execute_draw_winner`
+/// (`env.block.height + draw_delay_blocks`); with `overflow-checks = true`
+/// an astronomical value panics that addition,
 /// and unlike the DrawWinner creator-exclusivity fallback, `CloseRound` has
 /// no permissionless/deadline rescue if it can never be evaluated - a raffle
 /// that can never close can never reach `CancelRaffle`'s only escape either
@@ -90,23 +95,53 @@ const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 /// bounds keep the worst case (a picked-but-not-overflowing absurd value) to
 /// low-single-digit years, not decades - same "human-scale ceiling" reasoning
 /// as `MAX_UNCLAIMED_DEADLINE_DAYS`.
-const MIN_ROUND_TIMEOUT_SECONDS: u64 = 60;
-const MAX_ROUND_TIMEOUT_SECONDS: u64 = 31_536_000; // 365 days
+/// 24h-31 days (2026-08-22 audit round 10 fix, raised from the original
+/// 1h-31 day range of the 2026-08-20 soft-close redesign) - narrower than
+/// the old 60s-365day range because this is now the creator's real,
+/// meaningful "how long am I planning my marketing window for" choice (see
+/// `Config::round_timeout_seconds`'s doc comment), not just an overflow-
+/// safety bound; over 31 days stops being a "round" and starts overlapping
+/// with `MAX_RAFFLE_AGE_SECONDS`'s own 60-day hard cap.
+///
+/// The floor was originally 1 hour - exactly `ANTI_SNIPE_EXTENSION_SECONDS`.
+/// Proven degenerate (round 10 audit, live test): the anti-snipe extension
+/// fires whenever `seconds_remaining <= ANTI_SNIPE_EXTENSION_SECONDS`, so a
+/// raffle instantiated at the old floor starts its life already inside that
+/// window - literally every purchase at any point extends the deadline by
+/// another hour, turning the "final hour" into the raffle's entire
+/// lifetime. This is exactly the rolling-deadline behavior
+/// `Config::round_timeout_seconds`'s own doc comment says soft-close was
+/// designed to avoid, and it's what the real frontend always instantiates
+/// with (`createRaffle.ts`'s `ROUND_TIMEOUT_SECONDS`, not creator-
+/// configurable yet) - so every app-created raffle hit it. Raising the
+/// floor to 24h (24x `ANTI_SNIPE_EXTENSION_SECONDS`) guarantees a real,
+/// stable period outside the anti-snipe zone for every value in range,
+/// without needing to touch the extension math itself.
+const MIN_ROUND_TIMEOUT_SECONDS: u64 = 86_400;
+const MAX_ROUND_TIMEOUT_SECONDS: u64 = 2_678_400; // 31 days
 const MIN_DRAW_DELAY_BLOCKS: u64 = 1;
 const MAX_DRAW_DELAY_BLOCKS: u64 = 1_000_000;
 const MIN_DRAW_WINDOW_BLOCKS: u64 = 1;
 const MAX_DRAW_WINDOW_BLOCKS: u64 = 1_000_000;
-
-/// Bounds on `max_raffle_age_seconds` - same reasoning and same range as
-/// `round_timeout_seconds` above (it feeds the identical
-/// `opened_at.seconds() + config.max_raffle_age_seconds` addition pattern in
-/// `execute_buy_ticket`/`execute_expire_raffle`, so it needs the same
-/// overflow-panic protection), but a separate field because it governs a
-/// different clock: how long a raffle can sit *without* `min_players` before
-/// `ExpireRaffle` can force a refund, vs. `round_timeout_seconds` governing
-/// closing *after* `min_players` is already met.
-const MIN_MAX_RAFFLE_AGE_SECONDS: u64 = 60;
-const MAX_MAX_RAFFLE_AGE_SECONDS: u64 = 31_536_000; // 365 days
+/// Fixed anti-snipe extension (2026-08-20 design) - a ticket purchase
+/// landing in the final hour before `RaffleState::deadline` pushes it out
+/// by exactly this much, capped at `MAX_RAFFLE_AGE_SECONDS` from
+/// `opened_at`. Deliberately NOT creator-configurable (unlike
+/// `round_timeout_seconds`) - the whole point is a small, fixed, well-
+/// understood grace window, not another dial a creator has to reason about.
+pub(crate) const ANTI_SNIPE_EXTENSION_SECONDS: u64 = 3_600;
+/// Absolute hard cap on a raffle's total lifetime from `opened_at`, fixed
+/// platform-wide (2026-08-20) - replaces the old creator-chosen
+/// `max_raffle_age_seconds` field entirely. Serves 2 purposes: (1) if
+/// `min_players` is never reached, `ExpireRaffle` can force a refund after
+/// this long; (2) if `min_players` WAS reached but anti-snipe extensions
+/// keep pushing `deadline` out, this still forces a close eventually. A
+/// FIXED 60 days (not a multiplier of the creator's chosen window - both a
+/// flat 4x and Wheel Manager's real ~48x ratio were considered and rejected
+/// during design, since neither is principled for CYOL's week/month-scale
+/// windows) gives every raffle the same real ceiling regardless of how
+/// aggressive its anti-snipe extensions get.
+pub(crate) const MAX_RAFFLE_AGE_SECONDS: u64 = 5_184_000; // 60 days
 
 /// Free-raffle (`ticket_price` zero) fee schedule, keyed by `max_players`
 /// ceiling (ascending, USDC micros) - judged by community size, since
@@ -189,10 +224,12 @@ const LUNC_DENOM: &str = "uluna";
 /// unlike `USDC_DENOM` above.
 const USTC_DENOM: &str = "uusd";
 
-/// Prize whitelist for paid raffles (2026-07-21): a raffle where players
-/// pay a real ticket price can only offer LUNC/USDC/USTC as the prize, and
-/// never a CW20 token. Native denom identity can't be spoofed (it's the
-/// exact chain/channel hash, not creator-controlled metadata), but CW20
+/// Native prize whitelist for paid raffles (2026-07-21): a raffle where
+/// players pay a real ticket price can only offer LUNC/USDC/USTC as a
+/// native prize (a separately factory-whitelisted CW20 is also allowed as
+/// of the 2026-08-20 redesign - see the CW20 branch below). Native denom
+/// identity can't be spoofed (it's the exact chain/channel hash, not
+/// creator-controlled metadata), but CW20
 /// `name`/`symbol` fields are pure creator-chosen strings disconnected from
 /// the contract's real identity - anyone can deploy their own CW20, call it
 /// "USDC", and use it as the prize, collecting real ticket revenue while
@@ -231,15 +268,35 @@ fn max_entrants(raffle_type: RaffleType, max_players: u32, ticket_price: Uint128
 /// Computes the required service fee on-chain instead of trusting a
 /// creator-supplied amount - closes off a creator quietly setting their own
 /// fee to near-zero. Free raffles (no ticket revenue to judge by) use the
-/// community-size tier schedule; paid raffles use 1% of theoretical maximum
-/// revenue, floored at $1 (see `PAID_RAFFLE_FEE_BPS` doc comment for why).
+/// community-size tier schedule; paid SingleWinner/Podium use 1% of
+/// theoretical maximum revenue, floored at $1 (see `PAID_RAFFLE_FEE_BPS`
+/// doc comment for why).
+///
+/// Paid Airdrop is the one exception, fixed 2026-08-23 after the user
+/// noticed live that a large paid Airdrop had become dramatically cheaper
+/// than an equivalently-sized free one (a $1-ticket, 1000-player Airdrop
+/// paid ~$10 vs a free one's $18 tier fee - about 44% cheaper for taking
+/// real money instead of none). The tier schedule above was originally
+/// Airdrop-only and applied regardless of price - it only got displaced for
+/// paid Airdrop when the 2026-07-21 revenue-based formula was introduced
+/// generically for "paid raffles" without carrying the tier floor forward.
+/// Paid Airdrop's fee is now `max(tier schedule, 1% of theoretical
+/// revenue)`: never cheaper than a free Airdrop of the same `max_players`
+/// (the tier schedule's own community-size reasoning doesn't stop applying
+/// just because tickets are priced), but still scales up past the tier cap
+/// for a high enough ticket price, where real revenue justifies a bigger
+/// fee than the flat schedule alone would charge.
 fn required_fee_usdc(raffle_type: RaffleType, max_players: u32, ticket_price: Uint128) -> Result<Uint128, ContractError> {
-    if ticket_price.is_zero() {
-        return FREE_RAFFLE_FEE_TIERS_USDC
+    let tier_fee = || -> Result<Uint128, ContractError> {
+        FREE_RAFFLE_FEE_TIERS_USDC
             .iter()
             .find(|(cap, _)| max_players <= *cap)
             .map(|(_, fee)| Uint128::new(*fee))
-            .ok_or(ContractError::MaxPlayersExceedsFreeRaffleFeeTiers {});
+            .ok_or(ContractError::MaxPlayersExceedsFreeRaffleFeeTiers {})
+    };
+
+    if ticket_price.is_zero() {
+        return tier_fee();
     }
 
     let entrants = max_entrants(raffle_type, max_players, ticket_price);
@@ -247,7 +304,12 @@ fn required_fee_usdc(raffle_type: RaffleType, max_players: u32, ticket_price: Ui
         .checked_mul(Uint128::from(entrants))
         .map_err(|_| ContractError::FeeCalculationOverflow {})?;
     let percent_fee = max_potential_revenue.multiply_ratio(PAID_RAFFLE_FEE_BPS, FEE_BPS_DENOM);
-    Ok(std::cmp::max(percent_fee, Uint128::new(MIN_PAID_RAFFLE_FEE_USDC)))
+    let revenue_fee = std::cmp::max(percent_fee, Uint128::new(MIN_PAID_RAFFLE_FEE_USDC));
+
+    if raffle_type == RaffleType::Airdrop {
+        return Ok(std::cmp::max(revenue_fee, tier_fee()?));
+    }
+    Ok(revenue_fee)
 }
 
 #[entry_point]
@@ -286,14 +348,6 @@ pub fn instantiate(
         return Err(ContractError::InvalidDrawWindowBlocks {
             min: MIN_DRAW_WINDOW_BLOCKS,
             max: MAX_DRAW_WINDOW_BLOCKS,
-        });
-    }
-    if msg.max_raffle_age_seconds < MIN_MAX_RAFFLE_AGE_SECONDS
-        || msg.max_raffle_age_seconds > MAX_MAX_RAFFLE_AGE_SECONDS
-    {
-        return Err(ContractError::InvalidMaxRaffleAgeSeconds {
-            min: MIN_MAX_RAFFLE_AGE_SECONDS,
-            max: MAX_MAX_RAFFLE_AGE_SECONDS,
         });
     }
     if !msg.ticket_price.is_zero() && msg.ticket_denom != USDC_DENOM {
@@ -338,6 +392,8 @@ pub fn instantiate(
         return Err(ContractError::PodiumSharesNotApplicable {});
     }
 
+    let factory_address = deps.api.addr_validate(&msg.factory_address)?;
+
     let prize_asset = match (msg.prize_native_denom, msg.prize_cw20_address) {
         (Some(denom), None) => PrizeAsset::Native { denom },
         (None, Some(addr)) => PrizeAsset::Cw20 {
@@ -350,15 +406,57 @@ pub fn instantiate(
         }
     };
 
-    if !msg.ticket_price.is_zero() {
-        let allowed = match &prize_asset {
-            PrizeAsset::Native { denom } => ALLOWED_PAID_NATIVE_PRIZE_DENOMS.contains(&denom.as_str()),
-            PrizeAsset::Cw20 { .. } => false,
-        };
-        if !allowed {
-            return Err(ContractError::PrizeAssetNotAllowlisted {});
+    // Whitelist for PAID raffles (real ticket revenue at stake up front - a
+    // token must be admin-reviewed before it can be used), blacklist for
+    // FREE raffles/airdrops (opt-out instead: default allowed, auto-
+    // populated by `ReportCw20Failure`, see its own doc comment). A paid-
+    // eligible token that later gets reported still gets caught here too -
+    // whitelisted is checked together with NOT blacklisted, so
+    // `ReportCw20Failure` revokes both paid and free eligibility in one
+    // action instead of needing a separate "remove from whitelist" call.
+    // Native denoms keep the existing 3-asset allowlist for paid raffles,
+    // unrestricted for free ones - unchanged by this redesign.
+    match &prize_asset {
+        PrizeAsset::Native { denom } => {
+            if !msg.ticket_price.is_zero() && !ALLOWED_PAID_NATIVE_PRIZE_DENOMS.contains(&denom.as_str()) {
+                return Err(ContractError::PrizeAssetNotAllowlisted {});
+            }
+        }
+        PrizeAsset::Cw20 { address } => {
+            let blacklisted: bool = deps.querier.query_wasm_smart(
+                &factory_address,
+                &FactoryQueryMsg::IsCw20Blacklisted { address: address.to_string() },
+            )?;
+            if blacklisted {
+                return Err(ContractError::PrizeAssetBlacklisted {});
+            }
+            if !msg.ticket_price.is_zero() {
+                let whitelisted: bool = deps.querier.query_wasm_smart(
+                    &factory_address,
+                    &FactoryQueryMsg::IsCw20Whitelisted { address: address.to_string() },
+                )?;
+                if !whitelisted {
+                    return Err(ContractError::PrizeAssetNotAllowlisted {});
+                }
+            }
         }
     }
+
+    // Read once, here, and baked into this raffle's own Config for its
+    // lifetime - see `Config::cancellation_penalty_base_bps`'s doc comment
+    // for why this is NOT re-queried live at cancel time (that same comment
+    // also has the current reasoning for why Airdrop is always 0/0 - a
+    // round-7 audit fix corrected wording here that used to cite a fairness
+    // check removed the same round).
+    let (cancellation_penalty_base_bps, cancellation_penalty_late_additional_bps) =
+        if msg.raffle_type == RaffleType::Airdrop {
+            (0, 0)
+        } else {
+            let penalty: CancellationPenaltyResponse = deps
+                .querier
+                .query_wasm_smart(&factory_address, &FactoryQueryMsg::GetCancellationPenaltyBps {})?;
+            (penalty.base_bps, penalty.late_additional_bps)
+        };
 
     let fee_amount_usdc = required_fee_usdc(msg.raffle_type, msg.max_players, msg.ticket_price)?;
 
@@ -388,13 +486,15 @@ pub fn instantiate(
         draw_delay_blocks: msg.draw_delay_blocks,
         draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
-        max_raffle_age_seconds: msg.max_raffle_age_seconds,
         prize_asset,
         fee_amount_usdc,
         usdc_denom: USDC_DENOM.to_string(),
         founder_fee_address: deps.api.addr_validate(FOUNDER_FEE_ADDRESS)?,
         treasury_address: deps.api.addr_validate(TREASURY_ADDRESS)?,
+        factory_address,
         podium_shares_bps: msg.podium_shares_bps,
+        cancellation_penalty_base_bps,
+        cancellation_penalty_late_additional_bps,
     };
     CONFIG.save(deps.storage, &config)?;
 
@@ -410,14 +510,18 @@ pub fn instantiate(
             fee_paid: false,
             opened_at: None,
             closed_at: None,
+            deadline: None,
             draw_after_height: None,
             rearm_count: 0,
             drawn_at: None,
             draw_height: None,
             winners: vec![],
             prize_shares: vec![],
+            prize_paid: vec![],
             airdrop_share: Uint128::zero(),
             reclaimed: false,
+            prize_transfer_failures: 0,
+            prize_blocked: false,
         },
     )?;
 
@@ -441,11 +545,17 @@ pub fn execute(
         ExecuteMsg::WithdrawTicket {} => execute_withdraw_ticket(deps, info),
         ExecuteMsg::CloseRound {} => execute_close_round(deps, env, info),
         ExecuteMsg::DrawWinner {} => execute_draw_winner(deps, env, info),
+        ExecuteMsg::RetryPrizePayout {} => execute_retry_prize_payout(deps, info),
         ExecuteMsg::ClaimAirdropShare {} => execute_claim_airdrop_share(deps, info),
         ExecuteMsg::ReclaimUnclaimed {} => execute_reclaim_unclaimed(deps, env, info),
         ExecuteMsg::CancelRaffle {} => execute_cancel_raffle(deps, info),
         ExecuteMsg::ExpireRaffle {} => execute_expire_raffle(deps, env, info),
     }
+}
+
+#[entry_point]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    reply_impl(deps, msg)
 }
 
 #[entry_point]

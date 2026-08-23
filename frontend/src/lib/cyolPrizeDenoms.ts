@@ -1,10 +1,11 @@
 export type PrizeAssetChoice = "usdc" | "lunc" | "ustc";
 
 // Mirrors contracts/create-your-own-luck/src/contract.rs's
-// ALLOWED_PAID_NATIVE_PRIZE_DENOMS exactly - a paid raffle's prize can only
-// be one of these 3 real native assets (never CW20 - see the contract's own
-// doc comment on that constant for why: a CW20's name/symbol is creator-
-// chosen and unverifiable, a native denom's identity can't be spoofed).
+// ALLOWED_PAID_NATIVE_PRIZE_DENOMS exactly - this form only offers these 3
+// real native assets, not a factory-whitelisted CW20 (the contract allows
+// one as of the 2026-08-20 redesign, but this form doesn't expose CW20 as a
+// creator-facing choice yet - see the contract's own doc comment on that
+// constant).
 // Free raffles aren't restricted at the contract level, but this form
 // offers the same 3 either way for simplicity. New assets get added here
 // only after the same manual review the contract comment describes

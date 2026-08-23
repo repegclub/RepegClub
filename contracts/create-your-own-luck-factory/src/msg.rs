@@ -43,10 +43,41 @@ pub enum ExecuteMsg {
         draw_delay_blocks: u64,
         draw_window_blocks: u64,
         unclaimed_deadline_days: u64,
-        max_raffle_age_seconds: u64,
         prize_native_denom: Option<String>,
         prize_cw20_address: Option<String>,
         podium_shares_bps: Vec<u32>,
+    },
+    /// Admin-only. Approves a CW20 token as a valid prize for PAID raffles
+    /// (SingleWinner/Podium/Airdrop with `ticket_price > 0`) after manual
+    /// review - see `CW20_WHITELIST`'s own doc comment.
+    AddCw20ToWhitelist { address: String },
+    /// Admin-only. Reverses `AddCw20ToWhitelist` - already-created raffles
+    /// referencing this token are unaffected ONLY once already funded (a
+    /// raffle still `Funding` re-checks live at CW20 deposit time too - see
+    /// create-your-own-luck's `execute_receive`, 2026-08-20 - so removing a
+    /// token here can still block a deposit that hasn't happened yet).
+    RemoveCw20FromWhitelist { address: String },
+    /// Admin-only. Manually clears a token from the FREE-raffle blacklist,
+    /// for the case a legitimate token was wrongly auto-blacklisted (see
+    /// `ReportCw20Failure`) - eg. a real bug in the token rather than
+    /// deliberate malice, confirmed by the admin after investigating.
+    UnblacklistCw20 { address: String },
+    /// Callable only by a raffle address this factory itself deployed (see
+    /// `KNOWN_RAFFLES`) - not by admin, not by any other wallet. A raffle
+    /// calls this on itself once it has recorded 3 consecutive prize-
+    /// transfer failures against the same CW20 token, closing the "malicious
+    /// CW20 selectively blocks the draw" finding for FREE raffles/airdrops
+    /// without needing an off-chain bot: the failure detection and the
+    /// report both happen on-chain, inside the raffle contract's own reply
+    /// handler.
+    ReportCw20Failure { address: String },
+    /// Admin-only. Tunes the SingleWinner/Podium cancellation-penalty
+    /// percentages - see `CANCELLATION_PENALTY_BASE_BPS`'s own doc comment.
+    /// Both in basis points; `base_bps + late_additional_bps` must not
+    /// exceed 10000 (100%).
+    SetCancellationPenaltyBps {
+        base_bps: u64,
+        late_additional_bps: u64,
     },
 }
 
@@ -64,12 +95,35 @@ pub enum QueryMsg {
     #[returns(ConfigResponse)]
     GetConfig {},
     /// Whether `creator` is currently locked out of creating another
-    /// "unsafe-shaped" raffle, and until when - `None` for a wallet that has
-    /// never created one, or whose streak has gone stale (no unsafe-shaped
-    /// attempt in a long time - see `UNSAFE_STREAK_STALE_AFTER_DAYS` in the
-    /// factory's execute.rs). A safe-shaped raffle never affects this.
+    /// "unsafe-shaped" raffle, and until when. `None` only for a wallet that
+    /// has never created one - the query returns the raw stored record as-is
+    /// otherwise and does NOT itself re-check staleness (round-10 audit fix:
+    /// this comment used to claim it also returned `None` once the streak
+    /// went stale, which `query_creator_cooldown` never did - it always
+    /// returns `Some(stored_timestamp)` for any existing record, regardless
+    /// of age). A caller that cares about staleness must re-derive it from
+    /// `next_unsafe_allowed_at` and `UNSAFE_STREAK_STALE_AFTER_DAYS` (in the
+    /// factory's execute.rs) itself - see the frontend's `cyolChecklist.ts`
+    /// for the reference implementation. A safe-shaped raffle never affects
+    /// this.
     #[returns(CreatorCooldownResponse)]
     GetCreatorCooldown { creator: String },
+    /// Whether `address` is approved as a prize for PAID raffles. Queried
+    /// live by a raffle at its own instantiate (and again at CW20 deposit
+    /// time) - see `CW20_WHITELIST`'s own doc comment.
+    #[returns(bool)]
+    IsCw20Whitelisted { address: String },
+    /// Whether `address` is blocked as a prize for FREE raffles/airdrops.
+    /// Queried live by a raffle at its own instantiate (and again at CW20
+    /// deposit time) - see `CW20_BLACKLIST`'s own doc comment.
+    #[returns(bool)]
+    IsCw20Blacklisted { address: String },
+    /// Current cancellation-penalty percentages - queried once by a raffle
+    /// at its own instantiate and baked into its own `Config` from then on,
+    /// so a later admin change never retroactively affects an already-
+    /// created raffle. See `CANCELLATION_PENALTY_BASE_BPS`'s own doc comment.
+    #[returns(CancellationPenaltyResponse)]
+    GetCancellationPenaltyBps {},
 }
 
 #[cw_serde]
@@ -92,9 +146,17 @@ pub struct ConfigResponse {
 }
 
 #[cw_serde]
+pub struct CancellationPenaltyResponse {
+    pub base_bps: u64,
+    pub late_additional_bps: u64,
+}
+
+#[cw_serde]
 pub struct CreatorCooldownResponse {
     pub unsafe_streak: u32,
-    /// `None` if this wallet has never created an unsafe-shaped raffle, or
-    /// its streak has gone stale from a long enough dormant period since.
+    /// `None` only if this wallet has never created an unsafe-shaped raffle -
+    /// NOT re-checked for staleness by the query itself (round-10 audit fix -
+    /// see `GetCreatorCooldown`'s own doc comment for the caller-side
+    /// staleness re-derivation this requires).
     pub next_unsafe_allowed_at: Option<u64>,
 }

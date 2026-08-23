@@ -19,6 +19,7 @@ import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
 import { participantsWord, statusLabelKey } from "../../lib/cyolTerminology";
 import { PRIZE_ASSET_LABELS } from "../../lib/cyolPrizeDenoms";
 import { getCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
+import { getCw20Blacklisted, getCw20Whitelisted } from "../../lib/queryFactory";
 import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
   depositPrize,
@@ -31,11 +32,20 @@ import {
   reclaimUnclaimed,
   cancelRaffle,
   expireRaffle,
+  retryPrizePayout,
 } from "../../lib/cyolActions";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
 import { CyolRevealWheel } from "./CyolRevealWheel";
 import { CyolRevealChest } from "./CyolRevealChest";
+
+// Mirrors MAX_RAFFLE_AGE_SECONDS exactly (contracts/create-your-own-luck/
+// src/contract.rs) - fixed platform-wide since the 2026-08-20 soft-close
+// redesign, no longer a per-raffle field the contract's GetConfig returns
+// (round-7 audit fix: this page used to read config.max_raffle_age_seconds,
+// which is undefined now - ageReached below silently evaluated to false
+// forever, hiding the one permissionless rescue path for a stalled raffle).
+const MAX_RAFFLE_AGE_SECONDS = 5_184_000; // 60 days
 
 // Mirrors max_tickets_per_wallet exactly (contracts/create-your-own-luck/
 // src/execute.rs) - lets the UI cap a batch purchase client-side instead of
@@ -57,7 +67,7 @@ function formatDuration(totalSeconds: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "reclaim" | "cancel" | "expire";
+type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "reclaim" | "cancel" | "expire" | "retryPayout";
 
 // Shared by both the buyer-side and creator-side value-mismatch warnings
 // below (security catalog's hallazgo #6, 2026-07-25/26): unlike the
@@ -67,10 +77,14 @@ type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "rec
 // participants), not just a reputational nudge.
 function ValueMismatchWarningModal({
   bodyText,
+  titleKey = "createYourOwnLuck.detail.valueMismatchWarningTitle",
+  checkboxKey = "createYourOwnLuck.detail.valueMismatchWarningCheckbox",
   onCancel,
   onConfirm,
 }: {
   bodyText: string;
+  titleKey?: string;
+  checkboxKey?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -80,7 +94,7 @@ function ValueMismatchWarningModal({
     <div className="history-overlay" onClick={onCancel}>
       <div className="history-modal" onClick={(e) => e.stopPropagation()}>
         <div className="history-modal-header">
-          <h2 className="history-modal-title">{t("createYourOwnLuck.detail.valueMismatchWarningTitle")}</h2>
+          <h2 className="history-modal-title">{t(titleKey)}</h2>
           <button type="button" className="history-close-btn" onClick={onCancel}>
             ✕
           </button>
@@ -88,7 +102,7 @@ function ValueMismatchWarningModal({
         <p className="cyol-modal-body-text">{bodyText}</p>
         <label className="cyol-checkbox-label">
           <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
-          {t("createYourOwnLuck.detail.valueMismatchWarningCheckbox")}
+          {t(checkboxKey)}
         </label>
         <div className="cyol-detail-actions">
           <button className="cyol-submit cyol-submit-secondary" onClick={onCancel}>
@@ -142,6 +156,16 @@ export function RaffleDetailPage() {
   const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
   const [showSingleWinnerPrizeWarning, setShowSingleWinnerPrizeWarning] = useState(false);
   const [showSingleWinnerBuyerPrizeWarning, setShowSingleWinnerBuyerPrizeWarning] = useState(false);
+  const [showAirdropFundValueWarning, setShowAirdropFundValueWarning] = useState(false);
+  const [showCancelPenaltyWarning, setShowCancelPenaltyWarning] = useState(false);
+  // Holds the freshly-fetched bps handleCancelRaffle computed right before
+  // opening this modal, when that differs from the page's own (possibly
+  // stale) snapshot - CodeRabbit finding, 2026-08-23: the earlier fix called
+  // `detail.refetch()` unawaited to sync the snapshot, but confirming can
+  // happen before that resolves, so the modal could briefly show 0%/$0.00
+  // while a real penalty was about to be charged. `null` means "use the
+  // render-time cancelPenaltyBps/cancelForfeitedUsd", the common case.
+  const [cancelPenaltyBpsOverride, setCancelPenaltyBpsOverride] = useState<number | null>(null);
   const tokenPrices = useTokenPrices();
 
   useEffect(() => {
@@ -201,7 +225,8 @@ export function RaffleDetailPage() {
   if (detail.status === "loading") return shell(<p>{t("createYourOwnLuck.loading")}</p>);
   if (detail.status === "error") return shell(<p className="cyol-form-error">{t("createYourOwnLuck.cardError")}</p>);
 
-  const { config, raffleStatus, winners, myAirdropShare, myTicketCount, entrants } = detail;
+  const { config, raffleStatus, winners, myAirdropShare, myTicketCount, entrants, cancellationPenaltyWaivedByPlatformRevocation } =
+    detail;
 
   if (config.raffle_type === "podium") {
     return shell(<p className="cyol-form-error">{t("createYourOwnLuck.detail.podiumUnsupported")}</p>);
@@ -236,6 +261,15 @@ export function RaffleDetailPage() {
       : null;
   const buyWorstCaseShareUsd = fundedPrizeUsd !== null ? fundedPrizeUsd / config.max_players : null;
   const buyValueMismatch = isAirdrop && isPaid && buyWorstCaseShareUsd !== null && buyWorstCaseShareUsd < ticketPriceUsd;
+  // Round-8 audit fix: same silent-skip gap fundValueUnknown closed on the
+  // funding side (see its own comment) - a failed/slow price feed made
+  // buyWorstCaseShareUsd null, buyValueMismatch false, and handleBuyTicket
+  // proceeded with zero disclosure to a buyer about to pay into a possibly-
+  // unfair Airdrop. This one was never backed by an on-chain block (buyer-
+  // side fairness was always frontend-only), so it's not a regression from
+  // round 6/7 the way the funding-side one was - but the same "silence
+  // isn't a substitute for disclosure" reasoning applies.
+  const buyValueUnknown = isAirdrop && isPaid && prizeAssetPrice === null && raffleStatus.prize_amount !== "0";
 
   const plannedPrizeNum = Number(prizeAmount);
   const plannedPrizeUsd =
@@ -248,6 +282,17 @@ export function RaffleDetailPage() {
   // this is a different, guaranteed-payout question).
   const fundWorstCaseShareUsd = plannedPrizeUsd !== null ? plannedPrizeUsd / config.max_players : null;
   const fundValueMismatch = isAirdrop && isPaid && fundWorstCaseShareUsd !== null && fundWorstCaseShareUsd < ticketPriceUsd;
+  // Round-7 audit fix: this warning is the ONLY fairness safeguard left for
+  // a paid Airdrop's prize (the on-chain floor that used to back it up was
+  // removed - see execute_receive's own doc comment in the contract). Before
+  // this fix, a failed/slow price fetch (tokenPrices' own doc comment notes
+  // CoinGecko errors are deliberately silent, `status: "error"`) made
+  // fundWorstCaseShareUsd null, which made fundValueMismatch false, which
+  // let handleFund skip straight to funding with NO disclosure at all - an
+  // honest creator using the real UI got none of the protection this page
+  // is supposed to provide. Distinct from fundValueMismatch (which means
+  // "we know the value and it's unfair") - this means "we can't tell".
+  const fundValueUnknown = isAirdrop && isPaid && prizeAssetPrice === null && plannedPrizeNum > 0;
 
   // SingleWinner: the ENTIRE prize vs a single ticket - categorically
   // different from "normal lottery variance" (which is about total ticket
@@ -259,25 +304,76 @@ export function RaffleDetailPage() {
   // lost before the raffle even starts.
   const singleWinnerPrizeBelowTicket =
     !isAirdrop && isPaid && plannedPrizeUsd !== null && plannedPrizeUsd < ticketPriceUsd;
+  // Round-9 audit fix: same silent-skip gap fundValueUnknown/buyValueUnknown
+  // closed for Airdrop (rounds 7/8) - a failed/slow price feed left
+  // plannedPrizeUsd null, singleWinnerPrizeBelowTicket false, and handleFund
+  // proceeded with zero disclosure. Mirrors fundValueUnknown's own reasoning.
+  const singleWinnerPrizeUnknown = !isAirdrop && isPaid && prizeAssetPrice === null && plannedPrizeNum > 0;
 
   const singleWinnerBuyerPrizeBelowTicket =
     !isAirdrop && isPaid && fundedPrizeUsd !== null && fundedPrizeUsd < ticketPriceUsd;
+  const singleWinnerBuyerPrizeUnknown =
+    !isAirdrop && isPaid && prizeAssetPrice === null && raffleStatus.prize_amount !== "0";
 
   const hasMin = raffleStatus.unique_player_count >= config.min_players;
   const reachedMax = raffleStatus.unique_player_count >= config.max_players;
   const timeoutElapsed = raffleStatus.seconds_remaining !== null && raffleStatus.seconds_remaining <= 0;
-  const ageReached =
-    raffleStatus.opened_at !== null && nowSec >= raffleStatus.opened_at + config.max_raffle_age_seconds;
+  const ageReached = raffleStatus.opened_at !== null && nowSec >= raffleStatus.opened_at + MAX_RAFFLE_AGE_SECONDS;
 
   const canFund = isCreator && raffleStatus.status === "funding" && prizeDenom !== null;
   const canBuyTicket = raffleStatus.status === "open";
   const ticketCap = maxTicketsPerWallet(config.raffle_type, config.max_players, config.ticket_price);
   const maxMoreTickets = Math.max(0, ticketCap - (myTicketCount ?? 0));
-  const canWithdrawTicket = raffleStatus.status === "open" && !hasMin;
+  // Airdrop is exempt from the min_players lock entirely (2026-08-23 fix,
+  // execute.rs's execute_withdraw_ticket) - there's no draw to protect,
+  // just a deterministic prize/unique_players split, so a participant can
+  // always leave before the airdrop closes instead of being trapped in a
+  // guaranteed-loss share by whoever happened to buy after them.
+  const canWithdrawTicket = raffleStatus.status === "open" && (isAirdrop || !hasMin);
   const canCloseRound =
     raffleStatus.status === "open" && (reachedMax || (timeoutElapsed && hasMin) || (isCreator && hasMin));
   const canExpireRaffle = raffleStatus.status === "open" && !hasMin && ageReached;
   const canCancelRaffle = isCreator && (raffleStatus.status === "funding" || raffleStatus.status === "open");
+  // Round-8 audit fix: mirrors execute_cancel_raffle's own penalty formula
+  // (contracts/create-your-own-luck/src/execute.rs) - always 0 for Airdrop
+  // (base/late bps are hardcoded 0/0 at instantiate, see Config's own doc
+  // comment), base_bps once the fee is paid, base+late_additional once
+  // min_players is reached. Without this, Cancel had no confirmation at all
+  // (unlike every other consequential action on this page) - a creator
+  // could forfeit up to 100% of the service fee with zero warning, and a
+  // factory-side comment incorrectly implied a "fund-time disclaimer
+  // checkbox" already covered this (it didn't - nothing on this page ever
+  // showed the penalty bps at all).
+  // Round-9 audit fix (Opus): the contract's penalty_amount is
+  // `raffle.fee_amount * penalty_bps / 10000`, and raffle.fee_amount is 0
+  // until PayServiceFee/the same-denom fund path pays it - so a penalty
+  // shown before that point overstated what cancelling would actually cost
+  // (nothing).
+  // Round-10 audit fix (Fable + Opus, independently): mirrors
+  // cancellation_penalty_waived_by_platform_revocation - a CW20-prized
+  // raffle still Funding with nothing deposited, whose token the platform
+  // blacklisted or de-whitelisted out from under the creator, is also
+  // charged 0 on-chain (see useCyolRaffleDetail.ts's own comment for the
+  // live query this mirrors).
+  // Extracted so handleCancelRaffle can recompute this with a freshly
+  // fetched `waived` right before deciding whether to warn (CodeRabbit
+  // finding, 2026-08-23) - `cancellationPenaltyWaivedByPlatformRevocation`
+  // itself is only ever as fresh as the last page load/refetch, and the
+  // 12s poll above only runs while status is "open", not "funding" (the
+  // only status this waiver is ever relevant for). A page left open on a
+  // stale "not waived" snapshot after the factory revokes the CW20 mid-
+  // session would only over-warn (harmless) - but a stale "waived" snapshot
+  // after an admin correction would skip the warning entirely and cancel
+  // with a real, uncommunicated forfeit, which is the direction worth
+  // closing.
+  const cancelPenaltyBpsForWaiver = (waived: boolean) =>
+    isAirdrop || !raffleStatus.fee_paid || waived
+      ? 0
+      : hasMin
+        ? config.cancellation_penalty_base_bps + config.cancellation_penalty_late_additional_bps
+        : config.cancellation_penalty_base_bps;
+  const cancelPenaltyBps = cancelPenaltyBpsForWaiver(cancellationPenaltyWaivedByPlatformRevocation);
+  const cancelForfeitedUsdForBps = (bps: number) => (ulunaToDisplayNumber(config.fee_amount_usdc) * bps) / 10000;
   const canDrawWinner = raffleStatus.status === "closed";
   const canClaimAirdrop =
     raffleStatus.status === "drawn" && isAirdrop && myAirdropShare !== null && !myAirdropShare.claimed && myAirdropShare.share !== "0";
@@ -318,24 +414,30 @@ export function RaffleDetailPage() {
   }
   function handleFund() {
     if (walletState.status !== "connected" || !prizeDenom) return;
-    // Hard block, not a confirm-and-proceed warning like the other 3 below
-    // (direct request, 2026-08-20): worst-case share >= ticket price is
-    // mathematically equivalent to "the creator can never profit from this
-    // airdrop, no matter how many people join" (worst-case share = prize /
-    // max_players >= ticket_price implies prize >= ticket_price *
-    // max_players, which is the most ticket revenue this raffle could ever
-    // collect - so ticket_revenue - prize can never be positive). This is
-    // the moment that ratio becomes real and binding (the prize amount
-    // funded here can't be changed afterward), unlike the same math shown
-    // as a preview back in CreatorForm.tsx against a non-binding planned
-    // prize - so this is where it's actually enforceable, not just
-    // advisory. The button itself is disabled for the same reason below,
-    // this is a defensive backstop.
-    if (fundValueMismatch) return;
-    if (singleWinnerPrizeBelowTicket) {
+    // Was a hard block until 2026-08-21 (direct request, 2026-08-20) - the
+    // matching on-chain block was found unsound for any non-USDC prize
+    // (LUNC/USTC/whitelisted CW20 all have real value per unit different
+    // from USDC's 1:1 assumption, and there's no price oracle on-chain to
+    // convert - this project has twice already rejected building one,
+    // manipulable without a TWAP). Explicit product decision: same
+    // disclosure + reputation mitigation as this contract's other
+    // creator-fairness findings (self-dealing, late cancellation) instead
+    // of a contract-level block that would either be wrong or foreclose
+    // the whitelisted-CW20-reward use case (a project rewarding paid-ticket
+    // supporters with its own token) entirely. See execute_receive's own
+    // doc comment in the contract for the full reasoning.
+    if (fundValueMismatch || fundValueUnknown) {
+      setShowAirdropFundValueWarning(true);
+      return;
+    }
+    if (singleWinnerPrizeBelowTicket || singleWinnerPrizeUnknown) {
       setShowSingleWinnerPrizeWarning(true);
       return;
     }
+    runFund();
+  }
+  function confirmAirdropFundValueWarning() {
+    setShowAirdropFundValueWarning(false);
     runFund();
   }
   function confirmSingleWinnerPrizeWarning() {
@@ -370,11 +472,11 @@ export function RaffleDetailPage() {
       setShowSelfBuyWarning(true);
       return;
     }
-    if (buyValueMismatch) {
+    if (buyValueMismatch || buyValueUnknown) {
       setShowBuyValueWarning(true);
       return;
     }
-    if (singleWinnerBuyerPrizeBelowTicket) {
+    if (singleWinnerBuyerPrizeBelowTicket || singleWinnerBuyerPrizeUnknown) {
       setShowSingleWinnerBuyerPrizeWarning(true);
       return;
     }
@@ -382,11 +484,11 @@ export function RaffleDetailPage() {
   }
   function confirmSelfBuy() {
     setShowSelfBuyWarning(false);
-    if (buyValueMismatch) {
+    if (buyValueMismatch || buyValueUnknown) {
       setShowBuyValueWarning(true);
       return;
     }
-    if (singleWinnerBuyerPrizeBelowTicket) {
+    if (singleWinnerBuyerPrizeBelowTicket || singleWinnerBuyerPrizeUnknown) {
       setShowSingleWinnerBuyerPrizeWarning(true);
       return;
     }
@@ -420,13 +522,59 @@ export function RaffleDetailPage() {
     if (walletState.status !== "connected") return;
     run("reclaim", () => reclaimUnclaimed(walletState.wallet, address));
   }
-  function handleCancelRaffle() {
+  async function handleCancelRaffle() {
+    if (walletState.status !== "connected") return;
+    let penaltyBps = cancelPenaltyBps;
+    // Refetch the waiver fresh right before deciding, rather than trusting
+    // the page's load-time snapshot (see cancelPenaltyBpsForWaiver's own
+    // comment) - same CW20-prized-and-still-Funding gate the query itself
+    // uses, so this never fires an extra round trip for the common case.
+    const cw20Address = "cw20" in config.prize_asset ? config.prize_asset.cw20.address : null;
+    if (cw20Address && raffleStatus.status === "funding" && raffleStatus.prize_amount === "0") {
+      const blacklisted = await getCw20Blacklisted(cw20Address, config.factory_address).catch(() => false);
+      const whitelisted = blacklisted
+        ? true
+        : config.ticket_price !== "0"
+          ? await getCw20Whitelisted(cw20Address, config.factory_address).catch(() => true)
+          : true;
+      const waived = blacklisted || !whitelisted;
+      penaltyBps = cancelPenaltyBpsForWaiver(waived);
+      // Sync the page's own snapshot in the background too (not awaited) -
+      // keeps cancellationPenaltyWaivedByPlatformRevocation from lagging
+      // behind for any later render (e.g. if this dialog gets cancelled and
+      // reopened). Not what the modal itself relies on for correctness
+      // though - see cancelPenaltyBpsOverride's own comment for why.
+      if (waived !== cancellationPenaltyWaivedByPlatformRevocation) detail.refetch();
+    }
+    if (penaltyBps > 0) {
+      // CodeRabbit finding, 2026-08-23: store the exact bps just computed,
+      // not just the render-time cancelPenaltyBps - the unawaited
+      // detail.refetch() above can't be relied on to land before the user
+      // confirms, so without this override the modal could show 0%/$0.00
+      // while about to charge a real penalty.
+      setCancelPenaltyBpsOverride(penaltyBps);
+      setShowCancelPenaltyWarning(true);
+      return;
+    }
+    run("cancel", () => cancelRaffle(walletState.wallet, address));
+  }
+  function confirmCancelPenaltyWarning() {
+    setShowCancelPenaltyWarning(false);
+    setCancelPenaltyBpsOverride(null);
     if (walletState.status !== "connected") return;
     run("cancel", () => cancelRaffle(walletState.wallet, address));
   }
   function handleExpireRaffle() {
     if (walletState.status !== "connected") return;
     run("expire", () => expireRaffle(walletState.wallet, address));
+  }
+  // Permissionless (round-10 audit fix) - visible to anyone, not just the
+  // winner, since the underlying RetryPrizePayout is: an honest transfer
+  // failure shouldn't require the specific winner to be the one to notice
+  // and act.
+  function handleRetryPrizePayout() {
+    if (walletState.status !== "connected") return;
+    run("retryPayout", () => retryPrizePayout(walletState.wallet, address));
   }
 
   // Real bug found live-testing (2026-07-26, raffle #17): a LUNC-chosen
@@ -457,7 +605,28 @@ export function RaffleDetailPage() {
                   prize: formatAmount(winners.prize_shares[i] ?? "0", prizeCurrency),
                 })}
               </p>
-              <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.prizeSentTo", { winner })}</p>
+              {/* Round-11 audit fix (Opus): prize_paid is typed as always
+                  present (matches the current contract), but a raffle from
+                  before this field existed on-chain genuinely omits the key
+                  from GetWinners' JSON response - `?.[i]`/`=== undefined`
+                  guard that, same gap class useCyolRaffleDetail.ts already
+                  handles for getEntrants.
+                  Round-12 fix (Opus): distinguishes "field missing entirely"
+                  (an old, pre-RetryPrizePayout raffle - the button below is
+                  hidden for exactly this case, since that message variant
+                  doesn't even exist on that code_id, so it'd only ever error)
+                  from "field present, this winner is false" (a genuine
+                  pending payout - the button IS available). The single
+                  "pending... retry it below" copy used to cover both, which
+                  was actively wrong for the first case: there was nothing
+                  "below" to retry with. */}
+              <p className="cyol-detail-hint">
+                {winners.prize_paid === undefined
+                  ? t("createYourOwnLuck.detail.prizeStatusUnknownTo", { winner })
+                  : winners.prize_paid[i]
+                    ? t("createYourOwnLuck.detail.prizeSentTo", { winner })
+                    : t("createYourOwnLuck.detail.prizePendingTo", { winner })}
+              </p>
             </div>
           ) : (
             <p key={winner} className="cyol-detail-line">
@@ -467,6 +636,15 @@ export function RaffleDetailPage() {
               })}
             </p>
           )
+        )}
+        {(winners.prize_paid ?? []).some((paid) => !paid) && (
+          <button
+            className="cyol-submit cyol-submit-secondary"
+            onClick={handleRetryPrizePayout}
+            disabled={busy || !connected}
+          >
+            {actionBusy === "retryPayout" ? t("createYourOwnLuck.detail.retryingPayout") : t("createYourOwnLuck.detail.retryPayout")}
+          </button>
         )}
         {winners.winners.length === 1 && (
           <CyolVerifyPanel contractAddress={address} winnerAddress={winners.winners[0]} />
@@ -506,7 +684,17 @@ export function RaffleDetailPage() {
           reached - round_timeout_seconds is a fixed window from opened_at,
           already queried as seconds_remaining but never actually shown
           anywhere (2026-07-26). */}
-      {raffleStatus.status === "open" && raffleStatus.seconds_remaining !== null && (
+      {/* Creator-only (direct request, 2026-08-20): publicly showing exactly
+          when anyone can force-close was a real, live-found exploit angle -
+          whoever's already in benefits from cutting entrants off early
+          (a bigger split of a fixed Airdrop prize, or better odds against a
+          smaller SingleWinner/Podium pool), so a visible countdown handed
+          early participants a precise "strike now" signal against the
+          creator's own marketing plan. Not a cryptographic guarantee -
+          opened_at/round_timeout_seconds are public contract state, so a
+          determined participant could still query the raw numbers - just no
+          longer handed to a casual actor in the UI. */}
+      {isCreator && raffleStatus.status === "open" && raffleStatus.seconds_remaining !== null && (
         <p className="cyol-detail-hint">
           {raffleStatus.seconds_remaining > 0
             ? t(
@@ -591,12 +779,16 @@ export function RaffleDetailPage() {
                 })()}
               {/* Airdrop never gets the fundraiser framing above (direct
                   request, 2026-08-20) - a positive "this works like a
-                  fundraiser" reading here would just preview a state the
-                  Fund button below is about to refuse anyway. Same worst-
-                  case-share math and copy as CreatorForm.tsx's own airdrop
-                  calculator (reused verbatim, not duplicated under a new
-                  key) - this is the same question asked again now that the
-                  prize amount is finally real instead of just planned. */}
+                  fundraiser" reading here would be misleading once the Fund
+                  button below is about to warn about exactly that. Same
+                  worst-case-share math and copy as CreatorForm.tsx's own
+                  airdrop calculator (reused verbatim, not duplicated under a
+                  new key) - this is the same question asked again now that
+                  the prize amount is finally real instead of just planned.
+                  Was a hard block until 2026-08-21 - see handleFund's own
+                  comment for why it's now a confirm-and-proceed warning
+                  instead (ValueMismatchWarningModal below), same pattern as
+                  every other creator-fairness warning on this page. */}
               {isAirdrop && isPaid && fundWorstCaseShareUsd !== null && (
                 <div className={`cyol-airdrop-fairness-box${fundValueMismatch ? " cyol-airdrop-fairness-box-unfair" : ""}`}>
                   {t("createYourOwnLuck.form.airdropCalcWorstCase", { shareUsd: fundWorstCaseShareUsd.toFixed(2) })}{" "}
@@ -604,16 +796,21 @@ export function RaffleDetailPage() {
                     fundValueMismatch ? "createYourOwnLuck.form.airdropCalcUnfair" : "createYourOwnLuck.form.airdropCalcFair",
                     { ticketUsd: ticketPriceUsd.toFixed(2) }
                   )}
-                  {fundValueMismatch && (
-                    <>
-                      {" "}
-                      {t("createYourOwnLuck.detail.fundValueMismatchBlocked")}
-                    </>
-                  )}
+                </div>
+              )}
+              {/* fundValueUnknown case (round-7 audit fix): price fetch
+                  failed/still loading, so fundWorstCaseShareUsd above is
+                  null and that box doesn't render at all - without this,
+                  the page would show nothing here and handleFund would
+                  silently skip the warning modal too (see fundValueUnknown's
+                  own comment). Surfaces the gap instead of hiding it. */}
+              {fundValueUnknown && (
+                <div className="cyol-airdrop-fairness-box cyol-airdrop-fairness-box-unfair">
+                  {t("createYourOwnLuck.form.airdropCalcUnknown", { ticketUsd: ticketPriceUsd.toFixed(2) })}
                 </div>
               )}
             </label>
-            <button className="cyol-submit" onClick={handleFund} disabled={busy || !connected || fundValueMismatch}>
+            <button className="cyol-submit" onClick={handleFund} disabled={busy || !connected}>
               {actionBusy === "fund"
                 ? t("createYourOwnLuck.detail.funding")
                 : t(isAirdrop ? "createYourOwnLuck.detail.fundAirdrop" : "createYourOwnLuck.detail.fund")}
@@ -797,34 +994,74 @@ export function RaffleDetailPage() {
       </div>
     )}
 
-    {showBuyValueWarning && buyWorstCaseShareUsd !== null && (
+    {showBuyValueWarning && (buyWorstCaseShareUsd !== null || buyValueUnknown) && (
       <ValueMismatchWarningModal
-        bodyText={t("createYourOwnLuck.detail.valueMismatchBuyBody", {
-          shareUsd: buyWorstCaseShareUsd.toFixed(2),
-          ticketUsd: ticketPriceUsd.toFixed(2),
-        })}
+        bodyText={
+          buyValueUnknown
+            ? t("createYourOwnLuck.detail.valueMismatchBuyUnknownBody", { ticketUsd: ticketPriceUsd.toFixed(2) })
+            : t("createYourOwnLuck.detail.valueMismatchBuyBody", {
+                shareUsd: (buyWorstCaseShareUsd ?? 0).toFixed(2),
+                ticketUsd: ticketPriceUsd.toFixed(2),
+              })
+        }
         onCancel={() => setShowBuyValueWarning(false)}
         onConfirm={confirmBuyValueWarning}
       />
     )}
 
-    {showSingleWinnerPrizeWarning && plannedPrizeUsd !== null && (
+    {showCancelPenaltyWarning && (
       <ValueMismatchWarningModal
-        bodyText={t("createYourOwnLuck.detail.valueMismatchSingleWinnerBody", {
-          prizeUsd: plannedPrizeUsd.toFixed(2),
-          ticketUsd: ticketPriceUsd.toFixed(2),
+        bodyText={t("createYourOwnLuck.detail.cancelPenaltyWarningBody", {
+          amount: cancelForfeitedUsdForBps(cancelPenaltyBpsOverride ?? cancelPenaltyBps).toFixed(2),
+          percent: ((cancelPenaltyBpsOverride ?? cancelPenaltyBps) / 100).toString(),
         })}
+        titleKey="createYourOwnLuck.detail.cancelPenaltyWarningTitle"
+        checkboxKey="createYourOwnLuck.detail.cancelPenaltyWarningCheckbox"
+        onCancel={() => {
+          setShowCancelPenaltyWarning(false);
+          setCancelPenaltyBpsOverride(null);
+        }}
+        onConfirm={confirmCancelPenaltyWarning}
+      />
+    )}
+
+    {showAirdropFundValueWarning && (
+      <ValueMismatchWarningModal
+        bodyText={
+          fundValueUnknown
+            ? t("createYourOwnLuck.detail.valueMismatchAirdropUnknownBody", { ticketUsd: ticketPriceUsd.toFixed(2) })
+            : t("createYourOwnLuck.detail.valueMismatchAirdropFundBody", { ticketUsd: ticketPriceUsd.toFixed(2) })
+        }
+        onCancel={() => setShowAirdropFundValueWarning(false)}
+        onConfirm={confirmAirdropFundValueWarning}
+      />
+    )}
+
+    {showSingleWinnerPrizeWarning && (plannedPrizeUsd !== null || singleWinnerPrizeUnknown) && (
+      <ValueMismatchWarningModal
+        bodyText={
+          singleWinnerPrizeUnknown
+            ? t("createYourOwnLuck.detail.valueMismatchSingleWinnerUnknownBody", { ticketUsd: ticketPriceUsd.toFixed(2) })
+            : t("createYourOwnLuck.detail.valueMismatchSingleWinnerBody", {
+                prizeUsd: (plannedPrizeUsd ?? 0).toFixed(2),
+                ticketUsd: ticketPriceUsd.toFixed(2),
+              })
+        }
         onCancel={() => setShowSingleWinnerPrizeWarning(false)}
         onConfirm={confirmSingleWinnerPrizeWarning}
       />
     )}
 
-    {showSingleWinnerBuyerPrizeWarning && fundedPrizeUsd !== null && (
+    {showSingleWinnerBuyerPrizeWarning && (fundedPrizeUsd !== null || singleWinnerBuyerPrizeUnknown) && (
       <ValueMismatchWarningModal
-        bodyText={t("createYourOwnLuck.detail.valueMismatchSingleWinnerBuyBody", {
-          prizeUsd: fundedPrizeUsd.toFixed(2),
-          ticketUsd: ticketPriceUsd.toFixed(2),
-        })}
+        bodyText={
+          singleWinnerBuyerPrizeUnknown
+            ? t("createYourOwnLuck.detail.valueMismatchSingleWinnerBuyUnknownBody", { ticketUsd: ticketPriceUsd.toFixed(2) })
+            : t("createYourOwnLuck.detail.valueMismatchSingleWinnerBuyBody", {
+                prizeUsd: (fundedPrizeUsd ?? 0).toFixed(2),
+                ticketUsd: ticketPriceUsd.toFixed(2),
+              })
+        }
         onCancel={() => setShowSingleWinnerBuyerPrizeWarning(false)}
         onConfirm={confirmSingleWinnerBuyerPrizeWarning}
       />
