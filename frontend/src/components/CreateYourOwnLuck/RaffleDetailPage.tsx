@@ -158,6 +158,14 @@ export function RaffleDetailPage() {
   const [showSingleWinnerBuyerPrizeWarning, setShowSingleWinnerBuyerPrizeWarning] = useState(false);
   const [showAirdropFundValueWarning, setShowAirdropFundValueWarning] = useState(false);
   const [showCancelPenaltyWarning, setShowCancelPenaltyWarning] = useState(false);
+  // Holds the freshly-fetched bps handleCancelRaffle computed right before
+  // opening this modal, when that differs from the page's own (possibly
+  // stale) snapshot - CodeRabbit finding, 2026-08-23: the earlier fix called
+  // `detail.refetch()` unawaited to sync the snapshot, but confirming can
+  // happen before that resolves, so the modal could briefly show 0%/$0.00
+  // while a real penalty was about to be charged. `null` means "use the
+  // render-time cancelPenaltyBps/cancelForfeitedUsd", the common case.
+  const [cancelPenaltyBpsOverride, setCancelPenaltyBpsOverride] = useState<number | null>(null);
   const tokenPrices = useTokenPrices();
 
   useEffect(() => {
@@ -365,7 +373,7 @@ export function RaffleDetailPage() {
         ? config.cancellation_penalty_base_bps + config.cancellation_penalty_late_additional_bps
         : config.cancellation_penalty_base_bps;
   const cancelPenaltyBps = cancelPenaltyBpsForWaiver(cancellationPenaltyWaivedByPlatformRevocation);
-  const cancelForfeitedUsd = (ulunaToDisplayNumber(config.fee_amount_usdc) * cancelPenaltyBps) / 10000;
+  const cancelForfeitedUsdForBps = (bps: number) => (ulunaToDisplayNumber(config.fee_amount_usdc) * bps) / 10000;
   const canDrawWinner = raffleStatus.status === "closed";
   const canClaimAirdrop =
     raffleStatus.status === "drawn" && isAirdrop && myAirdropShare !== null && !myAirdropShare.claimed && myAirdropShare.share !== "0";
@@ -532,14 +540,19 @@ export function RaffleDetailPage() {
       const waived = blacklisted || !whitelisted;
       penaltyBps = cancelPenaltyBpsForWaiver(waived);
       // Sync the page's own snapshot in the background too (not awaited) -
-      // if `waived` just diverged from `cancellationPenaltyWaivedByPlatformRevocation`,
-      // this keeps the confirmation modal's displayed forfeit amount (which
-      // reads from render state, not from this function's local `waived`)
-      // consistent on the next render instead of lagging behind the gating
-      // decision made here.
+      // keeps cancellationPenaltyWaivedByPlatformRevocation from lagging
+      // behind for any later render (e.g. if this dialog gets cancelled and
+      // reopened). Not what the modal itself relies on for correctness
+      // though - see cancelPenaltyBpsOverride's own comment for why.
       if (waived !== cancellationPenaltyWaivedByPlatformRevocation) detail.refetch();
     }
     if (penaltyBps > 0) {
+      // CodeRabbit finding, 2026-08-23: store the exact bps just computed,
+      // not just the render-time cancelPenaltyBps - the unawaited
+      // detail.refetch() above can't be relied on to land before the user
+      // confirms, so without this override the modal could show 0%/$0.00
+      // while about to charge a real penalty.
+      setCancelPenaltyBpsOverride(penaltyBps);
       setShowCancelPenaltyWarning(true);
       return;
     }
@@ -547,6 +560,7 @@ export function RaffleDetailPage() {
   }
   function confirmCancelPenaltyWarning() {
     setShowCancelPenaltyWarning(false);
+    setCancelPenaltyBpsOverride(null);
     if (walletState.status !== "connected") return;
     run("cancel", () => cancelRaffle(walletState.wallet, address));
   }
@@ -998,12 +1012,15 @@ export function RaffleDetailPage() {
     {showCancelPenaltyWarning && (
       <ValueMismatchWarningModal
         bodyText={t("createYourOwnLuck.detail.cancelPenaltyWarningBody", {
-          amount: cancelForfeitedUsd.toFixed(2),
-          percent: (cancelPenaltyBps / 100).toString(),
+          amount: cancelForfeitedUsdForBps(cancelPenaltyBpsOverride ?? cancelPenaltyBps).toFixed(2),
+          percent: ((cancelPenaltyBpsOverride ?? cancelPenaltyBps) / 100).toString(),
         })}
         titleKey="createYourOwnLuck.detail.cancelPenaltyWarningTitle"
         checkboxKey="createYourOwnLuck.detail.cancelPenaltyWarningCheckbox"
-        onCancel={() => setShowCancelPenaltyWarning(false)}
+        onCancel={() => {
+          setShowCancelPenaltyWarning(false);
+          setCancelPenaltyBpsOverride(null);
+        }}
         onConfirm={confirmCancelPenaltyWarning}
       />
     )}
