@@ -265,6 +265,17 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
 
   function confirmPaidAirdropDisclaimer() {
     setShowPaidAirdropDisclaimer(false);
+    // Re-validate here (CodeRabbit finding, PR #37 second review) - the
+    // modal doesn't trap focus, so the underlying form fields are still
+    // editable while it's open. handleSubmit's own validate() call only
+    // covers the values at the moment the modal opened; without re-checking
+    // here too, a value changed while the disclaimer was up could reach
+    // doSubmit with something validate() would have rejected.
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setPaidAirdropDisclaimerAcked(true);
     doSubmit();
   }
@@ -318,11 +329,20 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         // raffle that was just created.
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? friendlyCyolError(err.message)
-          : t(raffleType === "airdrop" ? "createYourOwnLuck.form.errorGenericAirdrop" : "createYourOwnLuck.form.errorGeneric")
-      );
+      // CodeRabbit finding, PR #37 second review: an Error whose message
+      // friendlyCyolError doesn't recognize used to fall through to the raw
+      // message instead of the mode-aware generic fallback - the Airdrop-
+      // specific wording was only ever reached for a non-Error throw.
+      // friendlyCyolError returns its input unchanged when nothing matches,
+      // so comparing against the original message is how "unmapped" is
+      // detected here.
+      const generic = t(raffleType === "airdrop" ? "createYourOwnLuck.form.errorGenericAirdrop" : "createYourOwnLuck.form.errorGeneric");
+      if (err instanceof Error) {
+        const friendly = friendlyCyolError(err.message);
+        setError(friendly === err.message ? generic : friendly);
+      } else {
+        setError(generic);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -501,11 +521,22 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   !Number.isFinite(max) ||
                   !Number.isInteger(max) ||
                   max < 2 ||
+                  max > maxPlayersLimit(raffleType) ||
                   !Number.isFinite(prize) ||
                   prize < 0 ||
                   tokenPrices.status !== "loaded"
                 ) {
                   return null;
+                }
+                // PR #37 second CodeRabbit review: the guard above mirrored
+                // validate()'s max_players bound but not its price-micros/
+                // whole-cent rules - a below-minimum or sub-cent price still
+                // showed a fair/unfair result for an input submit would
+                // reject. Same "only once a price is actually being
+                // charged" scoping validate() itself uses.
+                if (price > 0) {
+                  const priceMicros = Number(displayNumberToUluna(price));
+                  if (priceMicros < 1_000_000 || priceMicros % 10_000 !== 0) return null;
                 }
                 // The prize amount is in whatever asset was chosen above,
                 // not necessarily USDC - convert to real USD before
