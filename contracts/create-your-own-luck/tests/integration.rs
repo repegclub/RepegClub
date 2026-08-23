@@ -1371,6 +1371,14 @@ fn cancel_raffle_prize_refund_failure_does_not_block_the_ticket_and_fee_refunds(
         .iter()
         .find(|m| m.reply_on != ReplyOn::Never)
         .expect("the prize refund should be the one reply-tracked submessage");
+    // Exact variant, not just "!= Never" (CodeRabbit finding, 2026-08-23) -
+    // cancel_refund_messages's prize-to-creator refund is specifically
+    // ReplyOn::Error (its failure gets swallowed, see this test's own name),
+    // distinct from the ReplyOn::Always used by draw/retry/airdrop payouts
+    // (whose reply must run on success too, to mark them paid) - a
+    // regression to the wrong variant here wouldn't be a "not tracked at
+    // all" bug, so the loose check wouldn't have caught it.
+    assert_eq!(prize_submsg.reply_on, ReplyOn::Error);
     assert!(
         matches!(&prize_submsg.msg, CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { amount, .. }) if amount[0].amount == Uint128::new(1000))
     );

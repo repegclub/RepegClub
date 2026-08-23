@@ -19,6 +19,7 @@ import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
 import { participantsWord, statusLabelKey } from "../../lib/cyolTerminology";
 import { PRIZE_ASSET_LABELS } from "../../lib/cyolPrizeDenoms";
 import { getCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
+import { getCw20Blacklisted, getCw20Whitelisted } from "../../lib/queryFactory";
 import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
   depositPrize,
@@ -346,11 +347,24 @@ export function RaffleDetailPage() {
   // blacklisted or de-whitelisted out from under the creator, is also
   // charged 0 on-chain (see useCyolRaffleDetail.ts's own comment for the
   // live query this mirrors).
-  const cancelPenaltyBps = isAirdrop || !raffleStatus.fee_paid || cancellationPenaltyWaivedByPlatformRevocation
-    ? 0
-    : hasMin
-      ? config.cancellation_penalty_base_bps + config.cancellation_penalty_late_additional_bps
-      : config.cancellation_penalty_base_bps;
+  // Extracted so handleCancelRaffle can recompute this with a freshly
+  // fetched `waived` right before deciding whether to warn (CodeRabbit
+  // finding, 2026-08-23) - `cancellationPenaltyWaivedByPlatformRevocation`
+  // itself is only ever as fresh as the last page load/refetch, and the
+  // 12s poll above only runs while status is "open", not "funding" (the
+  // only status this waiver is ever relevant for). A page left open on a
+  // stale "not waived" snapshot after the factory revokes the CW20 mid-
+  // session would only over-warn (harmless) - but a stale "waived" snapshot
+  // after an admin correction would skip the warning entirely and cancel
+  // with a real, uncommunicated forfeit, which is the direction worth
+  // closing.
+  const cancelPenaltyBpsForWaiver = (waived: boolean) =>
+    isAirdrop || !raffleStatus.fee_paid || waived
+      ? 0
+      : hasMin
+        ? config.cancellation_penalty_base_bps + config.cancellation_penalty_late_additional_bps
+        : config.cancellation_penalty_base_bps;
+  const cancelPenaltyBps = cancelPenaltyBpsForWaiver(cancellationPenaltyWaivedByPlatformRevocation);
   const cancelForfeitedUsd = (ulunaToDisplayNumber(config.fee_amount_usdc) * cancelPenaltyBps) / 10000;
   const canDrawWinner = raffleStatus.status === "closed";
   const canClaimAirdrop =
@@ -500,9 +514,32 @@ export function RaffleDetailPage() {
     if (walletState.status !== "connected") return;
     run("reclaim", () => reclaimUnclaimed(walletState.wallet, address));
   }
-  function handleCancelRaffle() {
+  async function handleCancelRaffle() {
     if (walletState.status !== "connected") return;
-    if (cancelPenaltyBps > 0) {
+    let penaltyBps = cancelPenaltyBps;
+    // Refetch the waiver fresh right before deciding, rather than trusting
+    // the page's load-time snapshot (see cancelPenaltyBpsForWaiver's own
+    // comment) - same CW20-prized-and-still-Funding gate the query itself
+    // uses, so this never fires an extra round trip for the common case.
+    const cw20Address = "cw20" in config.prize_asset ? config.prize_asset.cw20.address : null;
+    if (cw20Address && raffleStatus.status === "funding" && raffleStatus.prize_amount === "0") {
+      const blacklisted = await getCw20Blacklisted(cw20Address, config.factory_address).catch(() => false);
+      const whitelisted = blacklisted
+        ? true
+        : config.ticket_price !== "0"
+          ? await getCw20Whitelisted(cw20Address, config.factory_address).catch(() => true)
+          : true;
+      const waived = blacklisted || !whitelisted;
+      penaltyBps = cancelPenaltyBpsForWaiver(waived);
+      // Sync the page's own snapshot in the background too (not awaited) -
+      // if `waived` just diverged from `cancellationPenaltyWaivedByPlatformRevocation`,
+      // this keeps the confirmation modal's displayed forfeit amount (which
+      // reads from render state, not from this function's local `waived`)
+      // consistent on the next render instead of lagging behind the gating
+      // decision made here.
+      if (waived !== cancellationPenaltyWaivedByPlatformRevocation) detail.refetch();
+    }
+    if (penaltyBps > 0) {
       setShowCancelPenaltyWarning(true);
       return;
     }
