@@ -33,11 +33,13 @@ function matchesFilter(entry: CyolRaffleListEntry, filter: StatusFilter, walletA
 // purely a "get this out of my way" action.
 function CyolListSection({
   titleKey,
+  emptyKey,
   entries,
   open,
   onToggle,
 }: {
   titleKey: string;
+  emptyKey: string;
   entries: CyolRaffleListEntry[];
   open: boolean;
   onToggle: () => void;
@@ -50,7 +52,7 @@ function CyolListSection({
       </button>
       {open &&
         (entries.length === 0 ? (
-          <p>{t("createYourOwnLuck.filter.empty")}</p>
+          <p>{t(emptyKey)}</p>
         ) : (
           <div className="cyol-card-grid">
             {entries.map((entry) => (
@@ -119,6 +121,18 @@ export function CreateYourOwnLuckPage() {
 
       <h1 className="cyol-title">{t("createYourOwnLuck.pageTitle")}</h1>
 
+      {/* "Galactic Raffle" booth art (2026-08-20, direct request) - same
+          alien-carnival lore the rest of the site already leans on, now
+          naming this product too ("Galactic Raffles"). Plain framed banner,
+          not a screen-text overlay like the onramp/treasury banners - this
+          scene already has its own signage baked in, nothing to print on
+          top of it. */}
+      <div className="cyol-page-banner-border panel-border pixel-stepped-corners">
+        <div className="panel-highlight pixel-stepped-corners">
+          <img src="/characters/galactic-raffle-banner.jpg" alt="" className="cyol-page-banner pixel-stepped-corners" />
+        </div>
+      </div>
+
       {raffles.status === "loading" && <p>{t("createYourOwnLuck.loading")}</p>}
       {raffles.status === "error" && <p>{t("createYourOwnLuck.error")}</p>}
       {raffles.status === "loaded" && raffles.raffles.raffles.length === 0 && (
@@ -160,12 +174,14 @@ export function CreateYourOwnLuckPage() {
             <>
               <CyolListSection
                 titleKey="createYourOwnLuck.raffleListTitle"
+                emptyKey="createYourOwnLuck.filter.emptyRaffle"
                 entries={raffleEntries}
                 open={rafflesOpen}
                 onToggle={() => setRafflesOpen((o) => !o)}
               />
               <CyolListSection
                 titleKey="createYourOwnLuck.airdropListTitle"
+                emptyKey="createYourOwnLuck.filter.emptyAirdrop"
                 entries={airdropEntries}
                 open={airdropsOpen}
                 onToggle={() => setAirdropsOpen((o) => !o)}

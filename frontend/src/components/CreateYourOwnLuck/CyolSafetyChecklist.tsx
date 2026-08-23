@@ -161,11 +161,15 @@ export function CyolSafetyChecklist({
 
         <Row band={selfBuyBand}>
           {selfBuy === null
-            ? t("createYourOwnLuck.checklist.creatorSelfBuyNone")
+            ? t(isAirdrop ? "createYourOwnLuck.checklist.creatorSelfBuyNoneAirdrop" : "createYourOwnLuck.checklist.creatorSelfBuyNone")
             : t(
-                selfBuyBand === "red"
-                  ? "createYourOwnLuck.checklist.creatorSelfBuyMajority"
-                  : "createYourOwnLuck.checklist.creatorSelfBuyMinority",
+                isAirdrop
+                  ? selfBuyBand === "red"
+                    ? "createYourOwnLuck.checklist.creatorSelfBuyMajorityAirdrop"
+                    : "createYourOwnLuck.checklist.creatorSelfBuyMinorityAirdrop"
+                  : selfBuyBand === "red"
+                    ? "createYourOwnLuck.checklist.creatorSelfBuyMajority"
+                    : "createYourOwnLuck.checklist.creatorSelfBuyMinority",
                 { percent: Math.round(selfBuy.share * 100) }
               )}
         </Row>
