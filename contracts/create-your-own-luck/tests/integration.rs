@@ -2117,6 +2117,53 @@ fn paid_raffle_fee_floors_at_one_dollar_for_small_potential_revenue() {
 }
 
 #[test]
+fn paid_airdrop_fee_never_undercuts_the_free_tier_schedule() {
+    // 2026-08-23 fix, found live by the user: max_players=1000, ticket_price=
+    // $1 -> cap=1 (Airdrop's own per-wallet cap), max_entrants=1000,
+    // potential=1000*1_000_000=1,000,000,000 micro ("$1000"), 1% =
+    // 10,000,000 ("$10") - BELOW the $18 a free Airdrop of the same size
+    // would pay (FREE_RAFFLE_FEE_TIERS_USDC's top tier). The fee must be the
+    // $18 tier floor, not the cheaper revenue-based number - a paying
+    // creator should never pay less than a free one running the same size.
+    let msg = InstantiateMsg {
+        creator: None,
+        raffle_type: RaffleType::Airdrop,
+        max_players: 1000,
+        min_players: 2,
+        ticket_price: Uint128::new(1_000_000),
+        ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
+    };
+    let mut deps = mock_deps_with_factory();
+    let env = mock_env();
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.fee_amount_usdc, Uint128::new(18_000_000));
+}
+
+#[test]
+fn paid_airdrop_fee_scales_past_the_tier_when_real_revenue_justifies_it() {
+    // Same shape as above but ticket_price=$5 -> potential=1000*5_000_000=
+    // 5,000,000,000 micro ("$5000"), 1% = 50,000,000 ("$50") - ABOVE the $18
+    // tier floor, so the tier-floor fix must not cap the fee back down to
+    // it. max(tier, revenue) should pick revenue here.
+    let msg = InstantiateMsg {
+        creator: None,
+        raffle_type: RaffleType::Airdrop,
+        max_players: 1000,
+        min_players: 2,
+        ticket_price: Uint128::new(5_000_000),
+        ..paid_raffle_prize_msg(Some(PRIZE_DENOM), None)
+    };
+    let mut deps = mock_deps_with_factory();
+    let env = mock_env();
+    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), msg).unwrap();
+    let bin = query(deps.as_ref(), env, QueryMsg::GetConfig {}).unwrap();
+    let config: ConfigResponse = from_json(bin).unwrap();
+    assert_eq!(config.fee_amount_usdc, Uint128::new(50_000_000));
+}
+
+#[test]
 fn paid_raffle_fee_scales_as_one_percent_of_max_potential_revenue() {
     // max_players=100 (SingleWinner/Podium's ceiling), ticket_price=$10 ->
     // cap=max(1,100/2)=50, max_entrants=99*50+1=4951,

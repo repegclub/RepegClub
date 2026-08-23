@@ -42,8 +42,8 @@ export const WEEKLY_ROUND_ADDRESS =
   "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
-// Weekly Round above). Redeployed 2026-08-23 (raffle code ID 2419, factory
-// 2420), see scripts/testnet/deployment-cyol-factory-frontenddev10.json.
+// Weekly Round above). Redeployed 2026-08-23 (raffle code ID 2421, factory
+// 2422), see scripts/testnet/deployment-cyol-factory-frontenddev11.json.
 // This is the contract redesign from 14 rounds of audit (PR #38): soft-close
 // deadline (creator-window + anti-snipe extension + 60-day hard cap)
 // replacing the old fixed post-min_players timeout; CW20 whitelist/blacklist
@@ -54,21 +54,27 @@ export const WEEKLY_ROUND_ADDRESS =
 // RetryPrizePayout and a 3-strike auto-blacklist for malicious tokens; a
 // 20%/80% cancellation penalty (bps configurable on this factory) for
 // Single Winner/Podium, waived for Airdrop and for platform-driven CW20
-// revocation; and, found live-testing the redeployed PR #38 code the same
-// day, Airdrop is now exempt from the min_players withdrawal lock entirely
+// revocation; Airdrop exempt from the min_players withdrawal lock entirely
 // (WithdrawTicket) - there's no draw to protect there, just a deterministic
 // prize/unique_players split, so the lock only created a honeypot (a
 // creator could hit min_players with 2 of their own wallets - refunded via
 // ticket_revenue regardless of raffle_type - and permanently trap any real
-// participant who joined after, even in a guaranteed-loss share). Full
-// history in the "Create Your Own Luck (seguridad, hallazgos y exploits)"
-// project note. This is a schema-breaking change - every raffle
-// instantiated by a previous factory is orphaned, InstantiateMsg shape
-// changed on both contracts (and this redeploy specifically orphans the
-// PREVIOUS redeploy from earlier today, ...zddm5mg0sd46d8e, whose raffles
-// still carry the old, lockable WithdrawTicket).
+// participant who joined after, even in a guaranteed-loss share); and, found
+// live-testing the withdraw fix the same day, a paid Airdrop's service fee
+// is now `max(free-tier schedule, 1% of theoretical revenue)` instead of
+// pure revenue-based - a $1-ticket, 1000-player paid Airdrop used to pay
+// ~$10 vs a free one's $18, ~44% cheaper for taking real money instead of
+// none (the tier schedule was originally Airdrop-only and price-independent,
+// displaced for paid Airdrop when the revenue formula was introduced
+// generically for "paid raffles" on 2026-07-21). Full history in the
+// "Create Your Own Luck (seguridad, hallazgos y exploits)" project note.
+// This is a schema-breaking change - every raffle instantiated by a
+// previous factory is orphaned, InstantiateMsg shape changed on both
+// contracts (and this redeploy specifically orphans the two from earlier
+// today, ...zddm5mg0sd46d8e and ...94q8p7zfq, whose raffles still carry the
+// old lockable WithdrawTicket and/or the undercharged Airdrop fee).
 // Any change to either contract needs a fresh factory deploy too, since the
 // raffle code ID is fixed at the factory's own instantiate time
 // (contracts/create-your-own-luck-factory/src/state.rs, RAFFLE_CODE_ID).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra1hzrnvy0d6njzjrwnx3f6kedruqgkl2rardhw9p6fdarh84v7994q8p7zfq";
+  "terra12acajzasnhrkldea0yfqtsh64wwzvg29g0wwtfzd95x9qx9yus5q60wja4";

@@ -268,15 +268,35 @@ fn max_entrants(raffle_type: RaffleType, max_players: u32, ticket_price: Uint128
 /// Computes the required service fee on-chain instead of trusting a
 /// creator-supplied amount - closes off a creator quietly setting their own
 /// fee to near-zero. Free raffles (no ticket revenue to judge by) use the
-/// community-size tier schedule; paid raffles use 1% of theoretical maximum
-/// revenue, floored at $1 (see `PAID_RAFFLE_FEE_BPS` doc comment for why).
+/// community-size tier schedule; paid SingleWinner/Podium use 1% of
+/// theoretical maximum revenue, floored at $1 (see `PAID_RAFFLE_FEE_BPS`
+/// doc comment for why).
+///
+/// Paid Airdrop is the one exception, fixed 2026-08-23 after the user
+/// noticed live that a large paid Airdrop had become dramatically cheaper
+/// than an equivalently-sized free one (a $1-ticket, 1000-player Airdrop
+/// paid ~$10 vs a free one's $18 tier fee - about 44% cheaper for taking
+/// real money instead of none). The tier schedule above was originally
+/// Airdrop-only and applied regardless of price - it only got displaced for
+/// paid Airdrop when the 2026-07-21 revenue-based formula was introduced
+/// generically for "paid raffles" without carrying the tier floor forward.
+/// Paid Airdrop's fee is now `max(tier schedule, 1% of theoretical
+/// revenue)`: never cheaper than a free Airdrop of the same `max_players`
+/// (the tier schedule's own community-size reasoning doesn't stop applying
+/// just because tickets are priced), but still scales up past the tier cap
+/// for a high enough ticket price, where real revenue justifies a bigger
+/// fee than the flat schedule alone would charge.
 fn required_fee_usdc(raffle_type: RaffleType, max_players: u32, ticket_price: Uint128) -> Result<Uint128, ContractError> {
-    if ticket_price.is_zero() {
-        return FREE_RAFFLE_FEE_TIERS_USDC
+    let tier_fee = || -> Result<Uint128, ContractError> {
+        FREE_RAFFLE_FEE_TIERS_USDC
             .iter()
             .find(|(cap, _)| max_players <= *cap)
             .map(|(_, fee)| Uint128::new(*fee))
-            .ok_or(ContractError::MaxPlayersExceedsFreeRaffleFeeTiers {});
+            .ok_or(ContractError::MaxPlayersExceedsFreeRaffleFeeTiers {})
+    };
+
+    if ticket_price.is_zero() {
+        return tier_fee();
     }
 
     let entrants = max_entrants(raffle_type, max_players, ticket_price);
@@ -284,7 +304,12 @@ fn required_fee_usdc(raffle_type: RaffleType, max_players: u32, ticket_price: Ui
         .checked_mul(Uint128::from(entrants))
         .map_err(|_| ContractError::FeeCalculationOverflow {})?;
     let percent_fee = max_potential_revenue.multiply_ratio(PAID_RAFFLE_FEE_BPS, FEE_BPS_DENOM);
-    Ok(std::cmp::max(percent_fee, Uint128::new(MIN_PAID_RAFFLE_FEE_USDC)))
+    let revenue_fee = std::cmp::max(percent_fee, Uint128::new(MIN_PAID_RAFFLE_FEE_USDC));
+
+    if raffle_type == RaffleType::Airdrop {
+        return Ok(std::cmp::max(revenue_fee, tier_fee()?));
+    }
+    Ok(revenue_fee)
 }
 
 #[entry_point]
