@@ -18,6 +18,7 @@ import { useCyolCreatorCooldown } from "../../hooks/useCyolCreatorCooldown";
 import { useTokenPrices } from "../../hooks/useTokenPrices";
 import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
 import type { PrizeAssetChoice } from "../../lib/cyolPrizeDenoms";
+import { participantsWord } from "../../lib/cyolTerminology";
 
 // Separate signals, deliberately not a single combined score (agreed with
 // the user 2026-07-25/26, see "Repeg Club - Create Your Own Luck (seguridad,
@@ -109,12 +110,20 @@ export function CyolSafetyChecklist({
   // no single winner, so this doesn't apply") confused "who gets the prize"
   // with "does the creator profit from selling tickets" - unrelated
   // questions.
+  //
+  // Gated on isPaid too (found by the user live-testing a FREE airdrop the
+  // same day): with ticket_price=0, ticket revenue is always exactly 0, so
+  // this always trivially reports "the creator is funding the whole prize
+  // themselves" - true of literally every free raffle/airdrop, not a real
+  // disclosure. SingleWinner never reaches this gap today (this form
+  // doesn't offer it a free path), but the gate is on isPaid, not
+  // raffleType, so it stays correct if that ever changes.
   const fundraiserProfit =
-    prizeUsdc !== null
+    isPaid && prizeUsdc !== null
       ? worstCaseTicketRevenueProfit(config.raffle_type, config.max_players, ticketPriceUsdc, prizeUsdc)
       : null;
   const minParticipationProfit =
-    prizeUsdc !== null
+    isPaid && prizeUsdc !== null
       ? worstCaseMinParticipationProfit(
           config.min_players,
           ticketPriceUsdc,
@@ -122,6 +131,11 @@ export function CyolSafetyChecklist({
           ulunaToDisplayNumber(config.fee_amount_usdc)
         )
       : null;
+  // "raffle"/"players" (SingleWinner/Podium) vs "airdrop"/"participants"
+  // (Airdrop) - found by the user live-testing a free Airdrop, where the
+  // hardcoded word "raffle" showed up in copy describing an airdrop.
+  const kindWord = isAirdrop ? "airdrop" : "raffle";
+  const unitWord = participantsWord(config.raffle_type);
 
   const smallShape = isSmallUnsafeShape(config.raffle_type, config.ticket_price, config.max_players);
   const concentration = walletConcentration(entrants);
@@ -133,21 +147,23 @@ export function CyolSafetyChecklist({
     <div className="cyol-checklist">
       <p className="cyol-checklist-title">{t("createYourOwnLuck.checklist.title")}</p>
       <ul className="cyol-checklist-list">
-        {fundraiserProfit === null || minParticipationProfit === null ? (
-          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
+        {!isPaid ? null : fundraiserProfit === null || minParticipationProfit === null ? (
+          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown", { kind: kindWord })}</Row>
         ) : (
           <Row band="neutral">
             {fundraiserProfit > 0
-              ? t("createYourOwnLuck.checklist.fundraiserPositive", { amount: fundraiserProfit.toFixed(2) })
-              : t("createYourOwnLuck.checklist.fundraiserNegative", { amount: Math.abs(fundraiserProfit).toFixed(2) })}{" "}
+              ? t("createYourOwnLuck.checklist.fundraiserPositive", { amount: fundraiserProfit.toFixed(2), kind: kindWord })
+              : t("createYourOwnLuck.checklist.fundraiserNegative", { amount: Math.abs(fundraiserProfit).toFixed(2), kind: kindWord })}{" "}
             {minParticipationProfit > 0
               ? t("createYourOwnLuck.checklist.minParticipationPositive", {
                   min: config.min_players,
                   amount: minParticipationProfit.toFixed(2),
+                  unit: unitWord,
                 })
               : t("createYourOwnLuck.checklist.minParticipationNegative", {
                   min: config.min_players,
                   amount: Math.abs(minParticipationProfit).toFixed(2),
+                  unit: unitWord,
                 })}
           </Row>
         )}
@@ -181,10 +197,13 @@ export function CyolSafetyChecklist({
             reputation-facing checklist row instead, found missing live by
             the user 2026-08-23 (created a real $1 ticket / 500 LUNC / max
             100 airdrop - worth ~$0.0002/wallet worst-case - and saw 3 green
-            rows with nothing flagging it). A free Airdrop risks nothing, so
-            it's neutral there (airdropWorstCaseNotApplicable). */}
+            rows with nothing flagging it). A free Airdrop risks nothing at
+            all, which is a genuinely good safety signal - green, not
+            neutral (found by the user live-testing a free airdrop the same
+            day: this row was showing as an uncolored, easy-to-miss note
+            for the one case that's unambiguously safe). */}
         {isAirdrop && (
-          <Row band={!isPaid ? "neutral" : prizeUsdc === null ? "neutral" : prizeUsdc / config.max_players < ticketPriceUsdc ? "red" : "green"}>
+          <Row band={!isPaid ? "green" : prizeUsdc === null ? "neutral" : prizeUsdc / config.max_players < ticketPriceUsdc ? "red" : "green"}>
             {!isPaid
               ? t("createYourOwnLuck.checklist.airdropWorstCaseNotApplicable")
               : prizeUsdc === null

@@ -47,6 +47,18 @@ type RaffleType = Exclude<CreateRaffleParams["raffleType"], "podium">;
 // paying gas for a signed tx that's guaranteed to be rejected on-chain.
 const MAX_PLAYERS_SINGLE_WINNER_PODIUM = 100;
 
+// Soft-close closing window, in whole days - mirrors contract.rs's
+// MIN_ROUND_TIMEOUT_SECONDS/MAX_ROUND_TIMEOUT_SECONDS exactly (86_400 to
+// 2_678_400 seconds = 1 to 31 days, both boundaries exact multiples of a
+// day, so whole-day granularity never rounds into an invalid value).
+// 2026-08-23: this field was previously hardcoded to 1 day in
+// createRaffle.ts and never shown here at all - closes that last frontend
+// gap from the soft-close redesign (PR #38). Default of 1 day preserves the
+// old fixed behavior for a creator who doesn't touch this field.
+const MIN_CLOSING_WINDOW_DAYS = 1;
+const MAX_CLOSING_WINDOW_DAYS = 31;
+const SECONDS_PER_DAY = 86_400;
+
 function maxPlayersLimit(raffleType: RaffleType): number {
   return raffleType === "airdrop" ? MAX_PLAYERS_AIRDROP : MAX_PLAYERS_SINGLE_WINNER_PODIUM;
 }
@@ -165,6 +177,7 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
   const [ticketPrice, setTicketPrice] = useState(mode === "airdrop" ? "0" : "1");
   const [minPlayers, setMinPlayers] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("10");
+  const [closingWindowDays, setClosingWindowDays] = useState(String(MIN_CLOSING_WINDOW_DAYS));
   const [allowedEntrantsText, setAllowedEntrantsText] = useState("");
   const [prizeAssetChoice, setPrizeAssetChoice] = useState<PrizeAssetChoice>("usdc");
   // Purely a planning aid, carried forward to the Fund screen (see
@@ -214,6 +227,11 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         raffleType === "airdrop" ? "createYourOwnLuck.form.errorMaxPlayersLimitAirdrop" : "createYourOwnLuck.form.errorMaxPlayersLimit",
         { limit, unit }
       );
+    }
+
+    const closingDays = Number(closingWindowDays);
+    if (!Number.isInteger(closingDays) || closingDays < MIN_CLOSING_WINDOW_DAYS || closingDays > MAX_CLOSING_WINDOW_DAYS) {
+      return t("createYourOwnLuck.form.errorClosingWindow", { min: MIN_CLOSING_WINDOW_DAYS, max: MAX_CLOSING_WINDOW_DAYS });
     }
 
     let allowedEntrants: string[] | null;
@@ -297,6 +315,7 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
         ticketDenom: TICKET_DENOM,
         minPlayers: Number(minPlayers),
         maxPlayers: Number(maxPlayers),
+        roundTimeoutSeconds: Number(closingWindowDays) * SECONDS_PER_DAY,
         prizeNativeDenom: PRIZE_ASSET_DENOMS[prizeAssetChoice],
         podiumSharesBps: [],
         allowedEntrants: parseAllowedEntrants(allowedEntrantsText),
@@ -411,6 +430,23 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                   </span>
                 ) : null;
               })()}
+          </label>
+
+          <label className="cyol-field">
+            <span>
+              {t("createYourOwnLuck.form.closingWindowLabel", {
+                min: MIN_CLOSING_WINDOW_DAYS,
+                max: MAX_CLOSING_WINDOW_DAYS,
+              })}
+            </span>
+            <input
+              type="number"
+              min={MIN_CLOSING_WINDOW_DAYS}
+              max={MAX_CLOSING_WINDOW_DAYS}
+              value={closingWindowDays}
+              onChange={(e) => setClosingWindowDays(e.target.value)}
+            />
+            <span className="cyol-hint">{t("createYourOwnLuck.form.closingWindowHint")}</span>
           </label>
 
           <label className="cyol-field">
@@ -584,11 +620,14 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
                 // reuses the exact same call, just with the real raffleType
                 // instead of a hardcoded literal.
                 const profit = worstCaseTicketRevenueProfit(raffleType, max, price, prizeUsd);
+                // "raffle"/"airdrop" (found by the user live-testing a paid
+                // airdrop the same day - the copy hardcoded "raffle").
+                const kind = raffleType === "airdrop" ? "airdrop" : "raffle";
                 const fundraiserHint = (
                   <span className="cyol-hint">
                     {profit > 0
-                      ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2) })
-                      : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2) })}
+                      ? t("createYourOwnLuck.form.fundraiserDisclosurePositive", { amount: profit.toFixed(2), kind })
+                      : t("createYourOwnLuck.form.fundraiserDisclosureNegative", { amount: Math.abs(profit).toFixed(2), kind })}
                   </span>
                 );
                 if (raffleType === "single_winner") return fundraiserHint;
