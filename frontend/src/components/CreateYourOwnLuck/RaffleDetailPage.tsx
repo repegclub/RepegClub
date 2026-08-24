@@ -62,6 +62,11 @@ function maxTicketsPerWallet(raffleType: string, maxPlayers: number, ticketPrice
 // doesn't need second-precision live ticking, so it's fine that it only
 // refreshes with the rest of raffleStatus (every 12s while Open).
 function formatDuration(totalSeconds: number): string {
+  // Sub-minute values used to floor to "0m" for up to 59 real seconds
+  // (CodeRabbit finding, PR #39) - only reachable in the last minute before
+  // a closing-window deadline, but a creator watching the countdown tick
+  // down to "0m" and stay there for almost a minute reads as broken.
+  if (totalSeconds < 60) return `${Math.max(0, Math.ceil(totalSeconds))}s`;
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;

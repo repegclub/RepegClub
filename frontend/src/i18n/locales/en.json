@@ -553,7 +553,7 @@
     },
     "checklist": {
       "title": "Safety checklist",
-      "fundraiserUnknown": "The prize hasn't been set yet — can't calculate this until the raffle is funded.",
+      "fundraiserUnknown": "The prize hasn't been set yet — can't calculate this until the {{kind}} is funded.",
       "fundraiserPositive": "If this {{kind}} fills up completely, ticket sales alone could net the creator about {{amount}} USDC regardless of the outcome — this works like a fundraiser with a prize as the incentive.",
       "fundraiserNegative": "Even if this {{kind}} fills up completely, the creator is funding at least {{amount}} USDC of the prize themselves — a genuine giveaway.",
       "minParticipationPositive": "Even if it closes at just the minimum ({{min}} {{unit}}, 1 ticket each), the creator would still net about {{amount}} USDC.",

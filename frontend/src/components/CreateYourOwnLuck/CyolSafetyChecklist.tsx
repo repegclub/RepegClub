@@ -148,7 +148,7 @@ export function CyolSafetyChecklist({
       <p className="cyol-checklist-title">{t("createYourOwnLuck.checklist.title")}</p>
       <ul className="cyol-checklist-list">
         {!isPaid ? null : fundraiserProfit === null || minParticipationProfit === null ? (
-          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown")}</Row>
+          <Row band="neutral">{t("createYourOwnLuck.checklist.fundraiserUnknown", { kind: kindWord })}</Row>
         ) : (
           <Row band="neutral">
             {fundraiserProfit > 0
