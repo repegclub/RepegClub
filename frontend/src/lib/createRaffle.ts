@@ -17,15 +17,6 @@ const MEMO = "REPEG CLUB";
 // per-raffle field the factory's CreateRaffle accepts - sending it would be
 // an unknown field and get the whole message rejected (cw_serde's
 // deny_unknown_fields).
-// 24h, the contract's MIN_ROUND_TIMEOUT_SECONDS (round-10 audit fix, raised
-// from 1h): at exactly ANTI_SNIPE_EXTENSION_SECONDS (also 1h), the anti-snipe
-// extension guard (`seconds_remaining <= ANTI_SNIPE_EXTENSION_SECONDS`) was
-// satisfied from the moment a raffle opened, so literally every purchase
-// extended the deadline - the "final hour" became the raffle's entire
-// lifetime, exactly the rolling-deadline behavior soft-close exists to
-// prevent. Every raffle this app creates hit this, since the value isn't yet
-// creator-configurable (see the field's own comment above).
-const ROUND_TIMEOUT_SECONDS = 86_400;
 const DRAW_DELAY_BLOCKS = 2;
 const DRAW_WINDOW_BLOCKS = 60;
 const UNCLAIMED_DEADLINE_DAYS = 90;
@@ -36,6 +27,12 @@ export type CreateRaffleParams = {
   ticketDenom: string;
   minPlayers: number;
   maxPlayers: number;
+  // Soft-close window, in seconds - creator-chosen since 2026-08-23
+  // (previously a fixed 24h everyone got regardless of choice). Contract
+  // bounds: MIN_ROUND_TIMEOUT_SECONDS (86_400, 24h) to MAX_ROUND_TIMEOUT_SECONDS
+  // (2_678_400, 31 days) - see contract.rs. CreatorForm.tsx enforces the
+  // same range before ever signing.
+  roundTimeoutSeconds: number;
   prizeNativeDenom: string;
   // Required (summing to 10000) for Podium, empty otherwise - see
   // contracts/create-your-own-luck/src/msg.rs.
@@ -59,7 +56,7 @@ export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffle
             allowed_entrants: params.allowedEntrants,
             min_players: params.minPlayers,
             max_players: params.maxPlayers,
-            round_timeout_seconds: ROUND_TIMEOUT_SECONDS,
+            round_timeout_seconds: params.roundTimeoutSeconds,
             draw_delay_blocks: DRAW_DELAY_BLOCKS,
             draw_window_blocks: DRAW_WINDOW_BLOCKS,
             unclaimed_deadline_days: UNCLAIMED_DEADLINE_DAYS,

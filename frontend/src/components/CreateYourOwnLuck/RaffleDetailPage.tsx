@@ -694,14 +694,33 @@ export function RaffleDetailPage() {
           opened_at/round_timeout_seconds are public contract state, so a
           determined participant could still query the raw numbers - just no
           longer handed to a casual actor in the UI. */}
-      {isCreator && raffleStatus.status === "open" && raffleStatus.seconds_remaining !== null && (
-        <p className="cyol-detail-hint">
-          {raffleStatus.seconds_remaining > 0
+      {isCreator && raffleStatus.status === "open" && (
+        // .cyol-detail-line, not .cyol-detail-hint (2026-08-23 fix, found by
+        // the user) - this row reports the raffle's actual state (same tier
+        // as creator/ticket price/participants/prize below), not a passive
+        // instructional label like the contract-address note above it. The
+        // dimmer, smaller hint style made it look visually demoted next to
+        // rows carrying equally load-bearing information.
+        <p className="cyol-detail-line">
+          {/* seconds_remaining is null until min_players is first reached -
+              query_raffle_status's own comment: "no meaningful countdown
+              before that point under the soft-close design". Before this
+              fix, that meant no message at all here while waiting - a
+              creator with fewer than min_players couldn't tell the
+              countdown was intentionally absent from one that had simply
+              broken, found by the user live-testing a 3-day airdrop with
+              only themselves joined so far (2026-08-23). */}
+          {raffleStatus.seconds_remaining === null
             ? t(
-                isAirdrop ? "createYourOwnLuck.detail.marketingWindowRemainingAirdrop" : "createYourOwnLuck.detail.marketingWindowRemaining",
-                { time: formatDuration(raffleStatus.seconds_remaining) }
+                isAirdrop ? "createYourOwnLuck.detail.marketingWindowNotStartedAirdrop" : "createYourOwnLuck.detail.marketingWindowNotStarted",
+                { min: config.min_players, unit: participantsWord(config.raffle_type) }
               )
-            : t(isAirdrop ? "createYourOwnLuck.detail.marketingWindowElapsedAirdrop" : "createYourOwnLuck.detail.marketingWindowElapsed")}
+            : raffleStatus.seconds_remaining > 0
+              ? t(
+                  isAirdrop ? "createYourOwnLuck.detail.marketingWindowRemainingAirdrop" : "createYourOwnLuck.detail.marketingWindowRemaining",
+                  { time: formatDuration(raffleStatus.seconds_remaining) }
+                )
+              : t(isAirdrop ? "createYourOwnLuck.detail.marketingWindowElapsedAirdrop" : "createYourOwnLuck.detail.marketingWindowElapsed")}
         </p>
       )}
       <p className="cyol-detail-line">
