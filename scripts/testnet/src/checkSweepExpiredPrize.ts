@@ -18,14 +18,14 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// This script assumes deployment-wheelmanager-sweep-test.json was
-// instantiated with unclaimed_deadline_days: 0, so the final sweep_expired_prize
-// call below runs immediately with no wait - that value is no longer
-// accepted (MIN_UNCLAIMED_DEADLINE_DAYS = 1, 2026-08-24 instantiate bounds
-// fix). Redeploying this test contract now means the sweep below won't
-// succeed until unclaimed_deadline_days (at least 1 day) has actually
-// elapsed - either wait a day between redeploy and running this script, or
-// mock forward time if run against a local/test environment that supports it.
+// deployment-wheelmanager-sweep-test.json was originally instantiated with
+// unclaimed_deadline_days: 0, so the final sweep_expired_prize call below
+// ran immediately with no wait - that value is no longer accepted
+// (MIN_UNCLAIMED_DEADLINE_DAYS = 1, 2026-08-24 instantiate bounds fix). A
+// fresh redeploy of this test contract now needs a real wait (at least 1
+// day) before the sweep can succeed - the check right before the sweep call
+// below detects this and exits early with the remaining wait instead of
+// letting the contract reject the call.
 async function main() {
   const { contractAddress } = JSON.parse(
     readFileSync(path.resolve(__dirname, "../deployment-wheelmanager-sweep-test.json"), "utf8")
@@ -89,7 +89,33 @@ async function main() {
     console.log(`Drawn | gasUsed: ${drawRes.txResponse.gasUsed}`);
   }
 
-  // Deliberately do NOT redeem - simulate a winner who never claims.
+  // Deliberately do NOT redeem - simulate a winner who never claims. Check
+  // the real deadline before attempting the sweep instead of always trying
+  // and letting the contract reject it - MIN_UNCLAIMED_DEADLINE_DAYS = 1
+  // (2026-08-24 instantiate bounds fix) means this can no longer be
+  // instant, unlike when this deployment was first created with
+  // unclaimed_deadline_days: 0 (found by CodeRabbit review, 2026-08-25).
+  const [config, roundAfterDraw] = await Promise.all([
+    queryContract<{ unclaimed_deadline_days: number }>(RPC, {
+      address: contractAddress,
+      query: { get_config: {} },
+    }),
+    queryContract<{ drawn_at: number }>(RPC, {
+      address: contractAddress,
+      query: { get_round_history: { round_id: 1 } },
+    }),
+  ]);
+  const deadlineUnixSeconds = roundAfterDraw.drawn_at + config.unclaimed_deadline_days * 86400;
+  const secondsRemaining = deadlineUnixSeconds - Math.floor(Date.now() / 1000);
+  if (secondsRemaining > 0) {
+    console.log(
+      `\nunclaimed_deadline_days is ${config.unclaimed_deadline_days} on this deployment - ` +
+        `SweepExpiredPrize won't succeed for another ~${Math.ceil(secondsRemaining / 3600)}h. ` +
+        `Re-run this script after that, or redeploy sweep-test.json with a fresh round.`
+    );
+    return;
+  }
+
   console.log("\nBystander (player3) sweeps the never-claimed prize to the treasury...");
   const treasuryBefore = await ulunaBalance(TREASURY_ADDRESS);
 

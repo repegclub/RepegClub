@@ -30,12 +30,24 @@ async function sleep(ms: number) {
 }
 
 async function main() {
-  const { contractAddress } = JSON.parse(readFileSync(deploymentPath, "utf8"));
+  const { contractAddress, maxPlayers } = JSON.parse(readFileSync(deploymentPath, "utf8"));
   const { contractAddress: weeklyStubAddress } = JSON.parse(
     readFileSync(weeklyStubDeploymentPath, "utf8")
   );
   console.log(`Wheel Manager (${label}): ${contractAddress}`);
   console.log("Weekly-round-stub:", weeklyStubAddress);
+
+  // This script only tracks one round's worth of purchases - if numPlayers
+  // exceeds the deployment's own max_players, an earlier purchase closes
+  // (and atomically draws) round 1, then later purchases go into round 2
+  // and overwrite `autoClosed` below, corrupting the winner lookup and the
+  // balance report (found by CodeRabbit review, 2026-08-25).
+  if (typeof maxPlayers === "number" && numPlayers > maxPlayers) {
+    console.error(
+      `numPlayers (${numPlayers}) exceeds this deployment's max_players (${maxPlayers}) - this script only tracks one round.`
+    );
+    process.exit(1);
+  }
 
   const admin = loadWallet("ADMIN_MNEMONIC");
   const playerEnvVars = ["PLAYER1_MNEMONIC", "PLAYER2_MNEMONIC", "PLAYER3_MNEMONIC"].slice(
