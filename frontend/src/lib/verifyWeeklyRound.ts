@@ -104,8 +104,8 @@ export async function verifyWeeklyRound(
   return {
     weekId,
     drawHeight: week.draw_height,
-    drawAfterHeight: week.draw_after_height,
-    drawGap: week.draw_after_height === null ? null : week.draw_height - week.draw_after_height,
+    drawAfterHeight: week.draw_after_height ?? null,
+    drawGap: week.draw_after_height == null ? null : week.draw_height - week.draw_after_height,
     rearmCount: week.rearm_count,
     blockTimeIso,
     entrants,

@@ -30,7 +30,13 @@ async function sleep(ms: number) {
 }
 
 async function main() {
-  const { contractAddress, maxPlayers } = JSON.parse(readFileSync(deploymentPath, "utf8"));
+  const { contractAddress, maxPlayers, ticketPrice: ticketPriceRaw } = JSON.parse(
+    readFileSync(deploymentPath, "utf8")
+  );
+  // Deployment JSONs written before deployWheelManager.ts started recording
+  // ticketPrice don't have the field - fall back to its own default so this
+  // script still works against those older labels.
+  const ticketPrice = ticketPriceRaw ?? "1000000";
   const { contractAddress: weeklyStubAddress } = JSON.parse(
     readFileSync(weeklyStubDeploymentPath, "utf8")
   );
@@ -71,7 +77,7 @@ async function main() {
           sender: player.address,
           contract: contractAddress,
           msg: { buy_ticket: {} },
-          funds: [{ denom: "uluna", amount: "1000000" }],
+          funds: [{ denom: "uluna", amount: ticketPrice }],
         }),
       ],
     });
