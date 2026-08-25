@@ -37,69 +37,85 @@ async function main() {
   const player2 = loadWallet("PLAYER2_MNEMONIC");
   const player3 = loadWallet("PLAYER3_MNEMONIC"); // uninvolved bystander, will trigger the sweep
 
-  for (const player of [player1, player2]) {
-    const res = await player.broadcastTxSync({
-      msgs: [
-        new MsgExecuteContract({
-          sender: player.address,
-          contract: contractAddress,
-          msg: { buy_ticket: {} },
-          funds: [{ denom: "uluna", amount: "1000000" }],
-        }),
-      ],
-    });
-    if (res.txResponse.code !== 0) throw new Error(`buy_ticket failed: ${res.txResponse.rawLog}`);
-    console.log(`${player.address} bought a ticket | gasUsed: ${res.txResponse.gasUsed}`);
-  }
-
-  // With max_players=2 == min_players=2, the second buy_ticket above already
-  // drew the winner atomically (2026-08-24 audit fix - see execute.rs) - no
-  // separate DrawWinner call is possible for round 1 anymore. Check first
-  // instead of assuming the old separate-call flow.
-  const round1 = await queryContract<{ status: string }>(RPC, {
+  // Resumable: if round 1 is already drawn (a previous run of this script
+  // got as far as drawing but exited early on the deadline-wait message
+  // below), skip straight to the deadline check instead of buying tickets
+  // again - with max_players=2, a re-run would otherwise sell out and
+  // atomically draw a brand new round 2, creating an unintended second
+  // unclaimed prize instead of resuming work on round 1 (found by CodeRabbit
+  // review, 2026-08-25). Round 1 always exists from instantiate (opened
+  // automatically), so this query never errors even on a fresh deployment.
+  const existingRound1 = await queryContract<{ status: string }>(RPC, {
     address: contractAddress,
     query: { get_round_history: { round_id: 1 } },
   });
-  if (round1.status === "drawn") {
-    console.log("\nRound 1 already drawn atomically by the closing ticket purchase - skipping DrawWinner.");
+  if (existingRound1.status === "drawn") {
+    console.log("\nRound 1 already drawn from a previous run of this script - resuming from the deadline check.");
   } else {
-    console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
-    let drawRes;
-    for (let attempt = 1; attempt <= 15; attempt++) {
-      try {
-        drawRes = await admin.broadcastTxSync({
-          msgs: [
-            new MsgExecuteContract({
-              sender: admin.address,
-              contract: contractAddress,
-              msg: { draw_winner: {} },
-              funds: [],
-            }),
-          ],
-        });
-        if (drawRes.txResponse.code !== 0) throw new Error(drawRes.txResponse.rawLog);
-        // A successful (code 0) tx can mean the round drew OR rearmed the
-        // draw window (missed draw_window_blocks) - a rearm is still a
-        // successful call, so `drawn_at` stays unset and the sweep-deadline
-        // math below would be corrupted if this just broke on any success
-        // (found by CodeRabbit review, 2026-08-25). Check the round's own
-        // status instead of assuming success == drawn.
-        const roundNow = await queryContract<{ status: string }>(RPC, {
-          address: contractAddress,
-          query: { get_round_history: { round_id: 1 } },
-        });
-        if (roundNow.status === "drawn") break;
-        console.log(`  attempt ${attempt} rearmed the draw window instead of drawing, waiting 6s...`);
-        drawRes = undefined;
-        await sleep(6000);
-      } catch (err) {
-        console.log(`  attempt ${attempt} not ready yet, waiting 6s...`);
-        drawRes = undefined;
-        await sleep(6000);
-      }
+    for (const player of [player1, player2]) {
+      const res = await player.broadcastTxSync({
+        msgs: [
+          new MsgExecuteContract({
+            sender: player.address,
+            contract: contractAddress,
+            msg: { buy_ticket: {} },
+            funds: [{ denom: "uluna", amount: "1000000" }],
+          }),
+        ],
+      });
+      if (res.txResponse.code !== 0) throw new Error(`buy_ticket failed: ${res.txResponse.rawLog}`);
+      console.log(`${player.address} bought a ticket | gasUsed: ${res.txResponse.gasUsed}`);
     }
-    if (!drawRes || drawRes.txResponse.code !== 0) throw new Error("draw_winner never succeeded");
-    console.log(`Drawn | gasUsed: ${drawRes.txResponse.gasUsed}`);
+
+    // With max_players=2 == min_players=2, the second buy_ticket above already
+    // drew the winner atomically (2026-08-24 audit fix - see execute.rs) - no
+    // separate DrawWinner call is possible for round 1 anymore. Check first
+    // instead of assuming the old separate-call flow.
+    const round1 = await queryContract<{ status: string }>(RPC, {
+      address: contractAddress,
+      query: { get_round_history: { round_id: 1 } },
+    });
+    if (round1.status === "drawn") {
+      console.log("\nRound 1 already drawn atomically by the closing ticket purchase - skipping DrawWinner.");
+    } else {
+      console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
+      let drawRes;
+      for (let attempt = 1; attempt <= 15; attempt++) {
+        try {
+          drawRes = await admin.broadcastTxSync({
+            msgs: [
+              new MsgExecuteContract({
+                sender: admin.address,
+                contract: contractAddress,
+                msg: { draw_winner: {} },
+                funds: [],
+              }),
+            ],
+          });
+          if (drawRes.txResponse.code !== 0) throw new Error(drawRes.txResponse.rawLog);
+          // A successful (code 0) tx can mean the round drew OR rearmed the
+          // draw window (missed draw_window_blocks) - a rearm is still a
+          // successful call, so `drawn_at` stays unset and the sweep-deadline
+          // math below would be corrupted if this just broke on any success
+          // (found by CodeRabbit review, 2026-08-25). Check the round's own
+          // status instead of assuming success == drawn.
+          const roundNow = await queryContract<{ status: string }>(RPC, {
+            address: contractAddress,
+            query: { get_round_history: { round_id: 1 } },
+          });
+          if (roundNow.status === "drawn") break;
+          console.log(`  attempt ${attempt} rearmed the draw window instead of drawing, waiting 6s...`);
+          drawRes = undefined;
+          await sleep(6000);
+        } catch (err) {
+          console.log(`  attempt ${attempt} not ready yet, waiting 6s...`);
+          drawRes = undefined;
+          await sleep(6000);
+        }
+      }
+      if (!drawRes || drawRes.txResponse.code !== 0) throw new Error("draw_winner never succeeded");
+      console.log(`Drawn | gasUsed: ${drawRes.txResponse.gasUsed}`);
+    }
   }
 
   // Deliberately do NOT redeem - simulate a winner who never claims. Check
