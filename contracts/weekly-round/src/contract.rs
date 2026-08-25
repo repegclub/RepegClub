@@ -44,6 +44,32 @@ const MAX_MAX_PLAYERS: u32 = 100;
 /// staying many orders of magnitude below where `u128` multiplication by any
 /// realistic `elapsed_days` could overflow.
 const MAX_PRICE_INCREMENT_PER_DAY: u128 = 1_000_000_000_000;
+/// Upper bound on `base_ticket_price` (CodeRabbit finding on this same fix,
+/// 2026-08-24): bounding `price_increment_per_day` alone isn't enough -
+/// `base_ticket_price` near `Uint128::MAX` still overflows `today_price`'s
+/// addition on day one even with a tiny, in-bounds increment. Same headroom
+/// reasoning as `MAX_PRICE_INCREMENT_PER_DAY` above.
+const MAX_BASE_TICKET_PRICE: u128 = 1_000_000_000_000;
+
+/// Cosmos SDK's own denomination grammar (`ValidateDenom`): 3-128 chars,
+/// first an ASCII letter, the rest ASCII letters/digits or one of `/:._-`.
+/// A denom that fails this (found by the same CodeRabbit review, 2026-08-24)
+/// passes a plain non-empty check but still makes every `BankMsg::Send`
+/// using it fail validation at the bank module - the same brick this
+/// contract's other instantiate bounds exist to prevent. No regex crate
+/// needed for a grammar this simple.
+fn is_valid_denom(denom: &str) -> bool {
+    let bytes = denom.as_bytes();
+    if bytes.len() < 3 || bytes.len() > 128 {
+        return false;
+    }
+    if !bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    bytes[1..]
+        .iter()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b':' | b'.' | b'_' | b'-'))
+}
 
 #[entry_point]
 pub fn instantiate(
@@ -65,12 +91,16 @@ pub fn instantiate(
     if msg.base_ticket_price.is_zero() {
         return Err(ContractError::TicketPriceCannotBeZero {});
     }
+    if msg.base_ticket_price.u128() > MAX_BASE_TICKET_PRICE {
+        return Err(ContractError::TicketPriceTooHigh { max: MAX_BASE_TICKET_PRICE });
+    }
     if msg.price_increment_per_day.u128() > MAX_PRICE_INCREMENT_PER_DAY {
         return Err(ContractError::PriceIncrementTooHigh { max: MAX_PRICE_INCREMENT_PER_DAY });
     }
-    // Empty denom strings would make BankMsg::Send fail validation on every
-    // refund/payout path, the same brick TicketPriceCannotBeZero closes for
-    // the amount side. Deliberately NOT rejecting ticket_denom ==
+    // An invalid denom (empty, or one that fails the Cosmos SDK's own
+    // ValidateDenom grammar) would make BankMsg::Send fail validation on
+    // every refund/payout path, the same brick TicketPriceCannotBeZero
+    // closes for the amount side. Deliberately NOT rejecting ticket_denom ==
     // redemption_denom here even though Redeem is economically degenerate in
     // that case (a winner's own payment round-trips back to them instead of
     // coming from the pool) - that's the project's own established,
@@ -79,8 +109,8 @@ pub fn instantiate(
     // see the project's "testnet liquidity pattern" notes), not a
     // misconfiguration to guard against. Mainnet always uses genuinely
     // distinct denoms (uusd/the real USDC IBC denom).
-    if msg.ticket_denom.is_empty() || msg.redemption_denom.is_empty() {
-        return Err(ContractError::DenomCannotBeEmpty {});
+    if !is_valid_denom(&msg.ticket_denom) || !is_valid_denom(&msg.redemption_denom) {
+        return Err(ContractError::InvalidDenom {});
     }
     if msg.round_duration_days < MIN_ROUND_DURATION_DAYS || msg.round_duration_days > MAX_ROUND_DURATION_DAYS {
         return Err(ContractError::InvalidRoundDurationDays {

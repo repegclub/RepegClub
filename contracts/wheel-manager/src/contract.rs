@@ -38,6 +38,28 @@ const MAX_MAX_ROUND_AGE_SECONDS: u64 = 2_678_400; // 31 days
 /// matching create-your-own-luck's own cap on its equivalent field exactly
 /// rather than picking a different number for no reason.
 const MAX_MAX_PLAYERS: u32 = 100;
+/// Upper bound on `ticket_price` (CodeRabbit finding on the matching
+/// weekly-round check, 2026-08-24): `ticket_price` near `Uint128::MAX`
+/// overflows `execute_reclaim_ticket`/`execute_withdraw_ticket`'s
+/// `ticket_price * ticket_count` multiplication even with a `ticket_count`
+/// bounded by `max_tickets_per_wallet`. Same headroom reasoning as
+/// weekly-round's `MAX_BASE_TICKET_PRICE`.
+const MAX_TICKET_PRICE: u128 = 1_000_000_000_000;
+
+/// Cosmos SDK's own denomination grammar (`ValidateDenom`) - see
+/// weekly-round's matching function for the full rationale.
+fn is_valid_denom(denom: &str) -> bool {
+    let bytes = denom.as_bytes();
+    if bytes.len() < 3 || bytes.len() > 128 {
+        return false;
+    }
+    if !bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    bytes[1..]
+        .iter()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b':' | b'.' | b'_' | b'-'))
+}
 
 #[entry_point]
 pub fn instantiate(
@@ -58,15 +80,19 @@ pub fn instantiate(
     if msg.ticket_price.is_zero() {
         return Err(ContractError::TicketPriceCannotBeZero {});
     }
-    // Empty denom strings would make BankMsg::Send fail validation on every
-    // refund/payout path, the same brick TicketPriceCannotBeZero closes for
-    // the amount side. Deliberately NOT rejecting ticket_denom ==
+    if msg.ticket_price.u128() > MAX_TICKET_PRICE {
+        return Err(ContractError::TicketPriceTooHigh { max: MAX_TICKET_PRICE });
+    }
+    // An invalid denom (empty, or one that fails the Cosmos SDK's own
+    // ValidateDenom grammar) would make BankMsg::Send fail validation on
+    // every refund/payout path, the same brick TicketPriceCannotBeZero
+    // closes for the amount side. Deliberately NOT rejecting ticket_denom ==
     // redemption_denom even though Redeem is economically degenerate in that
     // case (a winner's own payment round-trips back to them instead of
     // coming from the pool) - see weekly-round's matching check for why
     // that's this project's own established, deliberate testnet convention.
-    if msg.ticket_denom.is_empty() || msg.redemption_denom.is_empty() {
-        return Err(ContractError::DenomCannotBeEmpty {});
+    if !is_valid_denom(&msg.ticket_denom) || !is_valid_denom(&msg.redemption_denom) {
+        return Err(ContractError::InvalidDenom {});
     }
     if msg.round_timeout_seconds < MIN_ROUND_TIMEOUT_SECONDS
         || msg.round_timeout_seconds > MAX_ROUND_TIMEOUT_SECONDS

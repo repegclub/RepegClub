@@ -680,12 +680,32 @@ fn instantiate_rejects_excessive_max_players_and_zero_ticket_price() {
 
     let err = instantiate(
         deps.as_mut(),
-        env,
+        env.clone(),
         mock_info("admin", &[]),
-        InstantiateMsg { ticket_denom: String::new(), ..base_msg },
+        InstantiateMsg { ticket_price: Uint128::new(1_000_000_000_001), ..base_msg.clone() },
     )
     .unwrap_err();
-    assert!(matches!(err, ContractError::DenomCannotBeEmpty {}));
+    assert!(matches!(err, ContractError::TicketPriceTooHigh { max: 1_000_000_000_000 }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_denom: String::new(), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDenom {}));
+
+    // A denom that isn't empty but fails the Cosmos SDK's own ValidateDenom
+    // grammar would still fail BankMsg::Send validation at the bank module.
+    let err = instantiate(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_denom: "a b".to_string(), ..base_msg },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDenom {}));
 }
 
 #[test]

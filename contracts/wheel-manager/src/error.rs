@@ -93,6 +93,9 @@ pub enum ContractError {
     #[error("ticket_price cannot be zero")]
     TicketPriceCannotBeZero {},
 
-    #[error("ticket_denom and redemption_denom cannot be empty")]
-    DenomCannotBeEmpty {},
+    #[error("ticket_price cannot exceed {max}")]
+    TicketPriceTooHigh { max: u128 },
+
+    #[error("ticket_denom and redemption_denom must be valid, non-empty denominations (3-128 chars, starting with a letter)")]
+    InvalidDenom {},
 }

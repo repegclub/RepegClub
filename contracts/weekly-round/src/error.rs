@@ -90,6 +90,9 @@ pub enum ContractError {
     #[error("price_increment_per_day cannot exceed {max}")]
     PriceIncrementTooHigh { max: u128 },
 
-    #[error("ticket_denom and redemption_denom cannot be empty")]
-    DenomCannotBeEmpty {},
+    #[error("base_ticket_price cannot exceed {max}")]
+    TicketPriceTooHigh { max: u128 },
+
+    #[error("ticket_denom and redemption_denom must be valid, non-empty denominations (3-128 chars, starting with a letter)")]
+    InvalidDenom {},
 }

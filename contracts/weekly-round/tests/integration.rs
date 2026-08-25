@@ -552,7 +552,29 @@ fn instantiate_rejects_excessive_max_players_and_zero_base_ticket_price() {
         InstantiateMsg { ticket_denom: String::new(), ..base_msg.clone() },
     )
     .unwrap_err();
-    assert!(matches!(err, ContractError::DenomCannotBeEmpty {}));
+    assert!(matches!(err, ContractError::InvalidDenom {}));
+
+    // A denom that isn't empty but fails the Cosmos SDK's own ValidateDenom
+    // grammar would still fail BankMsg::Send validation at the bank module.
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_denom: "a b".to_string(), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDenom {}));
+
+    // A pathologically large base price alone (with the increment still at a
+    // normal in-bounds value) can also overflow today_price()'s addition.
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { base_ticket_price: Uint128::new(1_000_000_000_001), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::TicketPriceTooHigh { max: 1_000_000_000_000 }));
 
     // A pathologically large daily increment can overflow the Uint128 math
     // in today_price() - reject it up front instead of panicking every query
@@ -565,6 +587,41 @@ fn instantiate_rejects_excessive_max_players_and_zero_base_ticket_price() {
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::PriceIncrementTooHigh { max: 1_000_000_000_000 }));
+}
+
+#[test]
+fn today_price_never_overflows_even_at_the_extreme_of_both_bounds() {
+    // Regression test for the CodeRabbit finding on this same fix
+    // (2026-08-24): base_ticket_price and price_increment_per_day are each
+    // individually bounded at instantiate, but today_price() adds
+    // base_ticket_price + price_increment_per_day * elapsed_days - confirm
+    // that combination genuinely can't overflow Uint128 even decades out at
+    // the maximum allowed value for both, not just that each field passes
+    // its own check in isolation.
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        base_ticket_price: Uint128::new(1_000_000_000_000), // MAX_BASE_TICKET_PRICE
+        price_increment_per_day: Uint128::new(1_000_000_000_000), // MAX_PRICE_INCREMENT_PER_DAY
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 90,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+    };
+    instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), msg).unwrap();
+
+    let mut far_future_env = env;
+    far_future_env.block.time = far_future_env.block.time.plus_seconds(100 * 365 * 86400); // 100 years
+    let bin = query(deps.as_ref(), far_future_env, QueryMsg::GetTodayPrice {}).unwrap();
+    let price: TodayPriceResponse = from_json(bin).unwrap();
+    // Just needs to not panic - the exact value isn't the point of this test.
+    assert!(price.price > Uint128::zero());
 }
 
 #[test]
