@@ -43,14 +43,26 @@ async function main() {
   console.log(`Wheel Manager (${label}): ${contractAddress}`);
   console.log("Weekly-round-stub:", weeklyStubAddress);
 
-  // This script only tracks one round's worth of purchases - if numPlayers
-  // exceeds the deployment's own max_players, an earlier purchase closes
-  // (and atomically draws) round 1, then later purchases go into round 2
-  // and overwrite `autoClosed` below, corrupting the winner lookup and the
-  // balance report (found by CodeRabbit review, 2026-08-25).
-  if (typeof maxPlayers === "number" && numPlayers > maxPlayers) {
+  // This script never calls CloseRound - it only ever drives a round to
+  // completion via the atomic sold-out path (BuyTicket auto-closes and
+  // draws in the same tx once max_players unique wallets have bought in),
+  // so numPlayers must exactly equal max_players: fewer leaves the round
+  // Open forever (the draw_winner retry loop below then spins for 90s and
+  // fails, since the contract rejects DrawWinner on an Open round); more
+  // reuses the same 3 loaded wallets for a 2nd round's tickets, corrupting
+  // the winner lookup and the balance report (both found by CodeRabbit
+  // review, 2026-08-25). Also capped at the 3 player wallets this script
+  // actually loads below.
+  const MAX_AVAILABLE_PLAYER_WALLETS = 3;
+  if (typeof maxPlayers !== "number" || numPlayers !== maxPlayers) {
     console.error(
-      `numPlayers (${numPlayers}) exceeds this deployment's max_players (${maxPlayers}) - this script only tracks one round.`
+      `numPlayers must exactly equal this deployment's max_players (${maxPlayers}) - this script only tracks one round, sold out atomically. Got numPlayers=${numPlayers}.`
+    );
+    process.exit(1);
+  }
+  if (numPlayers > MAX_AVAILABLE_PLAYER_WALLETS) {
+    console.error(
+      `numPlayers (${numPlayers}) exceeds the ${MAX_AVAILABLE_PLAYER_WALLETS} player wallets this script loads (PLAYER1/2/3_MNEMONIC).`
     );
     process.exit(1);
   }
@@ -165,7 +177,7 @@ async function main() {
     queryContract<{ total: string }>(RPC, { address: weeklyStubAddress, query: { get_total: {} } }),
   ]);
 
-  const grossPool = BigInt(numPlayers) * 1_000_000n;
+  const grossPool = BigInt(numPlayers) * BigInt(ticketPrice);
   console.log("\n=== REPORT ===");
   console.log(`Players: ${numPlayers} | gross pool: ${grossPool} uluna`);
   console.log(`Prize paid to winner: ${prize} uluna (expected 60%: ${(grossPool * 60n) / 100n})`);

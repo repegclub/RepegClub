@@ -77,8 +77,21 @@ async function main() {
             }),
           ],
         });
-        if (drawRes.txResponse.code === 0) break;
-        throw new Error(drawRes.txResponse.rawLog);
+        if (drawRes.txResponse.code !== 0) throw new Error(drawRes.txResponse.rawLog);
+        // A successful (code 0) tx can mean the round drew OR rearmed the
+        // draw window (missed draw_window_blocks) - a rearm is still a
+        // successful call, so `drawn_at` stays unset and the sweep-deadline
+        // math below would be corrupted if this just broke on any success
+        // (found by CodeRabbit review, 2026-08-25). Check the round's own
+        // status instead of assuming success == drawn.
+        const roundNow = await queryContract<{ status: string }>(RPC, {
+          address: contractAddress,
+          query: { get_round_history: { round_id: 1 } },
+        });
+        if (roundNow.status === "drawn") break;
+        console.log(`  attempt ${attempt} rearmed the draw window instead of drawing, waiting 6s...`);
+        drawRes = undefined;
+        await sleep(6000);
       } catch (err) {
         console.log(`  attempt ${attempt} not ready yet, waiting 6s...`);
         drawRes = undefined;
