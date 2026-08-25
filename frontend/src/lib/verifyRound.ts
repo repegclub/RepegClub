@@ -120,8 +120,8 @@ export async function verifyRound(
   return {
     roundId,
     drawHeight: round.draw_height,
-    drawAfterHeight: round.draw_after_height,
-    drawGap: round.draw_after_height === null ? null : round.draw_height - round.draw_after_height,
+    drawAfterHeight: round.draw_after_height ?? null,
+    drawGap: round.draw_after_height == null ? null : round.draw_height - round.draw_after_height,
     rearmCount: round.rearm_count,
     blockTimeIso,
     entrants,
