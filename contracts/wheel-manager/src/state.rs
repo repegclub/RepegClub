@@ -68,6 +68,10 @@ pub struct Round {
     pub deadline: Option<Timestamp>,
     pub closed_at: Option<Timestamp>,
     pub draw_after_height: Option<u64>,
+    /// How many times `DrawWinner` has rearmed the draw window for this round
+    /// (see `execute_draw_winner`'s `MAX_REARMS` doc comment) - capped so a
+    /// patient off-chain grinder can't re-roll for a favorable block forever.
+    pub rearm_count: u32,
     pub drawn_at: Option<Timestamp>,
     /// Exact block height the winner-picking hash was computed at (see
     /// `rand::pick_winner_index`) - `draw_after_height` is only the *minimum*

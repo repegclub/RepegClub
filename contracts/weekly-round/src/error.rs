@@ -68,4 +68,28 @@ pub enum ContractError {
 
     #[error("Week {week_id} already reached the minimum number of players - tickets can no longer be withdrawn")]
     WeekAlreadyLocked { week_id: u64 },
+
+    #[error("round_duration_days must be between {min} and {max}")]
+    InvalidRoundDurationDays { min: u64, max: u64 },
+
+    #[error("draw_delay_blocks must be between {min} and {max}")]
+    InvalidDrawDelayBlocks { min: u64, max: u64 },
+
+    #[error("draw_window_blocks must be between {min} and {max}")]
+    InvalidDrawWindowBlocks { min: u64, max: u64 },
+
+    #[error("unclaimed_deadline_days must be between {min} and {max}")]
+    InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
+
+    #[error("max_players cannot exceed {max}")]
+    MaxPlayersTooHigh { max: u32 },
+
+    #[error("base_ticket_price cannot be zero")]
+    TicketPriceCannotBeZero {},
+
+    #[error("price_increment_per_day cannot exceed {max}")]
+    PriceIncrementTooHigh { max: u128 },
+
+    #[error("ticket_denom and redemption_denom cannot be empty")]
+    DenomCannotBeEmpty {},
 }

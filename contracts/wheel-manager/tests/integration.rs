@@ -109,21 +109,29 @@ fn ticket_cap_per_wallet_is_half_of_max_players_minimum_one() {
 }
 
 #[test]
-fn reaching_max_unique_players_auto_closes_in_the_same_call() {
+fn reaching_max_unique_players_draws_atomically_in_the_same_call() {
     let (mut deps, env) = setup(2, 2);
     let res1 = buy_ticket(&mut deps, &env, "player1").unwrap();
     assert!(res1.attributes.iter().any(|a| a.key == "auto_closed" && a.value == "false"));
 
+    // Selling out draws immediately, in the same transaction as this closing
+    // ticket (2026-08-24 audit fix) - no separate DrawWinner call needed or
+    // possible, closing the free-rearm grinding hole for this path entirely.
     let res2 = buy_ticket(&mut deps, &env, "player2").unwrap();
     assert!(res2.attributes.iter().any(|a| a.key == "auto_closed" && a.value == "true"));
+    // treasury (12% + dust) + admin (3%) BankMsg::Send, + weekly (20%) WasmMsg::Execute
+    assert_eq!(res2.messages.len(), 3);
 
-    let round = current_round(&deps, &env);
-    assert_eq!(round.status, RoundStatus::Closed);
-    assert!(round.draw_after_height.is_some());
+    let round1 = query(deps.as_ref(), env.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    assert_eq!(round1.status, RoundStatus::Drawn);
+    assert!(round1.winner.is_some());
+    assert_eq!(round1.draw_height, Some(env.block.height));
 
-    // Round is closed now, no more tickets accepted.
-    let err = buy_ticket(&mut deps, &env, "player3").unwrap_err();
-    assert!(matches!(err, ContractError::RoundNotOpen {}));
+    // The next round opened automatically and is now current.
+    let round2 = current_round(&deps, &env);
+    assert_eq!(round2.round_id, 2);
+    assert_eq!(round2.status, RoundStatus::Open);
 }
 
 #[test]
@@ -177,9 +185,17 @@ fn buying_a_ticket_after_min_players_resets_the_close_deadline() {
 
 #[test]
 fn draw_winner_before_delay_fails_then_succeeds_and_splits_correctly() {
-    let (mut deps, env) = setup(2, 2);
+    // max_players=5 (not 2) so buying 2 tickets doesn't sell out and
+    // auto-draw (2026-08-24) - CloseRound via the timeout is used instead,
+    // to still exercise a separate, manual DrawWinner call.
+    let (mut deps, env) = setup(5, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap(); // auto-closes, draw_after_height = height + 5
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // min_players reached, deadline live
+
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(3601);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseRound {}).unwrap();
+    // draw_after_height = height + 5
 
     let err = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
     assert!(matches!(err, ContractError::DrawTooEarly { .. }));
@@ -218,9 +234,17 @@ fn draw_winner_before_delay_fails_then_succeeds_and_splits_correctly() {
 
 #[test]
 fn draw_winner_past_the_window_rearms_instead_of_drawing() {
-    let (mut deps, env) = setup(2, 2);
+    // max_players=5 so buying 2 tickets doesn't sell out and auto-draw -
+    // CloseRound via the timeout is used instead, to reach Closed without
+    // consuming the atomic sold-out path.
+    let (mut deps, env) = setup(5, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap(); // auto-closes, draw_after_height = height + 5, window width 10
+    buy_ticket(&mut deps, &env, "player2").unwrap();
+
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(3601);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseRound {}).unwrap();
+    // draw_after_height = height + 5, window width 10
 
     // height + 5 (required) + 10 (window) = height + 15 is the first height
     // past the ceiling.
@@ -229,6 +253,7 @@ fn draw_winner_past_the_window_rearms_instead_of_drawing() {
     let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
 
     assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
     assert!(res.messages.is_empty());
 
     // Round is still Closed, not Drawn - and got a fresh draw_after_height
@@ -254,14 +279,53 @@ fn draw_winner_past_the_window_rearms_instead_of_drawing() {
 }
 
 #[test]
+fn draw_winner_rearm_cap_forces_a_draw_once_spent() {
+    let (mut deps, env) = setup(5, 2);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap();
+
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(3601);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseRound {}).unwrap();
+    // draw_after_height = height + 5, window width 10
+
+    // Rearm #1 (MAX_REARMS is 2).
+    let mut env1 = env.clone();
+    env1.block.height += 15;
+    let res1 = execute(deps.as_mut(), env1.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    assert_eq!(res1.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res1.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
+
+    // Rearm #2 - the cap is spent after this one.
+    let mut env2 = env1.clone();
+    env2.block.height += 15;
+    let res2 = execute(deps.as_mut(), env2.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    assert_eq!(res2.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res2.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "2");
+
+    // Past the window a third time: the cap is spent, so this draws right
+    // here instead of rearming again - no more free re-rolls for anyone.
+    let mut env3 = env2.clone();
+    env3.block.height += 15;
+    let res3 = execute(deps.as_mut(), env3.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    assert_eq!(res3.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
+
+    let round1 = query(deps.as_ref(), env3.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    assert_eq!(round1.status, RoundStatus::Drawn);
+    assert!(round1.winner.is_some());
+    assert_eq!(round1.draw_height, Some(env3.block.height));
+}
+
+#[test]
 fn only_the_winner_can_redeem_and_overpay_is_refunded() {
     let (mut deps, env) = setup(2, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap();
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    let winner = draw_res.attributes.iter().find(|a| a.key == "winner").unwrap().value.clone();
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // draws atomically in this same call
+    let later_env = env.clone();
+    let round1 = query(deps.as_ref(), later_env.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    let winner = round1.winner.clone().unwrap().to_string();
     let loser = if winner == "player1" { "player2" } else { "player1" };
 
     // Non-winner cannot redeem.
@@ -312,11 +376,11 @@ fn only_the_winner_can_redeem_and_overpay_is_refunded() {
 fn partial_redeem_keeps_the_wallet_in_the_winnings_index() {
     let (mut deps, env) = setup(2, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap();
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    let winner = draw_res.attributes.iter().find(|a| a.key == "winner").unwrap().value.clone();
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // draws atomically in this same call
+    let later_env = env.clone();
+    let round1 = query(deps.as_ref(), later_env.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    let winner = round1.winner.clone().unwrap().to_string();
 
     execute(
         deps.as_mut(),
@@ -354,10 +418,8 @@ fn admin_only_actions_reject_non_admin() {
 fn sweep_expired_prize_is_permissionless_but_gated_by_the_deadline() {
     let (mut deps, env) = setup(2, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap();
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // draws atomically in this same call
+    let later_env = env.clone();
 
     // Too early - default unclaimed_deadline_days is 90.
     let err = execute(
@@ -496,6 +558,134 @@ fn instantiate_rejects_degenerate_player_bounds() {
     // enough unique players to satisfy the max-based auto-close path).
     let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(5, 2)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidPlayerBounds {}));
+}
+
+#[test]
+fn instantiate_rejects_out_of_range_timing_fields() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+    };
+
+    // A 0 in any of these fields is exactly the pathological case this fix
+    // closes - see the field-specific stuck-round scenarios in the audit note.
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { round_timeout_seconds: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { draw_delay_blocks: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { draw_window_blocks: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { unclaimed_deadline_days: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { max_round_age_seconds: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidMaxRoundAgeSeconds { .. }));
+
+    // The high end is bounded too, not just 0.
+    let err = instantiate(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &[]),
+        InstantiateMsg { draw_window_blocks: 10_000_000, ..base_msg },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
+}
+
+#[test]
+fn instantiate_rejects_excessive_max_players_and_zero_ticket_price() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+    };
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { max_players: 101, min_players: 2, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHigh { max: 100 }));
+
+    // A zero ticket price would make ReclaimTicket/WithdrawTicket try to send
+    // a zero-amount refund, which the chain rejects - reject it up front.
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_price: Uint128::zero(), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::TicketPriceCannotBeZero {}));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_denom: String::new(), ..base_msg },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::DenomCannotBeEmpty {}));
 }
 
 #[test]
@@ -750,16 +940,16 @@ fn withdraw_ticket_rejected_for_a_wallet_with_no_tickets_in_that_round() {
 fn wallet_stats_track_total_invested_across_rounds_and_total_redeemed_net_of_overpayment() {
     let (mut deps, env) = setup(2, 2);
     buy_ticket(&mut deps, &env, "player1").unwrap();
-    buy_ticket(&mut deps, &env, "player2").unwrap(); // auto-closes round 1
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // auto-closes and draws round 1 atomically
 
     let stats = wallet_stats(&deps, &env, "player1");
     assert_eq!(stats.total_invested, Uint128::new(TICKET_PRICE));
     assert_eq!(stats.total_redeemed, Uint128::zero());
 
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    let winner = draw_res.attributes.iter().find(|a| a.key == "winner").unwrap().value.clone();
+    let later_env = env.clone();
+    let round1 = query(deps.as_ref(), later_env.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    let winner = round1.winner.clone().unwrap().to_string();
 
     // Winner buys into round 2 as well - total_invested should accumulate
     // across rounds, not reset per round.

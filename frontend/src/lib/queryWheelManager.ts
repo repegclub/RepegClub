@@ -18,6 +18,9 @@ export type WheelRoundResponse = {
   deadline: number | null;
   closed_at: number | null;
   draw_after_height: number | null;
+  // How many times DrawWinner has rearmed the draw window for this round
+  // (capped at 2, see contracts/wheel-manager/src/execute.rs).
+  rearm_count: number;
   drawn_at: number | null;
   // Exact block height the winner-picking hash was computed at (not just
   // the minimum draw_after_height) - lets anyone re-derive and verify the

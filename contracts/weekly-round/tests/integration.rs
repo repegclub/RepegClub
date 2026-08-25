@@ -122,17 +122,24 @@ fn ticket_cap_per_wallet_is_half_of_max_players_minimum_one() {
 }
 
 #[test]
-fn reaching_max_unique_players_auto_closes_in_the_same_call() {
+fn reaching_max_unique_players_draws_atomically_in_the_same_call() {
     let (mut deps, env) = setup(2, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
+    // Selling out draws immediately, in the same transaction as this closing
+    // ticket (2026-08-24 audit fix) - no separate DrawWeeklyWinner call
+    // needed or possible.
     let res2 = buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
     assert!(res2.attributes.iter().any(|a| a.key == "auto_closed" && a.value == "true"));
+    assert_eq!(res2.messages.len(), 2); // treasury + admin, no wheel contribution here
 
-    let week = current_week(&deps, &env);
-    assert_eq!(week.status, RoundStatus::Closed);
+    let week1 = query(deps.as_ref(), env.clone(), QueryMsg::GetWeekHistory { week_id: 1 }).unwrap();
+    let week1: WeekResponse = from_json(week1).unwrap();
+    assert_eq!(week1.status, RoundStatus::Drawn);
+    assert!(week1.winner.is_some());
 
-    let err = buy_at_price(&mut deps, &env, "player3", BASE_PRICE).unwrap_err();
-    assert!(matches!(err, ContractError::WeekNotOpen {}));
+    let week2 = current_week(&deps, &env);
+    assert_eq!(week2.week_id, 2);
+    assert_eq!(week2.status, RoundStatus::Open);
 }
 
 #[test]
@@ -161,7 +168,10 @@ fn close_week_after_duration_with_min_players_succeeds() {
 
 #[test]
 fn draw_weekly_winner_splits_85_12_3_and_includes_wheel_contributions() {
-    let (mut deps, env) = setup(2, 2, 7);
+    // max_players=5 (not 2) so buying 2 tickets doesn't sell out and
+    // auto-draw (2026-08-24) - CloseWeek via the duration timeout is used
+    // instead, to still exercise a separate, manual DrawWeeklyWinner call.
+    let (mut deps, env) = setup(5, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
 
     // A Wheel Manager (or anyone) contributes to this week's pool before it closes.
@@ -176,14 +186,18 @@ fn draw_weekly_winner_splits_85_12_3_and_includes_wheel_contributions() {
     )
     .unwrap();
 
-    // Second ticket closes the week (max_players=2).
-    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // min_players reached
 
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(7 * 86400 + 1);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseWeek {}).unwrap();
+    // draw_after_height = height + 5
+
     let err = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap_err();
     assert!(matches!(err, ContractError::DrawTooEarly { .. }));
 
+    let mut later_env = env.clone();
+    later_env.block.height += 5;
     let res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
 
     // gross = 2*10_000_000 (tickets) + 4_000_000 (contribution) = 24_000_000
@@ -211,15 +225,24 @@ fn draw_weekly_winner_splits_85_12_3_and_includes_wheel_contributions() {
 
 #[test]
 fn draw_weekly_winner_past_the_window_rearms_instead_of_drawing() {
-    let (mut deps, env) = setup(2, 2, 7);
+    // max_players=5 so buying 2 tickets doesn't sell out and auto-draw -
+    // CloseWeek via the duration timeout is used instead, to reach Closed
+    // without consuming the atomic sold-out path.
+    let (mut deps, env) = setup(5, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
-    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // auto-closes, draw_after_height = height + 5, window width 10
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
+
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(7 * 86400 + 1);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseWeek {}).unwrap();
+    // draw_after_height = height + 5, window width 10
 
     let mut too_late_env = env.clone();
     too_late_env.block.height += 15; // first height past the ceiling
     let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
 
     assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
     assert!(res.messages.is_empty());
 
     let week = current_week(&deps, &too_late_env);
@@ -241,14 +264,53 @@ fn draw_weekly_winner_past_the_window_rearms_instead_of_drawing() {
 }
 
 #[test]
+fn draw_weekly_winner_rearm_cap_forces_a_draw_once_spent() {
+    let (mut deps, env) = setup(5, 2, 7);
+    buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
+
+    let mut env = env;
+    env.block.time = env.block.time.plus_seconds(7 * 86400 + 1);
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::CloseWeek {}).unwrap();
+    // draw_after_height = height + 5, window width 10
+
+    // Rearm #1 (MAX_REARMS is 2).
+    let mut env1 = env.clone();
+    env1.block.height += 15;
+    let res1 = execute(deps.as_mut(), env1.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
+    assert_eq!(res1.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res1.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
+
+    // Rearm #2 - the cap is spent after this one.
+    let mut env2 = env1.clone();
+    env2.block.height += 15;
+    let res2 = execute(deps.as_mut(), env2.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
+    assert_eq!(res2.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
+    assert_eq!(res2.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "2");
+
+    // Past the window a third time: the cap is spent, so this draws right
+    // here instead of rearming again.
+    let mut env3 = env2.clone();
+    env3.block.height += 15;
+    let res3 = execute(deps.as_mut(), env3.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
+    assert_eq!(res3.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_weekly_winner");
+
+    let week1 = query(deps.as_ref(), env3.clone(), QueryMsg::GetWeekHistory { week_id: 1 }).unwrap();
+    let week1: WeekResponse = from_json(week1).unwrap();
+    assert_eq!(week1.status, RoundStatus::Drawn);
+    assert!(week1.winner.is_some());
+    assert_eq!(week1.draw_height, Some(env3.block.height));
+}
+
+#[test]
 fn only_the_winner_can_redeem_and_overpay_is_refunded() {
     let (mut deps, env) = setup(2, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
-    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
-    let winner = draw_res.attributes.iter().find(|a| a.key == "winner").unwrap().value.clone();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // draws atomically in this same call
+    let later_env = env.clone();
+    let week1 = query(deps.as_ref(), later_env.clone(), QueryMsg::GetWeekHistory { week_id: 1 }).unwrap();
+    let week1: WeekResponse = from_json(week1).unwrap();
+    let winner = week1.winner.clone().unwrap().to_string();
     let loser = if winner == "player1" { "player2" } else { "player1" };
 
     let err = execute(
@@ -295,10 +357,8 @@ fn admin_only_actions_reject_non_admin() {
 fn sweep_expired_prize_is_permissionless_but_gated_by_the_deadline() {
     let (mut deps, env) = setup(2, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
-    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap();
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // draws atomically in this same call
+    let later_env = env.clone();
 
     let err = execute(
         deps.as_mut(),
@@ -378,6 +438,133 @@ fn instantiate_rejects_degenerate_player_bounds() {
 
     let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(5, 2)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidPlayerBounds {}));
+}
+
+#[test]
+fn instantiate_rejects_out_of_range_timing_fields() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 7,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+    };
+
+    // A 0 in any of these fields is exactly the pathological case this fix
+    // closes - see the field-specific stuck-week scenarios in the audit note.
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { round_duration_days: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundDurationDays { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { draw_delay_blocks: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { draw_window_blocks: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { unclaimed_deadline_days: 0, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    // The high end is bounded too, not just 0.
+    let err = instantiate(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &[]),
+        InstantiateMsg { round_duration_days: 1000, ..base_msg },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundDurationDays { .. }));
+}
+
+#[test]
+fn instantiate_rejects_excessive_max_players_and_zero_base_ticket_price() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 7,
+        draw_delay_blocks: 5,
+        draw_window_blocks: 10,
+        unclaimed_deadline_days: 90,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+    };
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { max_players: 101, min_players: 2, ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHigh { max: 100 }));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { base_ticket_price: Uint128::zero(), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::TicketPriceCannotBeZero {}));
+
+    let err = instantiate(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        InstantiateMsg { ticket_denom: String::new(), ..base_msg.clone() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::DenomCannotBeEmpty {}));
+
+    // A pathologically large daily increment can overflow the Uint128 math
+    // in today_price() - reject it up front instead of panicking every query
+    // against the week.
+    let err = instantiate(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &[]),
+        InstantiateMsg { price_increment_per_day: Uint128::new(1_000_000_000_001), ..base_msg },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::PriceIncrementTooHigh { max: 1_000_000_000_000 }));
 }
 
 #[test]
@@ -635,16 +822,16 @@ fn withdraw_ticket_rejected_for_a_wallet_with_no_tickets_in_that_week() {
 fn wallet_stats_track_total_invested_across_weeks_and_total_redeemed_net_of_overpayment() {
     let (mut deps, env) = setup(2, 2, 7);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
-    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // auto-closes week 1
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // auto-closes and draws week 1 atomically
 
     let stats = wallet_stats(&deps, &env, "player1");
     assert_eq!(stats.total_invested, Uint128::new(BASE_PRICE));
     assert_eq!(stats.total_redeemed, Uint128::zero());
 
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), later_env.clone(), mock_info("anyone", &[]), ExecuteMsg::DrawWeeklyWinner {}).unwrap();
-    let winner = draw_res.attributes.iter().find(|a| a.key == "winner").unwrap().value.clone();
+    let later_env = env.clone();
+    let week1 = query(deps.as_ref(), later_env.clone(), QueryMsg::GetWeekHistory { week_id: 1 }).unwrap();
+    let week1: WeekResponse = from_json(week1).unwrap();
+    let winner = week1.winner.clone().unwrap().to_string();
 
     // Winner buys into week 2 too - total_invested accumulates across weeks.
     buy_at_price(&mut deps, &later_env, &winner, BASE_PRICE).unwrap();

@@ -5,8 +5,16 @@ import { getWeekEntrants, getWeekHistory } from "./queryWeeklyRound";
 export type VerifyWeeklyRoundResult = {
   weekId: number;
   drawHeight: number;
-  drawAfterHeight: number;
-  drawGap: number;
+  // Both null when the week sold out and drew atomically in the same
+  // transaction as the closing ticket (2026-08-24) - there's no separate
+  // draw window to measure a gap against in that case, not a missing/broken
+  // value. See wheel-manager's matching verifyRound.ts for the full comment.
+  drawAfterHeight: number | null;
+  drawGap: number | null;
+  // See wheel-manager's matching verifyRound.ts for why this is shown
+  // alongside drawGap - a rearm resets the window, so drawGap alone can't
+  // reveal a round that burned its full rearm budget.
+  rearmCount: number;
   blockTimeIso: string;
   entrants: string[];
   digestHex: string;
@@ -96,8 +104,9 @@ export async function verifyWeeklyRound(
   return {
     weekId,
     drawHeight: week.draw_height,
-    drawAfterHeight: week.draw_after_height!,
-    drawGap: week.draw_height - week.draw_after_height!,
+    drawAfterHeight: week.draw_after_height,
+    drawGap: week.draw_after_height === null ? null : week.draw_height - week.draw_after_height,
+    rearmCount: week.rearm_count,
     blockTimeIso,
     entrants,
     digestHex: toHex(digest),
@@ -117,6 +126,7 @@ export function buildWeeklyVerificationPayload(result: VerifyWeeklyRoundResult) 
     draw_block_height: result.drawHeight,
     draw_eligible_at_height: result.drawAfterHeight,
     draw_gap_blocks: result.drawGap,
+    draw_window_rearm_count: result.rearmCount,
     draw_block_time_utc: result.blockTimeIso,
     entrants_in_order: result.entrants,
     formula:

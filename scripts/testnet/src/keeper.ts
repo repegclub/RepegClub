@@ -69,9 +69,11 @@ async function tickWheelManager(
     // opened_at + round_timeout_seconds window, that formula was replaced by
     // the rolling redesign and left this keeper checking the wrong signal,
     // found live 2026-07-15 spamming rejected CloseRound calls every tick).
-    // `reached_max` isn't checked here - BuyTicket already auto-closes the
-    // round the instant max_players is hit, so status never sits "open" with
-    // reached_max true waiting on this poll.
+    // `reached_max` isn't checked here - BuyTicket already auto-closes AND
+    // draws the round in the same tx the instant max_players is hit
+    // (2026-08-24 audit fix), so status never sits "open" (or even "closed")
+    // with reached_max true waiting on this poll - it jumps straight to
+    // "drawn".
     const hasMin = round.unique_player_count >= config.min_players;
     const deadlinePassed = round.deadline !== null && nowSeconds >= round.deadline;
     const hardCapPassed = nowSeconds >= round.opened_at + config.max_round_age_seconds;

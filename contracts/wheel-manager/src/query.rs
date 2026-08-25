@@ -30,6 +30,7 @@ fn round_to_response(round: Round) -> RoundResponse {
         deadline: round.deadline.map(|t| t.seconds()),
         closed_at: round.closed_at.map(|t| t.seconds()),
         draw_after_height: round.draw_after_height,
+        rearm_count: round.rearm_count,
         drawn_at: round.drawn_at.map(|t| t.seconds()),
         draw_height: round.draw_height,
         winner: round.winner,

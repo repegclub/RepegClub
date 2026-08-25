@@ -71,4 +71,28 @@ pub enum ContractError {
 
     #[error("Round {round_id} already reached the minimum number of players - tickets can no longer be withdrawn")]
     RoundAlreadyLocked { round_id: u64 },
+
+    #[error("round_timeout_seconds must be between {min} and {max}")]
+    InvalidRoundTimeoutSeconds { min: u64, max: u64 },
+
+    #[error("draw_delay_blocks must be between {min} and {max}")]
+    InvalidDrawDelayBlocks { min: u64, max: u64 },
+
+    #[error("draw_window_blocks must be between {min} and {max}")]
+    InvalidDrawWindowBlocks { min: u64, max: u64 },
+
+    #[error("unclaimed_deadline_days must be between {min} and {max}")]
+    InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
+
+    #[error("max_round_age_seconds must be between {min} and {max}")]
+    InvalidMaxRoundAgeSeconds { min: u64, max: u64 },
+
+    #[error("max_players cannot exceed {max}")]
+    MaxPlayersTooHigh { max: u32 },
+
+    #[error("ticket_price cannot be zero")]
+    TicketPriceCannotBeZero {},
+
+    #[error("ticket_denom and redemption_denom cannot be empty")]
+    DenomCannotBeEmpty {},
 }

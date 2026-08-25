@@ -23,7 +23,7 @@ const DEPLOYMENT_PATH = path.resolve(__dirname, "../deployment-wheelmanager-main
 const TICKET_PRICE = "50000"; // 0.05 USDC
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
-const ROUND_TIMEOUT_SECONDS = 30;
+const ROUND_TIMEOUT_SECONDS = 60; // contract minimum (see MIN_ROUND_TIMEOUT_SECONDS), was 30 before the 2026-08-24 instantiate bounds fix
 const MAX_ROUND_AGE_SECONDS = 172_800; // 48h default, irrelevant for this quick test
 
 async function main() {
@@ -69,7 +69,7 @@ async function main() {
           round_timeout_seconds: ROUND_TIMEOUT_SECONDS,
           draw_delay_blocks: 2,
           draw_window_blocks: 10,
-          unclaimed_deadline_days: 0,
+          unclaimed_deadline_days: 1, // contract minimum (see MIN_UNCLAIMED_DEADLINE_DAYS), was 0 before the 2026-08-24 instantiate bounds fix
           max_round_age_seconds: MAX_ROUND_AGE_SECONDS,
           treasury_address: admin.address,
           admin_fee_address: admin.address,

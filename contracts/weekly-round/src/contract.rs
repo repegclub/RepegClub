@@ -12,6 +12,39 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, GlobalState, CONFIG, STATE};
 
+// Bounds on the numeric `instantiate` fields that were previously accepted
+// unchecked (2026-08-24 audit fix, mirroring the same bug class
+// create-your-own-luck already closed in its own `instantiate`, and the
+// matching fix in wheel-manager's `contract.rs`). Without these, a
+// pathological value (most dangerously 0) in any of these fields can leave a
+// week permanently stuck in `Open` with no way to close it.
+const MIN_ROUND_DURATION_DAYS: u64 = 1;
+const MAX_ROUND_DURATION_DAYS: u64 = 90;
+const MIN_DRAW_DELAY_BLOCKS: u64 = 1;
+const MAX_DRAW_DELAY_BLOCKS: u64 = 1_000_000;
+const MIN_DRAW_WINDOW_BLOCKS: u64 = 1;
+const MAX_DRAW_WINDOW_BLOCKS: u64 = 1_000_000;
+const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
+const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
+/// Upper bound on `max_players` - see wheel-manager's matching constant's
+/// doc comment for the full rationale (found by an independent second-
+/// opinion review of this same fix). Same value, same reasoning.
+const MAX_MAX_PLAYERS: u32 = 100;
+/// Upper bound on `price_increment_per_day` (found by an independent
+/// second-opinion review, 2026-08-24): unlike every other numeric
+/// `instantiate` field, this one was left completely unbounded, including no
+/// zero check on `base_ticket_price`'s multiplication partner. `today_price`
+/// computes `base_ticket_price + price_increment_per_day * elapsed_days` in
+/// `execute.rs` - with `overflow-checks = true` (this crate's release
+/// profile), a pathological value here panics that arithmetic, and it's
+/// called from 3 query handlers (`GetCurrentWeek`/`GetTodayPrice`/
+/// `GetWeekHistory`) as well as `BuyWeeklyTicket` - a single bad deploy value
+/// would panic every query against the contract, not just executes. Bounded
+/// well above any real production value (1_000_000 = "1 USDC"/day) while
+/// staying many orders of magnitude below where `u128` multiplication by any
+/// realistic `elapsed_days` could overflow.
+const MAX_PRICE_INCREMENT_PER_DAY: u128 = 1_000_000_000_000;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -21,6 +54,59 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
+    }
+    if msg.max_players > MAX_MAX_PLAYERS {
+        return Err(ContractError::MaxPlayersTooHigh { max: MAX_MAX_PLAYERS });
+    }
+    // A zero base ticket price would make ReclaimTicket/WithdrawTicket try to
+    // send a zero-amount BankMsg::Send on day 0 (or forever, if
+    // price_increment_per_day is also 0), which the Cosmos SDK rejects as
+    // invalid coins - permanently bricking those refund paths.
+    if msg.base_ticket_price.is_zero() {
+        return Err(ContractError::TicketPriceCannotBeZero {});
+    }
+    if msg.price_increment_per_day.u128() > MAX_PRICE_INCREMENT_PER_DAY {
+        return Err(ContractError::PriceIncrementTooHigh { max: MAX_PRICE_INCREMENT_PER_DAY });
+    }
+    // Empty denom strings would make BankMsg::Send fail validation on every
+    // refund/payout path, the same brick TicketPriceCannotBeZero closes for
+    // the amount side. Deliberately NOT rejecting ticket_denom ==
+    // redemption_denom here even though Redeem is economically degenerate in
+    // that case (a winner's own payment round-trips back to them instead of
+    // coming from the pool) - that's the project's own established,
+    // deliberate testnet convention (both fields set to "uluna" in
+    // deployWheelManager.ts, since testnet has no real USDC/USTC liquidity;
+    // see the project's "testnet liquidity pattern" notes), not a
+    // misconfiguration to guard against. Mainnet always uses genuinely
+    // distinct denoms (uusd/the real USDC IBC denom).
+    if msg.ticket_denom.is_empty() || msg.redemption_denom.is_empty() {
+        return Err(ContractError::DenomCannotBeEmpty {});
+    }
+    if msg.round_duration_days < MIN_ROUND_DURATION_DAYS || msg.round_duration_days > MAX_ROUND_DURATION_DAYS {
+        return Err(ContractError::InvalidRoundDurationDays {
+            min: MIN_ROUND_DURATION_DAYS,
+            max: MAX_ROUND_DURATION_DAYS,
+        });
+    }
+    if msg.draw_delay_blocks < MIN_DRAW_DELAY_BLOCKS || msg.draw_delay_blocks > MAX_DRAW_DELAY_BLOCKS {
+        return Err(ContractError::InvalidDrawDelayBlocks {
+            min: MIN_DRAW_DELAY_BLOCKS,
+            max: MAX_DRAW_DELAY_BLOCKS,
+        });
+    }
+    if msg.draw_window_blocks < MIN_DRAW_WINDOW_BLOCKS || msg.draw_window_blocks > MAX_DRAW_WINDOW_BLOCKS {
+        return Err(ContractError::InvalidDrawWindowBlocks {
+            min: MIN_DRAW_WINDOW_BLOCKS,
+            max: MAX_DRAW_WINDOW_BLOCKS,
+        });
+    }
+    if msg.unclaimed_deadline_days < MIN_UNCLAIMED_DEADLINE_DAYS
+        || msg.unclaimed_deadline_days > MAX_UNCLAIMED_DEADLINE_DAYS
+    {
+        return Err(ContractError::InvalidUnclaimedDeadlineDays {
+            min: MIN_UNCLAIMED_DEADLINE_DAYS,
+            max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
     }
 
     let config = Config {

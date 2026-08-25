@@ -22,6 +22,9 @@ export type WeekResponse = {
   closed_at: number | null;
   seconds_remaining: number;
   draw_after_height: number | null;
+  // How many times DrawWeeklyWinner has rearmed the draw window for this
+  // week (capped at 2, see contracts/weekly-round/src/execute.rs).
+  rearm_count: number;
   drawn_at: number | null;
   // Exact block height the winner-picking hash was computed at - lets
   // anyone re-derive and verify the draw independently. See lib/verifyWeeklyRound.ts.

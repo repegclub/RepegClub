@@ -99,6 +99,10 @@ pub struct WeekResponse {
     pub closed_at: Option<u64>,
     pub seconds_remaining: u64,
     pub draw_after_height: Option<u64>,
+    /// How many times DrawWeeklyWinner has rearmed the draw window for this
+    /// week (capped at MAX_REARMS, see execute.rs) - exposed for monitoring/
+    /// observability now that it's security-relevant state.
+    pub rearm_count: u32,
     pub drawn_at: Option<u64>,
     pub draw_height: Option<u64>,
     pub winner: Option<Addr>,

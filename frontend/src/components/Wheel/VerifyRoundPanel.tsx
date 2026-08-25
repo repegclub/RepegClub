@@ -160,10 +160,21 @@ export function VerifyRoundPanel({ roundId, contractAddress }: VerifyRoundPanelP
                           <dd>{state.result.blockTimeIso}</dd>
                           <dt>{t("verify.entrantsCount")}</dt>
                           <dd>{state.result.entrants.length}</dd>
-                          <dt>{t("verify.drawGap")}</dt>
-                          <dd>{state.result.drawGap}</dd>
+                          <dt>{state.result.drawGap === null ? t("verify.drawGapAtomic") : t("verify.drawGap")}</dt>
+                          <dd>{state.result.drawGap === null ? "—" : state.result.drawGap}</dd>
+                          {state.result.drawGap !== null && (
+                            <>
+                              <dt>{t("verify.rearmCount")}</dt>
+                              <dd>{state.result.rearmCount}</dd>
+                            </>
+                          )}
                         </dl>
-                        <p className="verify-raw-caption">{t("verify.drawGapCaption")}</p>
+                        <p className="verify-raw-caption">
+                          {state.result.drawGap === null ? t("verify.drawGapAtomicCaption") : t("verify.drawGapCaption")}
+                        </p>
+                        {state.result.drawGap !== null && (
+                          <p className="verify-raw-caption">{t("verify.rearmCountCaption")}</p>
+                        )}
                       </div>
                     )}
 

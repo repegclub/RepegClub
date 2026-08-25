@@ -6,7 +6,8 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
 use crate::state::{
-    Config, RoundStatus, Week, CONFIG, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WEEKS, WINNER_INDEX,
+    Config, GlobalState, RoundStatus, Week, CONFIG, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WEEKS,
+    WINNER_INDEX,
 };
 
 const PRIZE_BPS: u128 = 8500; // 85%
@@ -14,6 +15,13 @@ const TREASURY_BPS: u128 = 1200; // 12%
 const ADMIN_BPS: u128 = 300; // 3%
 const BPS_DENOM: u128 = 10000;
 const SECONDS_PER_DAY: u64 = 86400;
+
+/// Caps how many times `DrawWeeklyWinner` can rearm the draw window for free
+/// before the next eligible call just draws right here instead of rearming
+/// again. See wheel-manager's matching `MAX_REARMS` doc comment for the full
+/// grinding rationale (2026-08-24 audit fix) - `DrawWeeklyWinner` has been
+/// permissionless from day one here too.
+const MAX_REARMS: u32 = 2;
 
 pub fn open_new_week(
     storage: &mut dyn Storage,
@@ -32,6 +40,7 @@ pub fn open_new_week(
         opened_at: env.block.time,
         closed_at: None,
         draw_after_height: None,
+        rearm_count: 0,
         drawn_at: None,
         draw_height: None,
         winner: None,
@@ -87,7 +96,7 @@ pub fn max_tickets_per_wallet(max_players: u32) -> u32 {
 
 pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
     let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
 
     if week.status != RoundStatus::Open {
@@ -136,16 +145,27 @@ pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> 
     }
 
     let auto_closed = week.unique_players.len() as u32 >= config.max_players;
+    let mut messages: Vec<CosmosMsg> = vec![];
     if auto_closed {
         week.status = RoundStatus::Closed;
         week.closed_at = Some(env.block.time);
-        week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        // Sold out - draw right here, in the same atomic transaction as the
+        // ticket purchase that completed the cap, instead of leaving a
+        // separate DrawWeeklyWinner call (and its
+        // draw_delay_blocks/draw_window_blocks window) pending. See
+        // wheel-manager's matching `execute_buy_ticket` comment for the full
+        // grinding rationale (2026-08-24 audit fix). Always safe: reaching
+        // max_players already implies min_players is met (enforced at
+        // instantiate).
+        messages = perform_draw(deps.storage, &env, &config, &mut state, &mut week)?;
+        STATE.save(deps.storage, &state)?;
     }
 
     WEEKS.save(deps.storage, week.week_id, &week)?;
     add_invested(deps.storage, &info.sender, sent_amount)?;
 
     Ok(Response::new()
+        .add_messages(messages)
         .add_attribute("action", "buy_weekly_ticket")
         .add_attribute("buyer", info.sender)
         .add_attribute("week_id", week.week_id.to_string())
@@ -312,34 +332,20 @@ pub fn execute_withdraw_ticket(
         .add_attribute("amount", refund.to_string()))
 }
 
-pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let mut state = STATE.load(deps.storage)?;
-    let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
-
-    if week.status != RoundStatus::Closed {
-        return Err(ContractError::WeekNotClosed {});
-    }
-    let required_height = week.draw_after_height.unwrap_or(u64::MAX);
-    if env.block.height < required_height {
-        return Err(ContractError::DrawTooEarly { required_height });
-    }
-    // Ceiling on the draw window - see wheel-manager's execute_draw_winner
-    // for the full rationale. Not an error, just a rearm to a fresh window.
-    if env.block.height >= required_height + config.draw_window_blocks {
-        week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
-        WEEKS.save(deps.storage, week.week_id, &week)?;
-        return Ok(Response::new()
-            .add_attribute("action", "rearm_draw_window")
-            .add_attribute("week_id", week.week_id.to_string())
-            .add_attribute("new_draw_after_height", week.draw_after_height.unwrap().to_string()));
-    }
-    if (week.unique_players.len() as u32) < config.min_players {
-        return Err(ContractError::NotEnoughPlayers {
-            min_players: config.min_players,
-        });
-    }
-
+/// Draws a winner for `week` (already validated as drawable by the caller),
+/// transitions it to `Drawn`, advances global state to the next week, and
+/// opens that new week - returning the payout messages. Caller is
+/// responsible for saving `week` (under its own, unchanged `week_id`) and
+/// `state` afterward. Shared by `execute_draw_weekly_winner` (the separate
+/// post-window call) and `execute_buy_weekly_ticket`'s atomic sold-out path
+/// (2026-08-24 audit fix).
+fn perform_draw(
+    storage: &mut dyn Storage,
+    env: &Env,
+    config: &Config,
+    state: &mut GlobalState,
+    week: &mut Week,
+) -> StdResult<Vec<CosmosMsg>> {
     let winner_index = pick_winner_index(
         week.week_id,
         env.block.height,
@@ -361,16 +367,15 @@ pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, C
     week.drawn_at = Some(env.block.time);
     week.draw_height = Some(env.block.height);
     let finished_week_id = week.week_id;
-    WEEKS.save(deps.storage, week.week_id, &week)?;
 
     if !prize.is_zero() {
-        add_winning(deps.storage, winner.clone(), finished_week_id)?;
+        add_winning(storage, winner.clone(), finished_week_id)?;
     }
 
     state.current_week_id += 1;
     let new_week_id = state.current_week_id;
-    STATE.save(deps.storage, &state)?;
-    open_new_week(deps.storage, &env, new_week_id, Uint128::zero())?;
+
+    open_new_week(storage, env, new_week_id, Uint128::zero())?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     if !treasury_cut.is_zero() {
@@ -397,6 +402,49 @@ pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, C
             .into(),
         );
     }
+
+    Ok(messages)
+}
+
+pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
+    let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
+
+    if week.status != RoundStatus::Closed {
+        return Err(ContractError::WeekNotClosed {});
+    }
+    let required_height = week.draw_after_height.unwrap_or(u64::MAX);
+    if env.block.height < required_height {
+        return Err(ContractError::DrawTooEarly { required_height });
+    }
+    // Ceiling on the draw window - see wheel-manager's execute_draw_winner
+    // for the full rationale. Not an error, just a rearm to a fresh window -
+    // *unless* the rearm cap (MAX_REARMS) is already spent (2026-08-24 audit
+    // fix), in which case this call just draws right here instead of
+    // resetting the window again.
+    if env.block.height >= required_height + config.draw_window_blocks && week.rearm_count < MAX_REARMS {
+        week.rearm_count += 1;
+        week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        WEEKS.save(deps.storage, week.week_id, &week)?;
+        return Ok(Response::new()
+            .add_attribute("action", "rearm_draw_window")
+            .add_attribute("week_id", week.week_id.to_string())
+            .add_attribute("new_draw_after_height", week.draw_after_height.unwrap().to_string())
+            .add_attribute("rearm_count", week.rearm_count.to_string()));
+    }
+    if (week.unique_players.len() as u32) < config.min_players {
+        return Err(ContractError::NotEnoughPlayers {
+            min_players: config.min_players,
+        });
+    }
+
+    let messages = perform_draw(deps.storage, &env, &config, &mut state, &mut week)?;
+    let finished_week_id = week.week_id;
+    let winner = week.winner.clone().unwrap();
+    let prize = week.prize_remaining;
+    WEEKS.save(deps.storage, week.week_id, &week)?;
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_messages(messages)

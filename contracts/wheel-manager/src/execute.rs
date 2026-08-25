@@ -7,7 +7,8 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
 use crate::state::{
-    Round, RoundStatus, CONFIG, ROUNDS, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WINNER_INDEX,
+    Config, GlobalState, Round, RoundStatus, CONFIG, ROUNDS, STATE, TOTAL_INVESTED,
+    TOTAL_REDEEMED, WINNER_INDEX,
 };
 
 const PRIZE_BPS: u128 = 6000; // 60%
@@ -16,6 +17,20 @@ const WEEKLY_BPS: u128 = 2000; // 20%
 const TREASURY_BPS: u128 = 1200; // 12%
 const ADMIN_BPS: u128 = 300; // 3%
 const BPS_DENOM: u128 = 10000;
+
+/// Caps how many times `DrawWinner` can rearm the draw window for free (see
+/// the "past the window" branch in `execute_draw_winner`) before the next
+/// eligible call just draws right here instead of rearming again. Without
+/// this, `DrawWinner` being permissionless from day one means anyone
+/// patient enough to simulate the outcome off-chain for each candidate
+/// block can wait for a favorable one indefinitely, free of charge - worse
+/// here than in create-your-own-luck (where this same cap originated,
+/// 2026-07-22) because there the rearm loop is at least bounded by that
+/// raffle's own unclaimed-deadline fallback; here `DrawWinner` has no such
+/// creator-vs-anyone distinction to fall back on, so an unbounded rearm
+/// really is an unbounded grinding window. 2 matches the value already
+/// proven out there.
+const MAX_REARMS: u32 = 2;
 
 /// Mirrors Weekly Round's `ExecuteMsg::ContributeToPool` just enough to build the
 /// outbound message. Deliberately not a shared crate dependency between the two
@@ -45,6 +60,7 @@ pub fn open_new_round(
         deadline: None,
         closed_at: None,
         draw_after_height: None,
+        rearm_count: 0,
         drawn_at: None,
         draw_height: None,
         winner: None,
@@ -66,7 +82,7 @@ pub fn max_tickets_per_wallet(max_players: u32) -> u32 {
 
 pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
     let mut round = ROUNDS.load(deps.storage, state.current_round_id)?;
 
     if round.status != RoundStatus::Open {
@@ -117,16 +133,33 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
     }
 
     let auto_closed = round.unique_players.len() as u32 >= config.max_players;
+    let mut messages: Vec<CosmosMsg> = vec![];
     if auto_closed {
         round.status = RoundStatus::Closed;
         round.closed_at = Some(env.block.time);
-        round.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        // Sold out - draw right here, in the same atomic transaction as the
+        // ticket purchase that completed the cap, instead of leaving a
+        // separate DrawWinner call (and its draw_delay_blocks/draw_window_blocks
+        // window) pending. Removes the free-rearm grinding hole (MAX_REARMS)
+        // for this path entirely - no window to wait for, no separate call,
+        // no free re-rolls. Doesn't remove every residual timing angle:
+        // whichever wallet ends up buying the closing ticket still weakly
+        // picks the block that seeds the hash by choosing when to submit -
+        // same single-shot, can't-predict-a-future-block's-exact-nanosecond-
+        // timestamp caveat already accepted platform-wide (see rand.rs), not
+        // the repeatable-for-free grinding this fix targets. Always safe to
+        // draw immediately here - max_players >= min_players is enforced at
+        // instantiate, so reaching max_players already implies min_players
+        // is met.
+        messages = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
+        STATE.save(deps.storage, &state)?;
     }
 
     ROUNDS.save(deps.storage, round.round_id, &round)?;
     add_invested(deps.storage, &info.sender, sent_amount)?;
 
     Ok(Response::new()
+        .add_messages(messages)
         .add_attribute("action", "buy_ticket")
         .add_attribute("buyer", info.sender)
         .add_attribute("round_id", round.round_id.to_string())
@@ -305,37 +338,21 @@ pub fn execute_withdraw_ticket(
         .add_attribute("amount", refund.to_string()))
 }
 
-pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let mut state = STATE.load(deps.storage)?;
-    let mut round = ROUNDS.load(deps.storage, state.current_round_id)?;
-
-    if round.status != RoundStatus::Closed {
-        return Err(ContractError::RoundNotClosed {});
-    }
-    let required_height = round.draw_after_height.unwrap_or(u64::MAX);
-    if env.block.height < required_height {
-        return Err(ContractError::DrawTooEarly { required_height });
-    }
-    // Ceiling on the draw window: past this, rearm to a fresh window based on
-    // the current block instead of drawing, rather than leaving the window
-    // open indefinitely (see `draw_window_blocks` doc comment on `Config`).
-    // Not an error - a caller here is doing exactly the right thing (trying
-    // to draw), the round just needs another pass through the keeper.
-    if env.block.height >= required_height + config.draw_window_blocks {
-        round.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
-        ROUNDS.save(deps.storage, round.round_id, &round)?;
-        return Ok(Response::new()
-            .add_attribute("action", "rearm_draw_window")
-            .add_attribute("round_id", round.round_id.to_string())
-            .add_attribute("new_draw_after_height", round.draw_after_height.unwrap().to_string()));
-    }
-    if (round.unique_players.len() as u32) < config.min_players {
-        return Err(ContractError::NotEnoughPlayers {
-            min_players: config.min_players,
-        });
-    }
-
+/// Draws a winner for `round` (already validated as drawable by the caller),
+/// transitions it to `Drawn`, advances global state to the next round, and
+/// opens that new round - returning the payout/contribution messages.
+/// Caller is responsible for saving `round` (under its own, unchanged
+/// `round_id`) and `state` afterward; this only mutates them in place plus
+/// whatever storage `open_new_round`/`add_winning` touch directly. Shared by
+/// `execute_draw_winner` (the separate post-window call) and
+/// `execute_buy_ticket`'s atomic sold-out path (2026-08-24 audit fix).
+fn perform_draw(
+    storage: &mut dyn Storage,
+    env: &Env,
+    config: &Config,
+    state: &mut GlobalState,
+    round: &mut Round,
+) -> StdResult<Vec<CosmosMsg>> {
     let winner_index = pick_winner_index(
         round.round_id,
         env.block.height,
@@ -361,10 +378,9 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
     round.drawn_at = Some(env.block.time);
     round.draw_height = Some(env.block.height);
     let finished_round_id = round.round_id;
-    ROUNDS.save(deps.storage, round.round_id, &round)?;
 
     if !prize.is_zero() {
-        add_winning(deps.storage, winner.clone(), finished_round_id)?;
+        add_winning(storage, winner.clone(), finished_round_id)?;
     }
 
     state.next_round_carry += next_carry;
@@ -372,9 +388,8 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
     state.current_round_id += 1;
     let new_round_id = state.current_round_id;
     state.next_round_carry = Uint128::zero();
-    STATE.save(deps.storage, &state)?;
 
-    open_new_round(deps.storage, &env, new_round_id, carry_for_next)?;
+    open_new_round(storage, env, new_round_id, carry_for_next)?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     if !treasury_cut.is_zero() {
@@ -417,6 +432,55 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
             .into(),
         );
     }
+
+    Ok(messages)
+}
+
+pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
+    let mut round = ROUNDS.load(deps.storage, state.current_round_id)?;
+
+    if round.status != RoundStatus::Closed {
+        return Err(ContractError::RoundNotClosed {});
+    }
+    let required_height = round.draw_after_height.unwrap_or(u64::MAX);
+    if env.block.height < required_height {
+        return Err(ContractError::DrawTooEarly { required_height });
+    }
+    // Ceiling on the draw window: past this, rearm to a fresh window based on
+    // the current block instead of drawing, rather than leaving the window
+    // open indefinitely (see `draw_window_blocks` doc comment on `Config`).
+    // Not an error - a caller here is doing exactly the right thing (trying
+    // to draw), the round just needs another pass through the keeper.
+    // *Unless* the rearm cap (MAX_REARMS) is already spent (2026-08-24 audit
+    // fix): rearming unconditionally here would let a patient off-chain
+    // grinder keep re-rolling for a favorable block forever whenever nobody
+    // else calls DrawWinner in the meantime. Once the cap is spent, there's
+    // no more free re-roll for anyone - this call just draws right here, at
+    // whatever height it landed on, instead of resetting the window again.
+    if env.block.height >= required_height + config.draw_window_blocks && round.rearm_count < MAX_REARMS {
+        round.rearm_count += 1;
+        round.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        ROUNDS.save(deps.storage, round.round_id, &round)?;
+        return Ok(Response::new()
+            .add_attribute("action", "rearm_draw_window")
+            .add_attribute("round_id", round.round_id.to_string())
+            .add_attribute("new_draw_after_height", round.draw_after_height.unwrap().to_string())
+            .add_attribute("rearm_count", round.rearm_count.to_string()));
+    }
+    if (round.unique_players.len() as u32) < config.min_players {
+        return Err(ContractError::NotEnoughPlayers {
+            min_players: config.min_players,
+        });
+    }
+
+    let messages = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
+    let finished_round_id = round.round_id;
+    let winner = round.winner.clone().unwrap();
+    let prize = round.prize_remaining;
+    ROUNDS.save(deps.storage, round.round_id, &round)?;
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_messages(messages)

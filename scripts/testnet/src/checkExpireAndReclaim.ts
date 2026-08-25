@@ -10,6 +10,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// This script only queries/executes against the already-deployed
+// frontenddev4 instance below (never calls instantiate itself), so it's
+// unaffected by the 2026-08-24 instantiate bounds fix as long as that
+// specific deployment stays alive. If frontenddev4 is ever retired, a
+// replacement deployment can no longer use max_round_age_seconds=180 -
+// MIN_MAX_ROUND_AGE_SECONDS is now 1 day - so this script's short sleep
+// below would need to become a real ~1 day wait (or the check would need to
+// move into a Rust unit test with a mocked env instead of a live testnet
+// script).
 async function main() {
   const { contractAddress } = JSON.parse(
     readFileSync(path.resolve(__dirname, "../deployment-wheelmanager-frontenddev4.json"), "utf8")

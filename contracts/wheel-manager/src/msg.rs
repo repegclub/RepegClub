@@ -93,6 +93,10 @@ pub struct RoundResponse {
     pub deadline: Option<u64>,
     pub closed_at: Option<u64>,
     pub draw_after_height: Option<u64>,
+    /// How many times DrawWinner has rearmed the draw window for this round
+    /// (capped at MAX_REARMS, see execute.rs) - exposed for monitoring/
+    /// observability now that it's security-relevant state.
+    pub rearm_count: u32,
     pub drawn_at: Option<u64>,
     /// Exact block height the winner-picking hash was computed at - lets
     /// anyone independently recompute `SHA-256(round_id + draw_height +

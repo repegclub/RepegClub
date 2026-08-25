@@ -50,6 +50,7 @@ async function main() {
     queryContract<{ total: string }>(RPC, { address: weeklyStubAddress, query: { get_total: {} } }),
   ]);
 
+  let autoClosed = "false";
   for (const player of players) {
     console.log(`\n${player.address} buying ticket...`);
     const res = await player.broadcastTxSync({
@@ -63,42 +64,63 @@ async function main() {
       ],
     });
     if (res.txResponse.code !== 0) throw new Error(`buy_ticket failed: ${res.txResponse.rawLog}`);
-    const autoClosed = res.txResponse.events
-      .find((e) => e.type === "wasm")
-      ?.attributes.find((a) => a.key === "auto_closed")?.value;
+    autoClosed =
+      res.txResponse.events
+        .find((e) => e.type === "wasm")
+        ?.attributes.find((a) => a.key === "auto_closed")?.value ?? "false";
     console.log(`  ok | gasUsed: ${res.txResponse.gasUsed} | auto_closed: ${autoClosed}`);
   }
 
-  console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
-  let drawRes;
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    try {
-      drawRes = await admin.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: admin.address,
-            contract: contractAddress,
-            msg: { draw_winner: {} },
-            funds: [],
-          }),
-        ],
-      });
-      if (drawRes.txResponse.code === 0) break;
-      throw new Error(drawRes.txResponse.rawLog);
-    } catch (err) {
-      console.log(`  attempt ${attempt} not ready yet, waiting 6s... (${(err as Error).message.slice(0, 80)})`);
-      drawRes = undefined;
-      await sleep(6000);
+  let winner: string | undefined;
+  let prize: string | undefined;
+  let drawGasUsed: string = "0 (drawn atomically, no separate tx)";
+
+  if (autoClosed === "true") {
+    // Reaching max_players draws atomically in the same buy_ticket call
+    // (2026-08-24 audit fix) - no separate DrawWinner call is possible for
+    // this round anymore. buy_ticket's own response doesn't carry
+    // winner/prize attributes (see execute.rs), so read them back from the
+    // round query instead.
+    console.log("\nRound sold out and drew atomically - reading the result from GetRoundHistory...");
+    const round1 = await queryContract<{ winner: string; prize_remaining: string }>(RPC, {
+      address: contractAddress,
+      query: { get_round_history: { round_id: 1 } },
+    });
+    winner = round1.winner;
+    prize = round1.prize_remaining;
+  } else {
+    console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
+    let drawRes;
+    for (let attempt = 1; attempt <= 15; attempt++) {
+      try {
+        drawRes = await admin.broadcastTxSync({
+          msgs: [
+            new MsgExecuteContract({
+              sender: admin.address,
+              contract: contractAddress,
+              msg: { draw_winner: {} },
+              funds: [],
+            }),
+          ],
+        });
+        if (drawRes.txResponse.code === 0) break;
+        throw new Error(drawRes.txResponse.rawLog);
+      } catch (err) {
+        console.log(`  attempt ${attempt} not ready yet, waiting 6s... (${(err as Error).message.slice(0, 80)})`);
+        drawRes = undefined;
+        await sleep(6000);
+      }
     }
+    if (!drawRes || drawRes.txResponse.code !== 0) {
+      throw new Error("draw_winner never succeeded after retries");
+    }
+    const wasmEvent = drawRes.txResponse.events.find((e) => e.type === "wasm");
+    winner = wasmEvent?.attributes.find((a) => a.key === "winner")?.value;
+    prize = wasmEvent?.attributes.find((a) => a.key === "prize")?.value;
+    drawGasUsed = String(drawRes.txResponse.gasUsed);
   }
-  if (!drawRes || drawRes.txResponse.code !== 0) {
-    throw new Error("draw_winner never succeeded after retries");
-  }
-  const wasmEvent = drawRes.txResponse.events.find((e) => e.type === "wasm");
-  const winner = wasmEvent?.attributes.find((a) => a.key === "winner")?.value;
-  const prize = wasmEvent?.attributes.find((a) => a.key === "prize")?.value;
-  if (!winner || !prize) throw new Error("winner/prize not found in draw_winner events");
-  console.log(`Winner: ${winner} | prize: ${prize} uluna | gasUsed: ${drawRes.txResponse.gasUsed}`);
+  if (!winner || !prize) throw new Error("winner/prize not found");
+  console.log(`Winner: ${winner} | prize: ${prize} uluna | gasUsed: ${drawGasUsed}`);
 
   const winnerWallet = players.find((p) => p.address === winner);
   if (!winnerWallet) throw new Error("winner is not one of our loaded player wallets");

@@ -64,8 +64,10 @@ async function main() {
     reportTax(`buy_ticket player${i + 1}`, res.txResponse.events);
   }
 
-  console.log("\nWaiting for the rolling close deadline (round_timeout_seconds=30) plus buffer...");
-  await sleep(35_000);
+  // round_timeout_seconds is 60 here (deployWheelManagerMainnetTest.ts's own
+  // minimum, bumped from 30 by the 2026-08-24 instantiate bounds fix).
+  console.log("\nWaiting for the rolling close deadline (round_timeout_seconds=60) plus buffer...");
+  await sleep(65_000);
 
   console.log("Closing round...");
   let closeRes;

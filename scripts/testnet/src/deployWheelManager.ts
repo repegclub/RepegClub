@@ -39,7 +39,10 @@ const ticketPrice = ticketPriceArg ?? "1000000";
 // Hard ceiling on a round's Open lifetime (see max_round_age_seconds in the
 // contract) - defaults to 48h, the low end of the original 48-72h design
 // range. Real deploys should keep this default; testnet/dev deploys can pass
-// something much shorter to actually exercise ExpireRound/ReclaimTicket.
+// something shorter to actually exercise ExpireRound/ReclaimTicket faster,
+// down to the contract's own minimum of 1 day (MIN_MAX_ROUND_AGE_SECONDS,
+// 2026-08-24 instantiate bounds fix - 0 or a few minutes is no longer
+// accepted).
 const maxRoundAgeSeconds = maxAgeArg ? Number(maxAgeArg) : 172_800;
 // Width of the anti-grinding draw window (see draw_window_blocks in the
 // contract) - defaults to 60 blocks (~5-6 min at Terra Classic's ~5.6s block
@@ -51,7 +54,9 @@ const drawWindowBlocks = drawWindowArg ? Number(drawWindowArg) : 60;
 // Days before an unredeemed prize/pot becomes sweepable (see
 // unclaimed_deadline_days in the contract) - defaults to 90, matching the
 // design doc and the contract's own test defaults. Testnet/dev deploys can
-// pass 0 to exercise SweepExpiredPrize immediately.
+// pass 1 (the contract's own minimum, MIN_UNCLAIMED_DEADLINE_DAYS - 0 is no
+// longer accepted since the 2026-08-24 instantiate bounds fix) to exercise
+// SweepExpiredPrize after the shortest possible wait.
 const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
 const weeklyStubDeploymentPath = path.resolve(__dirname, "../deployment-weekly-stub.json");

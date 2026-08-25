@@ -9,9 +9,20 @@ export type VerifyRoundResult = {
   // drawn. A healthy, promptly-acting keeper produces 0-2; a much larger gap
   // means whoever drew waited through several blocks first - not proof of
   // anything by itself (shown as plain fact, not an accusation), but the
-  // signal worth watching for a pattern across rounds.
-  drawAfterHeight: number;
-  drawGap: number;
+  // signal worth watching for a pattern across rounds. Both are null when the
+  // round sold out and drew atomically in the same transaction as the
+  // closing ticket (2026-08-24) - there's no separate draw window to measure
+  // a gap against in that case, not a missing/broken value.
+  drawAfterHeight: number | null;
+  drawGap: number | null;
+  // A rearm resets draw_after_height to a fresh window (see MAX_REARMS in
+  // execute.rs), so drawGap alone always measures against only the LAST
+  // window, not the total wait - a round that burned its full rearm budget
+  // (rearmCount === 2, the max) can render a small, reassuring drawGap even
+  // though the draw was actually delayed by up to 3 full windows. Shown
+  // alongside drawGap so that pattern isn't hidden (2026-08-24, found by an
+  // independent second-opinion review).
+  rearmCount: number;
   blockTimeIso: string;
   entrants: string[];
   digestHex: string;
@@ -109,8 +120,9 @@ export async function verifyRound(
   return {
     roundId,
     drawHeight: round.draw_height,
-    drawAfterHeight: round.draw_after_height!,
-    drawGap: round.draw_height - round.draw_after_height!,
+    drawAfterHeight: round.draw_after_height,
+    drawGap: round.draw_after_height === null ? null : round.draw_height - round.draw_after_height,
+    rearmCount: round.rearm_count,
     blockTimeIso,
     entrants,
     digestHex: toHex(digest),
@@ -134,6 +146,7 @@ export function buildVerificationPayload(result: VerifyRoundResult) {
     draw_block_height: result.drawHeight,
     draw_eligible_at_height: result.drawAfterHeight,
     draw_gap_blocks: result.drawGap,
+    draw_window_rearm_count: result.rearmCount,
     draw_block_time_utc: result.blockTimeIso,
     entrants_in_order: result.entrants,
     formula:

@@ -10,6 +10,35 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, GlobalState, CONFIG, STATE};
 
+// Bounds on the numeric `instantiate` fields that were previously accepted
+// unchecked (2026-08-24 audit fix, mirroring the same bug class
+// create-your-own-luck already closed in its own `instantiate`). Without
+// these, a pathological value (most dangerously 0) in any of these fields
+// can leave a round permanently stuck in `Open` with no way to close it.
+const MIN_ROUND_TIMEOUT_SECONDS: u64 = 60; // 1 minute
+const MAX_ROUND_TIMEOUT_SECONDS: u64 = 604_800; // 7 days - this is the rolling soft-close increment (production: 3600s), not a fixed raffle length
+const MIN_DRAW_DELAY_BLOCKS: u64 = 1;
+const MAX_DRAW_DELAY_BLOCKS: u64 = 1_000_000;
+const MIN_DRAW_WINDOW_BLOCKS: u64 = 1;
+const MAX_DRAW_WINDOW_BLOCKS: u64 = 1_000_000;
+const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
+const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
+const MIN_MAX_ROUND_AGE_SECONDS: u64 = 86_400; // 1 day
+const MAX_MAX_ROUND_AGE_SECONDS: u64 = 2_678_400; // 31 days
+/// Upper bound on `max_players`, same bug class as the timing fields above
+/// (found by an independent second-opinion review of this same fix): without
+/// it, `entrants` can grow unbounded (worst case `max_players * (max_players
+/// / 2)`, from `max_tickets_per_wallet`), making `DrawWinner`'s winner-
+/// picking scan and `execute_buy_ticket`'s per-wallet scan arbitrarily
+/// expensive - a second review round confirmed every scan of `entrants` in
+/// this contract is linear, not quadratic, and cosmwasm-vm's own ~128KiB
+/// storage-value limit is the real practical backstop either way, but this
+/// still keeps the worst case an order of magnitude below that limit instead
+/// of relying on it. 10x headroom over the real production value (10),
+/// matching create-your-own-luck's own cap on its equivalent field exactly
+/// rather than picking a different number for no reason.
+const MAX_MAX_PLAYERS: u32 = 100;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -19,6 +48,61 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
+    }
+    if msg.max_players > MAX_MAX_PLAYERS {
+        return Err(ContractError::MaxPlayersTooHigh { max: MAX_MAX_PLAYERS });
+    }
+    // A zero ticket price would make ReclaimTicket/WithdrawTicket try to send
+    // a zero-amount BankMsg::Send, which the Cosmos SDK rejects as invalid
+    // coins - permanently bricking those refund paths (same bug class again).
+    if msg.ticket_price.is_zero() {
+        return Err(ContractError::TicketPriceCannotBeZero {});
+    }
+    // Empty denom strings would make BankMsg::Send fail validation on every
+    // refund/payout path, the same brick TicketPriceCannotBeZero closes for
+    // the amount side. Deliberately NOT rejecting ticket_denom ==
+    // redemption_denom even though Redeem is economically degenerate in that
+    // case (a winner's own payment round-trips back to them instead of
+    // coming from the pool) - see weekly-round's matching check for why
+    // that's this project's own established, deliberate testnet convention.
+    if msg.ticket_denom.is_empty() || msg.redemption_denom.is_empty() {
+        return Err(ContractError::DenomCannotBeEmpty {});
+    }
+    if msg.round_timeout_seconds < MIN_ROUND_TIMEOUT_SECONDS
+        || msg.round_timeout_seconds > MAX_ROUND_TIMEOUT_SECONDS
+    {
+        return Err(ContractError::InvalidRoundTimeoutSeconds {
+            min: MIN_ROUND_TIMEOUT_SECONDS,
+            max: MAX_ROUND_TIMEOUT_SECONDS,
+        });
+    }
+    if msg.draw_delay_blocks < MIN_DRAW_DELAY_BLOCKS || msg.draw_delay_blocks > MAX_DRAW_DELAY_BLOCKS {
+        return Err(ContractError::InvalidDrawDelayBlocks {
+            min: MIN_DRAW_DELAY_BLOCKS,
+            max: MAX_DRAW_DELAY_BLOCKS,
+        });
+    }
+    if msg.draw_window_blocks < MIN_DRAW_WINDOW_BLOCKS || msg.draw_window_blocks > MAX_DRAW_WINDOW_BLOCKS {
+        return Err(ContractError::InvalidDrawWindowBlocks {
+            min: MIN_DRAW_WINDOW_BLOCKS,
+            max: MAX_DRAW_WINDOW_BLOCKS,
+        });
+    }
+    if msg.unclaimed_deadline_days < MIN_UNCLAIMED_DEADLINE_DAYS
+        || msg.unclaimed_deadline_days > MAX_UNCLAIMED_DEADLINE_DAYS
+    {
+        return Err(ContractError::InvalidUnclaimedDeadlineDays {
+            min: MIN_UNCLAIMED_DEADLINE_DAYS,
+            max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
+    }
+    if msg.max_round_age_seconds < MIN_MAX_ROUND_AGE_SECONDS
+        || msg.max_round_age_seconds > MAX_MAX_ROUND_AGE_SECONDS
+    {
+        return Err(ContractError::InvalidMaxRoundAgeSeconds {
+            min: MIN_MAX_ROUND_AGE_SECONDS,
+            max: MAX_MAX_ROUND_AGE_SECONDS,
+        });
     }
 
     let config = Config {
