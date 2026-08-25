@@ -1,10 +1,12 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128};
+use cosmwasm_std::{
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult, Uint128,
+};
 
 use crate::error::ContractError;
 use crate::execute::{
     execute_buy_ticket, execute_close_round, execute_draw_winner, execute_expire_round,
     execute_reclaim_ticket, execute_redeem, execute_sweep_expired_prize, execute_sweep_ustc,
-    execute_withdraw_ticket, open_new_round,
+    execute_withdraw_ticket, open_new_round, reply as reply_impl,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -182,6 +184,11 @@ pub fn execute(
         ExecuteMsg::ReclaimTicket { round_id } => execute_reclaim_ticket(deps, info, round_id),
         ExecuteMsg::WithdrawTicket { round_id } => execute_withdraw_ticket(deps, info, round_id),
     }
+}
+
+#[entry_point]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    reply_impl(deps, msg)
 }
 
 #[entry_point]

@@ -1,14 +1,14 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdResult,
-    Storage, Uint128, WasmMsg,
+    to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Reply, Response,
+    StdResult, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
 use crate::state::{
-    Config, GlobalState, Round, RoundStatus, CONFIG, ROUNDS, STATE, TOTAL_INVESTED,
-    TOTAL_REDEEMED, WINNER_INDEX,
+    Config, GlobalState, Round, RoundStatus, CONFIG, PENDING_WEEKLY_CONTRIBUTION, ROUNDS, STATE,
+    TOTAL_INVESTED, TOTAL_REDEEMED, WINNER_INDEX,
 };
 
 const PRIZE_BPS: u128 = 6000; // 60%
@@ -31,6 +31,24 @@ const BPS_DENOM: u128 = 10000;
 /// really is an unbounded grinding window. 2 matches the value already
 /// proven out there.
 const MAX_REARMS: u32 = 2;
+
+/// Reply id for the `ContributeToPool` `SubMsg` dispatched to Weekly Round in
+/// `perform_draw` (2026-08-25 audit fix, own finding: `execute_draw_winner`'s
+/// state changes - `ROUNDS.save` with `status=Drawn`, `winner`,
+/// `prize_remaining`, etc. - were already committed before this message was
+/// built, but it was previously dispatched as a plain, all-or-nothing
+/// `CosmosMsg`. Per CosmWasm/wasmd, any message in a `Response` failing to
+/// dispatch reverts the *entire* transaction, so a future failure inside
+/// Weekly Round's own `ContributeToPool` (a bug, a bad migration, a new
+/// guard added there later) would revert the *whole* wheel-manager draw -
+/// winner payout, treasury cut and admin cut included, none of which have
+/// anything to do with Weekly Round. Wrapped as `SubMsg::reply_on_error`
+/// instead: the draw's other payouts go through regardless, and a failed
+/// contribution gets redirected to the treasury from the reply handler
+/// instead of being silently swallowed with no destination (see
+/// `PENDING_WEEKLY_CONTRIBUTION`'s doc comment for why storage, not the
+/// reply's own payload, carries the amount across).
+const WEEKLY_CONTRIBUTION_REPLY_ID: u64 = 1;
 
 /// Mirrors Weekly Round's `ExecuteMsg::ContributeToPool` just enough to build the
 /// outbound message. Deliberately not a shared crate dependency between the two
@@ -134,6 +152,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
 
     let auto_closed = round.unique_players.len() as u32 >= config.max_players;
     let mut messages: Vec<CosmosMsg> = vec![];
+    let mut weekly_submsg: Option<SubMsg> = None;
     if auto_closed {
         round.status = RoundStatus::Closed;
         round.closed_at = Some(env.block.time);
@@ -151,7 +170,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
         // draw immediately here - max_players >= min_players is enforced at
         // instantiate, so reaching max_players already implies min_players
         // is met.
-        messages = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
+        (messages, weekly_submsg) = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
         STATE.save(deps.storage, &state)?;
     }
 
@@ -160,6 +179,7 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
 
     Ok(Response::new()
         .add_messages(messages)
+        .add_submessages(weekly_submsg)
         .add_attribute("action", "buy_ticket")
         .add_attribute("buyer", info.sender)
         .add_attribute("round_id", round.round_id.to_string())
@@ -340,10 +360,13 @@ pub fn execute_withdraw_ticket(
 
 /// Draws a winner for `round` (already validated as drawable by the caller),
 /// transitions it to `Drawn`, advances global state to the next round, and
-/// opens that new round - returning the payout/contribution messages.
-/// Caller is responsible for saving `round` (under its own, unchanged
-/// `round_id`) and `state` afterward; this only mutates them in place plus
-/// whatever storage `open_new_round`/`add_winning` touch directly. Shared by
+/// opens that new round - returning the payout messages plus, if the pool
+/// has a nonzero weekly cut, the Weekly Round `ContributeToPool` `SubMsg`
+/// separately (see `WEEKLY_CONTRIBUTION_REPLY_ID` doc comment for why it's a
+/// `SubMsg`, not a plain message alongside the rest). Caller is responsible
+/// for saving `round` (under its own, unchanged `round_id`) and `state`
+/// afterward; this only mutates them in place plus whatever storage
+/// `open_new_round`/`add_winning` touch directly. Shared by
 /// `execute_draw_winner` (the separate post-window call) and
 /// `execute_buy_ticket`'s atomic sold-out path (2026-08-24 audit fix).
 fn perform_draw(
@@ -352,7 +375,7 @@ fn perform_draw(
     config: &Config,
     state: &mut GlobalState,
     round: &mut Round,
-) -> StdResult<Vec<CosmosMsg>> {
+) -> StdResult<(Vec<CosmosMsg>, Option<SubMsg>)> {
     let winner_index = pick_winner_index(
         round.round_id,
         env.block.height,
@@ -416,8 +439,21 @@ fn perform_draw(
             .into(),
         );
     }
-    if !weekly_cut.is_zero() {
-        messages.push(
+    let weekly_submsg = if !weekly_cut.is_zero() {
+        // Recorded so the reply handler knows how much to redirect to the
+        // treasury if this fails - see PENDING_WEEKLY_CONTRIBUTION's doc
+        // comment. Safe against overlap: each execute call only ever builds
+        // one of these, and the only way a second could be dispatched before
+        // this one's reply resolves is reentrancy - Weekly Round's
+        // execute_contribute_to_pool dispatches no messages of its own today
+        // (confirmed by reading it directly), so there's no path back into
+        // this contract while this SubMsg is in flight. reply_on_error also
+        // helps here even if that ever changed: a failed SubMsg discards
+        // every state change made *inside* its own dispatch (including any
+        // nested save to this same Item), so this reply always reads back
+        // the value it just wrote, not one clobbered by a reentrant call.
+        PENDING_WEEKLY_CONTRIBUTION.save(storage, &weekly_cut)?;
+        Some(SubMsg::reply_on_error(
             WasmMsg::Execute {
                 contract_addr: config.weekly_round_address.to_string(),
                 msg: to_json_binary(&WeeklyRoundExecuteMsg::ContributeToPool {
@@ -428,12 +464,14 @@ fn perform_draw(
                     denom: config.ticket_denom.clone(),
                     amount: weekly_cut,
                 }],
-            }
-            .into(),
-        );
-    }
+            },
+            WEEKLY_CONTRIBUTION_REPLY_ID,
+        ))
+    } else {
+        None
+    };
 
-    Ok(messages)
+    Ok((messages, weekly_submsg))
 }
 
 pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
@@ -475,7 +513,7 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
         });
     }
 
-    let messages = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
+    let (messages, weekly_submsg) = perform_draw(deps.storage, &env, &config, &mut state, &mut round)?;
     let finished_round_id = round.round_id;
     let winner = round.winner.clone().unwrap();
     let prize = round.prize_remaining;
@@ -484,10 +522,65 @@ pub fn execute_draw_winner(deps: DepsMut, env: Env) -> Result<Response, Contract
 
     Ok(Response::new()
         .add_messages(messages)
+        .add_submessages(weekly_submsg)
         .add_attribute("action", "draw_winner")
         .add_attribute("round_id", finished_round_id.to_string())
         .add_attribute("winner", winner)
         .add_attribute("prize", prize.to_string()))
+}
+
+/// Handles the reply from the `ContributeToPool` `SubMsg` dispatched in
+/// `perform_draw` (see `WEEKLY_CONTRIBUTION_REPLY_ID`'s doc comment for the
+/// full rationale). `reply_on_error` only invokes this on failure - a
+/// successful contribution never reaches here at all. Redirects the amount
+/// that would have gone to Weekly Round to the treasury instead, rather than
+/// leaving it stranded in this contract with no path to recovery (same
+/// "never orphan funds" standard the project already holds itself to via
+/// `SweepUstc`/`SweepExpiredPrize`). Safe to do: per CosmWasm/wasmd, a failed
+/// `SubMsg`'s state changes - including the funds transfer bundled into
+/// dispatching `WasmMsg::Execute` - are rolled back with it, so the amount is
+/// still sitting in this contract's own balance when this runs, not actually
+/// gone.
+fn handle_weekly_contribution_reply(
+    deps: DepsMut,
+    result: SubMsgResult,
+) -> Result<Response, ContractError> {
+    // reply_on_error only ever dispatches this handler on failure - but
+    // reply_on is a config choice on the SubMsg, not a compiler guarantee,
+    // so this doesn't panic if some future edit switches the dispatch to
+    // reply_always. An Ok reply just means the contribution went through
+    // normally: nothing to redirect, and PENDING_WEEKLY_CONTRIBUTION is left
+    // as-is - harmless, since it's only ever read right after being freshly
+    // written by the next dispatch, never on its own.
+    let error = match result {
+        SubMsgResult::Ok(_) => return Ok(Response::new()),
+        SubMsgResult::Err(e) => e,
+    };
+    let config = CONFIG.load(deps.storage)?;
+    let amount = PENDING_WEEKLY_CONTRIBUTION.load(deps.storage)?;
+    PENDING_WEEKLY_CONTRIBUTION.remove(deps.storage);
+
+    let mut response = Response::new()
+        .add_attribute("action", "weekly_contribution_failed")
+        .add_attribute("error", error)
+        .add_attribute("redirected_to_treasury", amount.to_string());
+    if !amount.is_zero() {
+        response = response.add_message(BankMsg::Send {
+            to_address: config.treasury_address.to_string(),
+            amount: vec![Coin {
+                denom: config.ticket_denom.clone(),
+                amount,
+            }],
+        });
+    }
+    Ok(response)
+}
+
+pub fn reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        WEEKLY_CONTRIBUTION_REPLY_ID => handle_weekly_contribution_reply(deps, msg.result),
+        id => Err(ContractError::UnknownReplyId { id }),
+    }
 }
 
 pub fn execute_redeem(

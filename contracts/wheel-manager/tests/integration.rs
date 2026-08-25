@@ -1,7 +1,9 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{coin, coins, from_json, CosmosMsg, Uint128, WasmMsg};
+use cosmwasm_std::{
+    coin, coins, from_json, BankMsg, CosmosMsg, Reply, SubMsgResult, Uint128, WasmMsg,
+};
 
-use wheel_manager::contract::{execute, instantiate, query};
+use wheel_manager::contract::{execute, instantiate, query, reply};
 use wheel_manager::msg::{
     ConfigResponse, EntrantsResponse, ExecuteMsg, InstantiateMsg, MyWinningsResponse, QueryMsg,
     RoundResponse, WalletStatsResponse,
@@ -315,6 +317,73 @@ fn draw_winner_rearm_cap_forces_a_draw_once_spent() {
     assert_eq!(round1.status, RoundStatus::Drawn);
     assert!(round1.winner.is_some());
     assert_eq!(round1.draw_height, Some(env3.block.height));
+}
+
+#[test]
+fn draw_winner_dispatches_weekly_contribution_as_a_submsg_and_a_failed_reply_redirects_it_to_treasury(
+) {
+    // 2026-08-25 audit fix (Fix #3): the weekly contribution to Weekly Round
+    // used to be a plain, all-or-nothing CosmosMsg alongside the winner's
+    // payout - if it ever failed, the *entire* draw (winner payout included)
+    // would revert. It's now a SubMsg::reply_on_error, so the draw goes
+    // through regardless, and a failure gets redirected to the treasury
+    // instead of vanishing. max_players=2 so the 2nd ticket purchase draws
+    // atomically (2026-08-24 auto-close path), exercising the same SubMsg
+    // wiring as the separate DrawWinner call.
+    let (mut deps, env) = setup(2, 2);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    let res = buy_ticket(&mut deps, &env, "player2").unwrap();
+
+    // pool = 2_000_000 -> weekly cut (20%) = 400_000.
+    let weekly_submsg = res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) if contract_addr == "weeklyround"))
+        .expect("weekly contribution SubMsg missing");
+    // reply_on_error, not ReplyOn::Never like the treasury/admin BankMsgs -
+    // asserted explicitly (not just != Never) so a future accidental switch
+    // to reply_always (which would make handle_weekly_contribution_reply's
+    // Ok-branch reachable on every successful contribution, not just
+    // failures) fails this test. Same reasoning for hardcoding the reply id
+    // (1, WEEKLY_CONTRIBUTION_REPLY_ID in execute.rs - not re-exported, so
+    // can't be referenced by name from this integration test crate) instead
+    // of round-tripping weekly_submsg.id back into the Reply below, which
+    // would silently pass even if the dispatched id ever drifted from 1.
+    assert_eq!(weekly_submsg.reply_on, cosmwasm_std::ReplyOn::Error);
+    assert_eq!(weekly_submsg.id, 1);
+
+    // Simulate the chain reporting that dispatch failed (eg. a future bug in
+    // Weekly Round's own ContributeToPool).
+    let reply_res = reply(
+        deps.as_mut(),
+        env.clone(),
+        Reply {
+            id: 1,
+            result: SubMsgResult::Err("mock weekly round failure".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        reply_res.attributes.iter().find(|a| a.key == "action").unwrap().value,
+        "weekly_contribution_failed"
+    );
+    assert_eq!(reply_res.messages.len(), 1);
+    match &reply_res.messages[0].msg {
+        CosmosMsg::Bank(BankMsg::Send { to_address, amount }) => {
+            assert_eq!(to_address, "treasury");
+            assert_eq!(amount, &coins(400_000, TICKET_DENOM));
+        }
+        other => panic!("expected a BankMsg::Send to the treasury, got {other:?}"),
+    }
+
+    // The draw itself already went through in the original BuyTicket call,
+    // independent of this reply - the winner is set and the round is Drawn
+    // regardless of the weekly contribution's fate.
+    let round1 = query(deps.as_ref(), env.clone(), QueryMsg::GetRoundHistory { round_id: 1 }).unwrap();
+    let round1: RoundResponse = from_json(round1).unwrap();
+    assert_eq!(round1.status, RoundStatus::Drawn);
+    assert!(round1.winner.is_some());
 }
 
 #[test]

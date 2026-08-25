@@ -98,4 +98,7 @@ pub enum ContractError {
 
     #[error("ticket_denom and redemption_denom must be valid, non-empty denominations (3-128 chars, starting with a letter)")]
     InvalidDenom {},
+
+    #[error("Unexpected reply id: {id}")]
+    UnknownReplyId { id: u64 },
 }

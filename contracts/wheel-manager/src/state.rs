@@ -95,6 +95,18 @@ pub struct GlobalState {
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const STATE: Item<GlobalState> = Item::new("state");
 pub const ROUNDS: Map<u64, Round> = Map::new("rounds");
+/// Amount pending redirection to `treasury_address` if the in-flight
+/// `ContributeToPool` `SubMsg` to Weekly Round (dispatched from
+/// `perform_draw`, see `WEEKLY_CONTRIBUTION_REPLY_ID` in `execute.rs`) fails.
+/// Only ever meant to hold a value between dispatching that `SubMsg` and its
+/// reply resolving - see the doc comment where it's written in `execute.rs`
+/// for why a single un-keyed `Item` (not a map) is safe against overlap.
+/// Deliberately left unset (not cleared) after a *successful* contribution -
+/// `reply_on_error` never invokes the reply handler in that case, so there's
+/// no hook to clear it from; the stale value is harmless, since it's only
+/// ever read immediately after the next dispatch freshly overwrites it, not
+/// on its own.
+pub const PENDING_WEEKLY_CONTRIBUTION: Item<Uint128> = Item::new("pending_weekly_contribution");
 /// wallet -> round_ids where that wallet is the winner and prize_remaining > 0.
 pub const WINNER_INDEX: Map<Addr, Vec<u64>> = Map::new("winner_index");
 /// wallet -> lifetime ticket spend across every round, net of any
