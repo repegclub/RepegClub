@@ -1,5 +1,5 @@
-use cosmwasm_std::{Addr, Timestamp, Uint128};
-use cw_storage_plus::{Item, Map};
+use cosmwasm_std::{Addr, Empty, HexBinary, Timestamp, Uint128};
+use cw_storage_plus::{Deque, Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -13,14 +13,12 @@ pub struct Config {
     pub min_players: u32,
     pub max_players: u32,
     pub round_duration_days: u64,
-    pub draw_delay_blocks: u64,
-    /// Width, in blocks, of the window after `draw_after_height` during which
-    /// `DrawWeeklyWinner` actually draws. See the matching field in
-    /// wheel-manager's `Config` for the full rationale.
-    pub draw_window_blocks: u64,
     /// Days after a week is drawn before an unredeemed prize can be swept to
     /// the treasury by anyone via `SweepExpiredPrize` (no admin discretion).
     pub unclaimed_deadline_days: u64,
+    /// See wheel-manager's matching `Config` field for the full rationale.
+    /// Bounded at `instantiate` - see `contract::MIN_MAX_REVEAL_AGE_SECONDS`.
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
 }
@@ -30,10 +28,13 @@ pub struct Config {
 pub enum RoundStatus {
     Open,
     Closed,
+    /// See wheel-manager's matching `RoundStatus` variant for the full
+    /// rationale - same 3-phase expiration mechanism, applied here.
+    ExpiryPending,
     Drawn,
-    /// Never reached `min_players` before `round_duration_days` elapsed -
-    /// terminal, resolved via `ReclaimTicket` instead of `Redeem` since
-    /// there's no winner, just buyers getting their own money back.
+    /// Never reached `min_players` before `round_duration_days` elapsed, OR
+    /// reached `Closed` but nobody ever revealed it in time - terminal
+    /// either way, resolved via `ReclaimTicket` instead of `Redeem`.
     Expired,
 }
 
@@ -52,13 +53,17 @@ pub struct Week {
     pub ticket_payments: Vec<(Addr, Uint128)>,
     pub opened_at: Timestamp,
     pub closed_at: Option<Timestamp>,
-    pub draw_after_height: Option<u64>,
+    /// See wheel-manager's matching `Round` field for the full rationale.
+    pub closed_at_height: Option<u64>,
+    /// See wheel-manager's matching `Round` field.
+    pub commit_used: Option<HexBinary>,
+    /// See wheel-manager's matching `Round` field.
+    pub revealed_preimage: Option<HexBinary>,
+    /// See wheel-manager's matching `Round` field.
+    pub expire_requested_at_height: Option<u64>,
+    /// See wheel-manager's matching `Round` field.
+    pub expiry_pending_since_height: Option<u64>,
     pub drawn_at: Option<Timestamp>,
-    /// Exact block height the winner-picking hash was computed at (see
-    /// `rand::pick_winner_index`) - `draw_after_height` is only the *minimum*
-    /// required height, not necessarily the one actually used, so this is
-    /// stored separately to let anyone verify the draw from the query alone.
-    pub draw_height: Option<u64>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
     /// Set when the week transitions to `Expired`.
@@ -71,6 +76,10 @@ impl Week {
     }
 }
 
+/// Global, non-week-scoped state: which week is currently active. Unlike
+/// wheel-manager, there's no self-generated carry between weeks (the only
+/// external input is `wheel_contributions`, routed via `PENDING_CONTRIBUTIONS`
+/// below - see `execute::route_carry`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct GlobalState {
     pub current_week_id: u64,
@@ -79,6 +88,20 @@ pub struct GlobalState {
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const STATE: Item<GlobalState> = Item::new("state");
 pub const WEEKS: Map<u64, Week> = Map::new("weeks");
+/// Wheel Manager contributions that arrived while no week was `Open` to
+/// credit them to directly - drained by `open_new_week` the next time a week
+/// opens. See wheel-manager's `GlobalState::next_round_carry` doc comment for
+/// why this should be structurally unreachable in normal operation, but kept
+/// as cheap defense in depth anyway.
+pub const PENDING_CONTRIBUTIONS: Item<Uint128> = Item::new("pending_contributions");
+/// See wheel-manager's matching constant's doc comment - same mechanism.
+pub const REVEAL_QUEUE: Deque<u64> = Deque::new("reveal_queue");
+/// See wheel-manager's matching constant's doc comment - same mechanism,
+/// independent of wheel-manager's own queue (this contract generates and
+/// manages its own commits).
+pub const COMMIT_QUEUE: Deque<HexBinary> = Deque::new("commit_queue");
+/// See wheel-manager's matching constant's doc comment.
+pub const USED_COMMITS: Map<&[u8], Empty> = Map::new("used_commits");
 /// wallet -> week_ids where that wallet is the winner and prize_remaining > 0.
 pub const WINNER_INDEX: Map<Addr, Vec<u64>> = Map::new("winner_index");
 /// wallet -> lifetime ticket spend across every week, net of any

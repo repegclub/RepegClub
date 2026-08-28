@@ -1,12 +1,14 @@
 use cosmwasm_std::{
-    Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdResult, Storage,
-    Timestamp, Uint128,
+    Addr, BankMsg, Coin, CosmosMsg, DepsMut, Empty, Env, HexBinary, MessageInfo, Response,
+    Storage, Timestamp, Uint128,
 };
+use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
 use crate::state::{
-    Config, RoundStatus, Week, CONFIG, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, WEEKS, WINNER_INDEX,
+    Config, GlobalState, RoundStatus, Week, CONFIG, COMMIT_QUEUE, PENDING_CONTRIBUTIONS,
+    REVEAL_QUEUE, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, USED_COMMITS, WEEKS, WINNER_INDEX,
 };
 
 const PRIZE_BPS: u128 = 8500; // 85%
@@ -15,37 +17,73 @@ const ADMIN_BPS: u128 = 300; // 3%
 const BPS_DENOM: u128 = 10000;
 const SECONDS_PER_DAY: u64 = 86400;
 
-pub fn open_new_week(
-    storage: &mut dyn Storage,
-    env: &Env,
-    week_id: u64,
-    carry_in_contributions: Uint128,
-) -> StdResult<()> {
+/// See wheel-manager's matching constants' doc comments - same mechanism.
+pub const EXPIRE_FINALIZE_DELAY_BLOCKS: u64 = 100;
+pub const EXPIRE_CHALLENGE_BLOCKS: u64 = 100;
+pub const REQUEST_EXPIRE_TTL_BLOCKS: u64 = 200;
+pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
+pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
+
+pub fn open_new_week(storage: &mut dyn Storage, env: &Env, week_id: u64) -> Result<(), ContractError> {
+    if WEEKS.has(storage, week_id) {
+        return Err(ContractError::WeekAlreadyExists { week_id });
+    }
+    let commit_used = COMMIT_QUEUE.pop_front(storage)?;
     let week = Week {
         week_id,
         status: RoundStatus::Open,
         entrants: vec![],
         unique_players: vec![],
         ticket_sales_pool: Uint128::zero(),
-        wheel_contributions: carry_in_contributions,
+        wheel_contributions: Uint128::zero(),
         ticket_payments: vec![],
         opened_at: env.block.time,
         closed_at: None,
-        draw_after_height: None,
+        closed_at_height: None,
+        commit_used,
+        revealed_preimage: None,
+        expire_requested_at_height: None,
+        expiry_pending_since_height: None,
         drawn_at: None,
-        draw_height: None,
         winner: None,
         prize_remaining: Uint128::zero(),
         expired_at: None,
     };
-    WEEKS.save(storage, week_id, &week)
+    WEEKS.save(storage, week_id, &week)?;
+    Ok(())
 }
 
-pub fn today_price(config: &Config, week: &Week, now: Timestamp) -> Uint128 {
-    let elapsed_days = now.seconds().saturating_sub(week.opened_at.seconds()) / SECONDS_PER_DAY;
-    config.base_ticket_price + config.price_increment_per_day * Uint128::from(elapsed_days)
+/// See wheel-manager's matching `route_carry` doc comment - same mechanism,
+/// applied to `wheel_contributions` instead of a self-generated carry.
+pub fn route_carry(storage: &mut dyn Storage, amount: Uint128) -> Result<(), ContractError> {
+    if amount.is_zero() {
+        return Ok(());
+    }
+    let mut pending = PENDING_CONTRIBUTIONS.may_load(storage)?.unwrap_or_default();
+    pending += amount;
+    let state = STATE.load(storage)?;
+    if let Some(mut current) = WEEKS.may_load(storage, state.current_week_id)? {
+        if current.status == RoundStatus::Open {
+            current.wheel_contributions += pending;
+            pending = Uint128::zero();
+            WEEKS.save(storage, current.week_id, &current)?;
+        }
+    }
+    PENDING_CONTRIBUTIONS.save(storage, &pending)?;
+    Ok(())
 }
 
+/// Deliberately infallible by week status (or by `commit_used`/queue state -
+/// there is no such check here at all): this is called from wheel-manager as
+/// a plain message (`reply_on: Never`), so if it could fail by state, it
+/// would fail wheel-manager's entire reveal transaction, and under v9 that
+/// transaction is the only way a round resolves at all (see the project's
+/// Obsidian design notes on the Ronda 9 finding this guards against - v8's
+/// `Closed`-awaiting-reveal state is exactly the kind of state a "reject if
+/// not Open" gate would trip on, added "for symmetry" by an implementer who
+/// didn't trace this cross-contract dependency). The only validation here is
+/// on the funds actually sent, which wheel-manager already guarantees are
+/// non-zero before calling this.
 pub fn execute_contribute_to_pool(
     deps: DepsMut,
     info: MessageInfo,
@@ -53,9 +91,6 @@ pub fn execute_contribute_to_pool(
     source_round_id: u64,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
-    let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
-
     let sent_amount = info
         .funds
         .iter()
@@ -65,9 +100,7 @@ pub fn execute_contribute_to_pool(
     if sent_amount.is_zero() {
         return Err(ContractError::NoFundsSent {});
     }
-
-    week.wheel_contributions += sent_amount;
-    WEEKS.save(deps.storage, week.week_id, &week)?;
+    route_carry(deps.storage, sent_amount)?;
 
     Ok(Response::new()
         .add_attribute("action", "contribute_to_pool")
@@ -76,22 +109,26 @@ pub fn execute_contribute_to_pool(
         .add_attribute("amount", sent_amount.to_string()))
 }
 
-/// No single wallet may hold more than half of a week's `max_players` worth
-/// of tickets - bounds the worst-case size of `entrants` (so
-/// `DrawWeeklyWinner`'s winner-picking hash can never grow unbounded) while
-/// still leaving room for the weighted-wheel "buy more, better odds" feature.
-/// Not a separate config field on purpose - always derived from `max_players`.
+pub fn today_price(config: &Config, week: &Week, now: Timestamp) -> Uint128 {
+    let elapsed_days = now.seconds().saturating_sub(week.opened_at.seconds()) / SECONDS_PER_DAY;
+    config.base_ticket_price + config.price_increment_per_day * Uint128::from(elapsed_days)
+}
+
+/// See wheel-manager's matching `max_tickets_per_wallet`.
 pub fn max_tickets_per_wallet(max_players: u32) -> u32 {
     std::cmp::max(1, max_players / 2)
 }
 
 pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
     let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
 
     if week.status != RoundStatus::Open {
         return Err(ContractError::WeekNotOpen {});
+    }
+    if week.commit_used.is_none() {
+        return Err(ContractError::WeekNotSeeded {});
     }
 
     // Once the week is stale (never reached min_players within
@@ -137,12 +174,11 @@ pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> 
 
     let auto_closed = week.unique_players.len() as u32 >= config.max_players;
     if auto_closed {
-        week.status = RoundStatus::Closed;
-        week.closed_at = Some(env.block.time);
-        week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+        close_week_and_advance(deps.storage, &env, &mut state, &mut week)?;
+        STATE.save(deps.storage, &state)?;
+    } else {
+        WEEKS.save(deps.storage, week.week_id, &week)?;
     }
-
-    WEEKS.save(deps.storage, week.week_id, &week)?;
     add_invested(deps.storage, &info.sender, sent_amount)?;
 
     Ok(Response::new()
@@ -153,9 +189,29 @@ pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> 
         .add_attribute("auto_closed", auto_closed.to_string()))
 }
 
+/// See wheel-manager's matching `close_round_and_advance` doc comment - same
+/// mechanism: closes, enqueues for reveal, and opens the successor
+/// atomically, without ever drawing a winner itself.
+fn close_week_and_advance(
+    storage: &mut dyn Storage,
+    env: &Env,
+    state: &mut GlobalState,
+    week: &mut Week,
+) -> Result<(), ContractError> {
+    week.status = RoundStatus::Closed;
+    week.closed_at = Some(env.block.time);
+    week.closed_at_height = Some(env.block.height);
+    WEEKS.save(storage, week.week_id, week)?;
+    REVEAL_QUEUE.push_back(storage, &week.week_id)?;
+
+    state.current_week_id += 1;
+    open_new_week(storage, env, state.current_week_id)?;
+    Ok(())
+}
+
 pub fn execute_close_week(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let state = STATE.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
     let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
 
     if week.status != RoundStatus::Open {
@@ -171,20 +227,22 @@ pub fn execute_close_week(deps: DepsMut, env: Env) -> Result<Response, ContractE
         return Err(ContractError::CannotCloseWeek {});
     }
 
-    week.status = RoundStatus::Closed;
-    week.closed_at = Some(env.block.time);
-    week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
-    WEEKS.save(deps.storage, week.week_id, &week)?;
+    let week_id = week.week_id;
+    close_week_and_advance(deps.storage, &env, &mut state, &mut week)?;
+    STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
         .add_attribute("action", "close_week")
-        .add_attribute("week_id", week.week_id.to_string()))
+        .add_attribute("week_id", week_id.to_string()))
 }
 
 /// Permissionless. Only fires when `min_players` was never reached and
 /// `round_duration_days` has elapsed - the counterpart to `CloseWeek` for a
 /// week that never got enough interest. Opens the next week immediately so
-/// the game isn't stuck waiting on this one to be resolved.
+/// the game isn't stuck waiting on this one to be resolved. This week never
+/// entered `REVEAL_QUEUE` (it never reached `Closed`), so unlike
+/// `claim_expired_week` this is the one place that's still correct to open
+/// a successor itself.
 pub fn execute_expire_week(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut state = STATE.load(deps.storage)?;
@@ -214,8 +272,16 @@ pub fn execute_expire_week(deps: DepsMut, env: Env) -> Result<Response, Contract
 
     state.current_week_id += 1;
     let new_week_id = state.current_week_id;
+    open_new_week(deps.storage, &env, new_week_id)?;
+    // STATE must be saved before route_carry: it re-reads GlobalState from
+    // storage internally (unlike wheel-manager's version, which takes it by
+    // reference), so calling it before this save would see the *old*
+    // current_week_id - exactly the ordering bug the project's Obsidian v9
+    // design notes flagged as a risk (Fix L). Caught by
+    // `expire_week_carries_wheel_contributions_forward_but_not_ticket_money`
+    // failing when this was ordered the other way around.
     STATE.save(deps.storage, &state)?;
-    open_new_week(deps.storage, &env, new_week_id, carry_forward)?;
+    route_carry(deps.storage, carry_forward)?;
 
     Ok(Response::new()
         .add_attribute("action", "expire_week")
@@ -312,40 +378,34 @@ pub fn execute_withdraw_ticket(
         .add_attribute("amount", refund.to_string()))
 }
 
-pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+/// Reveals the winner for the week at the front of `REVEAL_QUEUE` - see
+/// wheel-manager's matching `execute_reveal_draw` doc comment.
+pub fn execute_reveal_draw(
+    deps: DepsMut,
+    env: Env,
+    week_id: u64,
+    preimage: HexBinary,
+) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != week_id {
+        return Err(ContractError::QueueMismatch { front, week_id });
+    }
+
     let config = CONFIG.load(deps.storage)?;
-    let mut state = STATE.load(deps.storage)?;
-    let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
-
-    if week.status != RoundStatus::Closed {
-        return Err(ContractError::WeekNotClosed {});
+    let mut week = WEEKS.load(deps.storage, week_id)?;
+    if week.status != RoundStatus::Closed && week.status != RoundStatus::ExpiryPending {
+        return Err(ContractError::WeekNotRevealable {});
     }
-    let required_height = week.draw_after_height.unwrap_or(u64::MAX);
-    if env.block.height < required_height {
-        return Err(ContractError::DrawTooEarly { required_height });
+    let commit = week.commit_used.clone().ok_or(ContractError::WeekNotSeeded {})?;
+    let digest = Sha256::digest(preimage.as_slice());
+    if digest.as_slice() != commit.as_slice() {
+        return Err(ContractError::BadPreimage {});
     }
-    // Ceiling on the draw window - see wheel-manager's execute_draw_winner
-    // for the full rationale. Not an error, just a rearm to a fresh window.
-    if env.block.height >= required_height + config.draw_window_blocks {
-        week.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
-        WEEKS.save(deps.storage, week.week_id, &week)?;
-        return Ok(Response::new()
-            .add_attribute("action", "rearm_draw_window")
-            .add_attribute("week_id", week.week_id.to_string())
-            .add_attribute("new_draw_after_height", week.draw_after_height.unwrap().to_string()));
-    }
-    if (week.unique_players.len() as u32) < config.min_players {
-        return Err(ContractError::NotEnoughPlayers {
-            min_players: config.min_players,
-        });
+    if week.unique_players.is_empty() {
+        return Err(ContractError::NotEnoughPlayers { min_players: 0 });
     }
 
-    let winner_index = pick_winner_index(
-        week.week_id,
-        env.block.height,
-        env.block.time.nanos(),
-        &week.entrants,
-    );
+    let winner_index = pick_winner_index(&env.contract.address, week_id, preimage.as_slice(), &week.entrants);
     let winner = week.entrants[winner_index].clone();
 
     let gross = week.pool();
@@ -359,18 +419,16 @@ pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, C
     week.winner = Some(winner.clone());
     week.prize_remaining = prize;
     week.drawn_at = Some(env.block.time);
-    week.draw_height = Some(env.block.height);
+    week.revealed_preimage = Some(preimage);
+    week.expire_requested_at_height = None;
+    week.expiry_pending_since_height = None;
     let finished_week_id = week.week_id;
     WEEKS.save(deps.storage, week.week_id, &week)?;
+    REVEAL_QUEUE.pop_front(deps.storage)?; // safe: front == week_id, already confirmed above
 
     if !prize.is_zero() {
         add_winning(deps.storage, winner.clone(), finished_week_id)?;
     }
-
-    state.current_week_id += 1;
-    let new_week_id = state.current_week_id;
-    STATE.save(deps.storage, &state)?;
-    open_new_week(deps.storage, &env, new_week_id, Uint128::zero())?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     if !treasury_cut.is_zero() {
@@ -400,10 +458,164 @@ pub fn execute_draw_weekly_winner(deps: DepsMut, env: Env) -> Result<Response, C
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_attribute("action", "draw_weekly_winner")
+        .add_attribute("action", "reveal_draw")
         .add_attribute("week_id", finished_week_id.to_string())
         .add_attribute("winner", winner)
         .add_attribute("prize", prize.to_string()))
+}
+
+/// Admin-only. See wheel-manager's matching `execute_push_commits`.
+pub fn execute_push_commits(
+    deps: DepsMut,
+    info: MessageInfo,
+    commits: Vec<HexBinary>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    if commits.is_empty() || commits.len() as u32 > PUSH_COMMITS_MAX_BATCH {
+        return Err(ContractError::InvalidCommitBatch { max: PUSH_COMMITS_MAX_BATCH });
+    }
+    let current_len = COMMIT_QUEUE.len(deps.storage)?;
+    if current_len + commits.len() as u32 > MAX_COMMIT_QUEUE_LEN {
+        return Err(ContractError::CommitQueueFull { max: MAX_COMMIT_QUEUE_LEN });
+    }
+
+    let mut seen_in_batch: Vec<HexBinary> = Vec::with_capacity(commits.len());
+    for commit in &commits {
+        if commit.len() != 32 {
+            return Err(ContractError::InvalidCommitLength {});
+        }
+        if USED_COMMITS.has(deps.storage, commit.as_slice()) || seen_in_batch.contains(commit) {
+            return Err(ContractError::CommitAlreadyUsed {});
+        }
+        seen_in_batch.push(commit.clone());
+    }
+    for commit in &commits {
+        USED_COMMITS.save(deps.storage, commit.as_slice(), &Empty {})?;
+        COMMIT_QUEUE.push_back(deps.storage, commit)?;
+    }
+
+    Ok(Response::new()
+        .add_attribute("action", "push_commits")
+        .add_attribute("count", commits.len().to_string()))
+}
+
+/// Permissionless backfill - see wheel-manager's matching `execute_assign_commit`.
+pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+    let mut week = WEEKS.load(deps.storage, state.current_week_id)?;
+    if week.status != RoundStatus::Open || !week.entrants.is_empty() {
+        return Err(ContractError::CannotAssignCommit {});
+    }
+    if week.commit_used.is_some() {
+        return Err(ContractError::CommitAlreadyAssigned {});
+    }
+    let commit = COMMIT_QUEUE.pop_front(deps.storage)?.ok_or(ContractError::NoCommitsAvailable {})?;
+    week.commit_used = Some(commit);
+    WEEKS.save(deps.storage, week.week_id, &week)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "assign_commit")
+        .add_attribute("week_id", week.week_id.to_string()))
+}
+
+/// Permissionless. First step of the 3-phase expiration - see wheel-manager's
+/// matching `execute_request_expire_closed_round`.
+pub fn execute_request_expire_closed_week(
+    deps: DepsMut,
+    env: Env,
+    week_id: u64,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut week = WEEKS
+        .may_load(deps.storage, week_id)?
+        .ok_or(ContractError::WeekNotFound { week_id })?;
+    if week.status != RoundStatus::Closed {
+        return Err(ContractError::WeekNotClosedForExpiry { week_id });
+    }
+    let closed_at = week.closed_at.ok_or(ContractError::WeekNotClosedForExpiry { week_id })?;
+    if env.block.time.seconds() < closed_at.seconds() + config.max_reveal_age_seconds {
+        return Err(ContractError::RevealNotYetOverdue { week_id });
+    }
+    let request_live = week
+        .expire_requested_at_height
+        .is_some_and(|h| env.block.height < h + REQUEST_EXPIRE_TTL_BLOCKS);
+    if request_live {
+        return Err(ContractError::ExpireAlreadyRequested { week_id });
+    }
+    week.expire_requested_at_height = Some(env.block.height);
+    WEEKS.save(deps.storage, week_id, &week)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "request_expire_closed_week")
+        .add_attribute("week_id", week_id.to_string()))
+}
+
+/// Permissionless. Second step - see wheel-manager's matching
+/// `execute_finalize_expire_closed_round`.
+pub fn execute_finalize_expire_closed_week(
+    deps: DepsMut,
+    env: Env,
+    week_id: u64,
+) -> Result<Response, ContractError> {
+    let mut week = WEEKS
+        .may_load(deps.storage, week_id)?
+        .ok_or(ContractError::WeekNotFound { week_id })?;
+    if week.status != RoundStatus::Closed {
+        return Err(ContractError::WeekNotClosedForExpiry { week_id });
+    }
+    let requested_at = week
+        .expire_requested_at_height
+        .ok_or(ContractError::ExpireNotRequested { week_id })?;
+    if env.block.height >= requested_at + REQUEST_EXPIRE_TTL_BLOCKS {
+        return Err(ContractError::ExpireRequestExpired { week_id });
+    }
+    if env.block.height < requested_at + EXPIRE_FINALIZE_DELAY_BLOCKS {
+        return Err(ContractError::FinalizeDelayNotElapsed { week_id });
+    }
+    week.status = RoundStatus::ExpiryPending;
+    week.expiry_pending_since_height = Some(env.block.height);
+    WEEKS.save(deps.storage, week_id, &week)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "finalize_expire_closed_week")
+        .add_attribute("week_id", week_id.to_string()))
+}
+
+/// Permissionless. Final step - see wheel-manager's matching
+/// `claim_expired_round`. Never touches `state.current_week_id` or opens
+/// anything - the successor week already opened when this one closed.
+pub fn claim_expired_week(deps: DepsMut, env: Env, week_id: u64) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != week_id {
+        return Err(ContractError::QueueMismatch { front, week_id });
+    }
+    let mut week = WEEKS.load(deps.storage, week_id)?;
+    if week.status != RoundStatus::ExpiryPending {
+        return Err(ContractError::WeekNotExpiryPending { week_id });
+    }
+    let pending_since = week.expiry_pending_since_height.ok_or(ContractError::WeekNotExpiryPending { week_id })?;
+    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS {
+        return Err(ContractError::ChallengeWindowOpen { week_id });
+    }
+
+    let reclaimable_pool = week.ticket_sales_pool;
+    let carry_forward = week.wheel_contributions;
+    week.wheel_contributions = Uint128::zero();
+    week.status = RoundStatus::Expired;
+    week.expired_at = Some(env.block.time);
+    WEEKS.save(deps.storage, week_id, &week)?;
+    REVEAL_QUEUE.pop_front(deps.storage)?; // safe: front == week_id, already confirmed above
+
+    route_carry(deps.storage, carry_forward)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "claim_expired_week")
+        .add_attribute("week_id", week_id.to_string())
+        .add_attribute("reclaimable_pool", reclaimable_pool.to_string())
+        .add_attribute("carried_forward", carry_forward.to_string()))
 }
 
 pub fn execute_redeem(deps: DepsMut, info: MessageInfo, week_id: u64) -> Result<Response, ContractError> {
@@ -569,15 +781,16 @@ pub fn execute_sweep_expired_prize(
         .add_attribute("amount", swept_amount.to_string()))
 }
 
-fn add_winning(storage: &mut dyn Storage, winner: Addr, week_id: u64) -> StdResult<()> {
+fn add_winning(storage: &mut dyn Storage, winner: Addr, week_id: u64) -> Result<(), ContractError> {
     let mut winnings = WINNER_INDEX.may_load(storage, winner.clone())?.unwrap_or_default();
     if !winnings.contains(&week_id) {
         winnings.push(week_id);
     }
-    WINNER_INDEX.save(storage, winner, &winnings)
+    WINNER_INDEX.save(storage, winner, &winnings)?;
+    Ok(())
 }
 
-fn remove_winning(storage: &mut dyn Storage, winner: &Addr, week_id: u64) -> StdResult<()> {
+fn remove_winning(storage: &mut dyn Storage, winner: &Addr, week_id: u64) -> Result<(), ContractError> {
     let mut winnings = WINNER_INDEX.may_load(storage, winner.clone())?.unwrap_or_default();
     winnings.retain(|id| *id != week_id);
     if winnings.is_empty() {
@@ -588,17 +801,20 @@ fn remove_winning(storage: &mut dyn Storage, winner: &Addr, week_id: u64) -> Std
     Ok(())
 }
 
-fn add_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+fn add_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> Result<(), ContractError> {
     let current = TOTAL_INVESTED.may_load(storage, wallet.clone())?.unwrap_or_default();
-    TOTAL_INVESTED.save(storage, wallet.clone(), &(current + amount))
+    TOTAL_INVESTED.save(storage, wallet.clone(), &(current + amount))?;
+    Ok(())
 }
 
-fn subtract_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+fn subtract_invested(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> Result<(), ContractError> {
     let current = TOTAL_INVESTED.may_load(storage, wallet.clone())?.unwrap_or_default();
-    TOTAL_INVESTED.save(storage, wallet.clone(), &current.saturating_sub(amount))
+    TOTAL_INVESTED.save(storage, wallet.clone(), &current.saturating_sub(amount))?;
+    Ok(())
 }
 
-fn add_redeemed(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> StdResult<()> {
+fn add_redeemed(storage: &mut dyn Storage, wallet: &Addr, amount: Uint128) -> Result<(), ContractError> {
     let current = TOTAL_REDEEMED.may_load(storage, wallet.clone())?.unwrap_or_default();
-    TOTAL_REDEEMED.save(storage, wallet.clone(), &(current + amount))
+    TOTAL_REDEEMED.save(storage, wallet.clone(), &(current + amount))?;
+    Ok(())
 }

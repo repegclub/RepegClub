@@ -27,3 +27,8 @@ npm-debug.log*
 
 # Design references (images dropped for Claude to review, never committed)
 design-references/
+
+# Audit round prompts/findings — detailed exploit walkthroughs against
+# not-yet-fixed vulnerabilities. Repo is public; never commit these until
+# the underlying finding is actually resolved and shipped.
+docs/audit-prompts/

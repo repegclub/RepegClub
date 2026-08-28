@@ -3,24 +3,32 @@ use sha2::{Digest, Sha256};
 
 /// Deterministically picks a winner index into `entrants`, weighted by how many
 /// times an address appears (one entry per ticket bought). `salt` lets Podium
-/// draw three independent-looking picks (1st/2nd/3rd) from the same block
-/// height/time by hashing a different salt for each sequential draw.
+/// draw several independent-looking picks (1st/2nd/3rd) from the same
+/// `preimage` by hashing a different salt for each sequential draw.
 ///
-/// KNOWN LIMITATION: same block-based-randomness caveat as wheel-manager's
-/// `rand.rs` - see that file for the full writeup (residual validator-grinding
-/// risk within `draw_window_blocks`, and why commit-reveal / Nois were
-/// evaluated and deferred rather than built now).
-pub fn pick_winner_index(
-    raffle_seed: u64,
-    block_height: u64,
-    block_time_nanos: u64,
-    salt: u64,
-    entrants: &[Addr],
-) -> usize {
+/// Commit-reveal, not block data: the only unpredictable input is `preimage`,
+/// a secret generated offline by the admin, committed (`sha256(preimage)`) to
+/// `RaffleState::commit_used` when the fee/prize is funded (`ConsumeCommit`
+/// against the factory), and revealed only when `RevealDraw` runs. `entrants`
+/// is frozen the moment the raffle leaves `Open` (every entrants-mutating
+/// function requires `status == Open`), so by the time this function runs,
+/// every input is fixed and known to nobody who wasn't already trusted with
+/// the preimage. This replaces the block-height/block-time hash this project
+/// used before v9 (see the project's Obsidian notes, "Grinding vía
+/// SubMsg+reply" - a contract-as-caller could observe the outcome via
+/// `SubMsg`+`reply` and revert on a loss, cheaply and repeatedly, because
+/// that older scheme let the same transaction that ran the draw also supply
+/// its own randomness input).
+///
+/// `contract_addr` is included as a domain separator: without it, reusing the
+/// same `preimage` across two different raffle instances by operational
+/// mistake would make them pick the same relative winner index, and
+/// revealing one would leak the other's secret early.
+pub fn pick_winner_index(contract_addr: &Addr, preimage: &[u8], salt: u64, entrants: &[Addr]) -> usize {
     let mut hasher = Sha256::new();
-    hasher.update(raffle_seed.to_be_bytes());
-    hasher.update(block_height.to_be_bytes());
-    hasher.update(block_time_nanos.to_be_bytes());
+    hasher.update(contract_addr.as_bytes());
+    hasher.update([0u8]); // separator, avoids address-concatenation collisions
+    hasher.update(preimage);
     hasher.update(salt.to_be_bytes());
     for entrant in entrants {
         hasher.update(entrant.as_bytes());

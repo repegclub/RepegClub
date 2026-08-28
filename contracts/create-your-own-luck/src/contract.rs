@@ -4,10 +4,11 @@ use cosmwasm_std::{
 
 use crate::error::ContractError;
 use crate::execute::{
-    execute_buy_ticket, execute_cancel_raffle, execute_claim_airdrop_share, execute_close_round,
-    execute_deposit_prize, execute_draw_winner, execute_expire_raffle, execute_pay_service_fee,
-    execute_reclaim_unclaimed, execute_receive, execute_retry_prize_payout, execute_withdraw_ticket,
-    max_tickets_per_wallet, reply as reply_impl,
+    claim_expired_raffle, execute_buy_ticket, execute_cancel_raffle, execute_claim_airdrop_share,
+    execute_close_round, execute_deposit_prize, execute_expire_raffle,
+    execute_finalize_expire_closed_raffle, execute_pay_service_fee, execute_reclaim_unclaimed,
+    execute_receive, execute_request_expire_closed_raffle, execute_retry_prize_payout,
+    execute_reveal_draw, execute_withdraw_ticket, max_tickets_per_wallet, reply as reply_impl,
 };
 use crate::factory_msgs::{CancellationPenaltyResponse, FactoryQueryMsg};
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -72,29 +73,26 @@ const MAX_PLAYERS_AIRDROP: u32 = 1000;
 const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
 const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 
-/// Bounds on `round_timeout_seconds`, `draw_delay_blocks`, and
-/// `draw_window_blocks` - three more creator-chosen fields (like
-/// `unclaimed_deadline_days` above) that were left unvalidated at instantiate
-/// until an Opus+Fable review (2026-07-21) of *that* fix pointed out the same
-/// bug class was still open here. All three feed timestamp/height addition -
-/// `round_timeout_seconds` in `execute_buy_ticket`'s soft-close deadline
+/// Bounds on `round_timeout_seconds`, a creator-chosen field (like
+/// `unclaimed_deadline_days` above) that was left unvalidated at instantiate
+/// until an Opus+Fable review (2026-07-21) pointed out the same bug class was
+/// still open here. Feeds `execute_buy_ticket`'s soft-close deadline
 /// (`env.block.time.plus_seconds(round_timeout_seconds)`, moved here from
-/// `execute_close_round` by the 2026-08-20 soft-close redesign),
-/// `draw_delay_blocks`/`draw_window_blocks` in `execute_draw_winner`
-/// (`env.block.height + draw_delay_blocks`); with `overflow-checks = true`
-/// an astronomical value panics that addition,
-/// and unlike the DrawWinner creator-exclusivity fallback, `CloseRound` has
-/// no permissionless/deadline rescue if it can never be evaluated - a raffle
-/// that can never close can never reach `CancelRaffle`'s only escape either
-/// (blocked once `Closed`, and only reachable from `Open`/`Funding` while the
-/// creator is willing to call it), stranding every ticket buyer's money, not
-/// just the creator's own. `draw_window_blocks = 0` is its own, non-overflow
-/// way to strand a raffle: the "still within the draw window" check in
-/// `execute_draw_winner` degenerates to always-true, so the raffle rearms
-/// forever and never actually draws. Minimums of 1 rule that out; the upper
-/// bounds keep the worst case (a picked-but-not-overflowing absurd value) to
-/// low-single-digit years, not decades - same "human-scale ceiling" reasoning
-/// as `MAX_UNCLAIMED_DEADLINE_DAYS`.
+/// `execute_close_round` by the 2026-08-20 soft-close redesign); with
+/// `overflow-checks = true` an astronomical value panics that addition, and
+/// unlike the old DrawWinner creator-exclusivity fallback (removed in v9's
+/// commit-reveal redesign - see the project's Obsidian notes), `CloseRound`
+/// has no permissionless/deadline rescue if it can never be evaluated - a
+/// raffle that can never close can never reach `CancelRaffle`'s only escape
+/// either (blocked once `Closed`, and only reachable from `Open`/`Funding`
+/// while the creator is willing to call it), stranding every ticket buyer's
+/// money, not just the creator's own. The upper bound keeps the worst case (a
+/// picked-but-not-overflowing absurd value) to low-single-digit years, not
+/// decades - same "human-scale ceiling" reasoning as `MAX_UNCLAIMED_DEADLINE_DAYS`.
+/// (`draw_delay_blocks`/`draw_window_blocks` used to be bounded here too, for
+/// the old block-hash draw mechanism's own rearm window - removed along with
+/// that mechanism in v9, replaced by `MAX_REVEAL_AGE_SECONDS`/`execute::
+/// EXPIRE_*` instead.)
 /// 24h-31 days (2026-08-22 audit round 10 fix, raised from the original
 /// 1h-31 day range of the 2026-08-20 soft-close redesign) - narrower than
 /// the old 60s-365day range because this is now the creator's real,
@@ -119,10 +117,6 @@ const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 /// without needing to touch the extension math itself.
 const MIN_ROUND_TIMEOUT_SECONDS: u64 = 86_400;
 const MAX_ROUND_TIMEOUT_SECONDS: u64 = 2_678_400; // 31 days
-const MIN_DRAW_DELAY_BLOCKS: u64 = 1;
-const MAX_DRAW_DELAY_BLOCKS: u64 = 1_000_000;
-const MIN_DRAW_WINDOW_BLOCKS: u64 = 1;
-const MAX_DRAW_WINDOW_BLOCKS: u64 = 1_000_000;
 /// Fixed anti-snipe extension (2026-08-20 design) - a ticket purchase
 /// landing in the final hour before `RaffleState::deadline` pushes it out
 /// by exactly this much, capped at `MAX_RAFFLE_AGE_SECONDS` from
@@ -142,6 +136,18 @@ pub(crate) const ANTI_SNIPE_EXTENSION_SECONDS: u64 = 3_600;
 /// windows) gives every raffle the same real ceiling regardless of how
 /// aggressive its anti-snipe extensions get.
 pub(crate) const MAX_RAFFLE_AGE_SECONDS: u64 = 5_184_000; // 60 days
+/// How long, in seconds since `closed_at`, a `Closed` raffle can wait for a
+/// legitimate `RevealDraw` before `RequestExpireClosedRaffle` becomes
+/// callable - the outage safety net (see `execute::EXPIRE_*` docs). Fixed
+/// platform-wide, deliberately NOT creator-configurable - same reasoning as
+/// `ANTI_SNIPE_EXTENSION_SECONDS`: a small, fixed, well-understood grace
+/// window. Ronda 9 audit finding (Opus, bloqueante 8): if this followed the
+/// pattern of every other creator-chosen timing field in this contract, the
+/// front-run-the-reveal risk (see the project's Obsidian notes, "Grinding
+/// vía SubMsg+reply") would become available in NORMAL operation instead of
+/// only after a real operator outage, with the creator incentivized to set
+/// it low specifically to recover their own prize.
+pub(crate) const MAX_REVEAL_AGE_SECONDS: u64 = 3_600; // 1 hour
 
 /// Free-raffle (`ticket_price` zero) fee schedule, keyed by `max_players`
 /// ceiling (ascending, USDC micros) - judged by community size, since
@@ -338,18 +344,6 @@ pub fn instantiate(
             max: MAX_ROUND_TIMEOUT_SECONDS,
         });
     }
-    if msg.draw_delay_blocks < MIN_DRAW_DELAY_BLOCKS || msg.draw_delay_blocks > MAX_DRAW_DELAY_BLOCKS {
-        return Err(ContractError::InvalidDrawDelayBlocks {
-            min: MIN_DRAW_DELAY_BLOCKS,
-            max: MAX_DRAW_DELAY_BLOCKS,
-        });
-    }
-    if msg.draw_window_blocks < MIN_DRAW_WINDOW_BLOCKS || msg.draw_window_blocks > MAX_DRAW_WINDOW_BLOCKS {
-        return Err(ContractError::InvalidDrawWindowBlocks {
-            min: MIN_DRAW_WINDOW_BLOCKS,
-            max: MAX_DRAW_WINDOW_BLOCKS,
-        });
-    }
     if !msg.ticket_price.is_zero() && msg.ticket_denom != USDC_DENOM {
         return Err(ContractError::PaidTicketMustBeUsdc {});
     }
@@ -483,8 +477,6 @@ pub fn instantiate(
         min_players: msg.min_players,
         max_players: msg.max_players,
         round_timeout_seconds: msg.round_timeout_seconds,
-        draw_delay_blocks: msg.draw_delay_blocks,
-        draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
         prize_asset,
         fee_amount_usdc,
@@ -511,10 +503,12 @@ pub fn instantiate(
             opened_at: None,
             closed_at: None,
             deadline: None,
-            draw_after_height: None,
-            rearm_count: 0,
+            closed_at_height: None,
+            commit_used: None,
+            revealed_preimage: None,
+            expire_requested_at_height: None,
+            expiry_pending_since_height: None,
             drawn_at: None,
-            draw_height: None,
             winners: vec![],
             prize_shares: vec![],
             prize_paid: vec![],
@@ -544,7 +538,10 @@ pub fn execute(
         ExecuteMsg::BuyTicket {} => execute_buy_ticket(deps, env, info),
         ExecuteMsg::WithdrawTicket {} => execute_withdraw_ticket(deps, info),
         ExecuteMsg::CloseRound {} => execute_close_round(deps, env, info),
-        ExecuteMsg::DrawWinner {} => execute_draw_winner(deps, env, info),
+        ExecuteMsg::RevealDraw { preimage } => execute_reveal_draw(deps, env, preimage),
+        ExecuteMsg::RequestExpireClosedRaffle {} => execute_request_expire_closed_raffle(deps, env),
+        ExecuteMsg::FinalizeExpireClosedRaffle {} => execute_finalize_expire_closed_raffle(deps, env),
+        ExecuteMsg::ClaimExpiredRaffle {} => claim_expired_raffle(deps, env),
         ExecuteMsg::RetryPrizePayout {} => execute_retry_prize_payout(deps, info),
         ExecuteMsg::ClaimAirdropShare {} => execute_claim_airdrop_share(deps, info),
         ExecuteMsg::ReclaimUnclaimed {} => execute_reclaim_unclaimed(deps, env, info),

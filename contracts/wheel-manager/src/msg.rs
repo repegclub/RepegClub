@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, HexBinary, Uint128};
 
 use crate::state::RoundStatus;
 
@@ -11,10 +11,11 @@ pub struct InstantiateMsg {
     pub min_players: u32,
     pub max_players: u32,
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub max_round_age_seconds: u64,
+    /// See `Config::max_reveal_age_seconds`'s own doc comment. Bounded at
+    /// instantiate - see `contract::MIN_MAX_REVEAL_AGE_SECONDS`.
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: String,
     pub admin_fee_address: String,
     pub weekly_round_address: String,
@@ -24,7 +25,13 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     BuyTicket {},
     CloseRound {},
-    DrawWinner {},
+    /// Reveals the winner for the round at the front of the reveal queue
+    /// (`round_id` must match it - see `REVEAL_QUEUE`'s doc comment).
+    /// Permissionless: the result never depends on who calls this, only on
+    /// knowing the correct `preimage` for that round's committed hash - and
+    /// in practice only the admin (who generated it offline) ever does.
+    /// Replaces the old block-hash-based `DrawWinner`.
+    RevealDraw { round_id: u64, preimage: HexBinary },
     Redeem { round_id: u64 },
     SweepUstc {},
     /// Anyone can call this once `unclaimed_deadline_days` have passed since a
@@ -53,6 +60,30 @@ pub enum ExecuteMsg {
     /// exactly what that wallet paid and removes it from the round -
     /// deliberately no minimum wait before a second player shows up.
     WithdrawTicket { round_id: u64 },
+    /// Admin-only. Adds pre-generated commits (`sha256(preimage)`, 32 bytes
+    /// each, generated offline) to `COMMIT_QUEUE` - see that constant's doc
+    /// comment for the dedup/reuse rules.
+    PushCommits { commits: Vec<HexBinary> },
+    /// Permissionless backfill: assigns the next queued commit to the current
+    /// round if it doesn't have one yet (only possible while it's `Open` with
+    /// no entrants - `BuyTicket` already refuses to sell before a commit is
+    /// assigned, so this only matters if `COMMIT_QUEUE` was empty when the
+    /// round opened).
+    AssignCommit {},
+    /// Permissionless. First step of the 3-phase expiration for a `Closed`
+    /// round that has gone unrevealed for `max_reveal_age_seconds` - the
+    /// outage safety net. Only marks intent; a legitimate `RevealDraw` is
+    /// still fully valid after this.
+    RequestExpireClosedRound { round_id: u64 },
+    /// Permissionless. Second step - after the request has sat for
+    /// `execute::EXPIRE_FINALIZE_DELAY_BLOCKS`, transitions the round to
+    /// `ExpiryPending`. Still rescuable by a legitimate `RevealDraw`.
+    FinalizeExpireClosedRound { round_id: u64 },
+    /// Permissionless. Final step - after `ExpiryPending` has sat for
+    /// `execute::EXPIRE_CHALLENGE_BLOCKS` with no reveal, refunds every
+    /// entrant's ticket (never penalized - a no-fault outage safety net) and
+    /// marks the round `Expired`.
+    ClaimExpiredRound { round_id: u64 },
 }
 
 #[cw_serde]
@@ -92,12 +123,16 @@ pub struct RoundResponse {
     /// frontend show a live countdown to when CloseRound becomes callable.
     pub deadline: Option<u64>,
     pub closed_at: Option<u64>,
-    pub draw_after_height: Option<u64>,
+    pub closed_at_height: Option<u64>,
     pub drawn_at: Option<u64>,
-    /// Exact block height the winner-picking hash was computed at - lets
-    /// anyone independently recompute `SHA-256(round_id + draw_height +
-    /// drawn_at's block time + entrants)` and check it against `winner`.
-    pub draw_height: Option<u64>,
+    /// The hash this round must be revealed against - lets anyone confirm
+    /// `revealed_preimage` (once set) actually satisfies it before trusting
+    /// `winner`.
+    pub commit_used: Option<HexBinary>,
+    /// The secret that unlocked `commit_used`, once revealed - lets anyone
+    /// independently recompute `pick_winner_index(contract_addr, round_id,
+    /// revealed_preimage, entrants)` and check it against `winner`.
+    pub revealed_preimage: Option<HexBinary>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
     pub expired_at: Option<u64>,
@@ -134,10 +169,9 @@ pub struct ConfigResponse {
     pub min_players: u32,
     pub max_players: u32,
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub max_round_age_seconds: u64,
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
     pub weekly_round_address: Addr,

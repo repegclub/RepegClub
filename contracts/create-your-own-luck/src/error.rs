@@ -57,9 +57,6 @@ pub enum ContractError {
     #[error("Raffle cannot be closed yet: max players not reached and timeout has not elapsed")]
     CannotCloseRound {},
 
-    #[error("Raffle cannot be drawn yet: must wait until block {required_height}")]
-    DrawTooEarly { required_height: u64 },
-
     #[error("Not enough players to draw a winner (minimum: {min_players})")]
     NotEnoughPlayers { min_players: u32 },
 
@@ -101,12 +98,6 @@ pub enum ContractError {
 
     #[error("round_timeout_seconds must be between {min} and {max}")]
     InvalidRoundTimeoutSeconds { min: u64, max: u64 },
-
-    #[error("draw_delay_blocks must be between {min} and {max}")]
-    InvalidDrawDelayBlocks { min: u64, max: u64 },
-
-    #[error("draw_window_blocks must be between {min} and {max}")]
-    InvalidDrawWindowBlocks { min: u64, max: u64 },
 
     #[error("Paid raffles (ticket_price > 0) can only offer LUNC, USDC, USTC, or a CW20 the platform has reviewed and whitelisted - contact the platform to get a new CW20 reviewed")]
     PrizeAssetNotAllowlisted {},
@@ -158,4 +149,41 @@ pub enum ContractError {
 
     #[error("Every winner's prize share has already been confirmed paid - nothing to retry")]
     NothingToRetry {},
+
+    // --- v9: commit-reveal + 3-phase expiration ---
+    #[error("This raffle does not have a commit assigned yet")]
+    RaffleNotSeeded {},
+
+    #[error("Raffle is not in a revealable state (must be Closed or ExpiryPending)")]
+    RaffleNotRevealable {},
+
+    #[error("The provided preimage does not match this raffle's committed hash")]
+    BadPreimage {},
+
+    #[error("The factory did not return a commit")]
+    NoCommitInReply {},
+
+    #[error("Raffle is not Closed")]
+    RaffleNotClosedForExpiry {},
+
+    #[error("This raffle's reveal is not overdue yet - the reveal grace period has not elapsed since it closed")]
+    RevealNotYetOverdue {},
+
+    #[error("An expiration request is already pending for this raffle")]
+    ExpireAlreadyRequested {},
+
+    #[error("No expiration request is pending for this raffle")]
+    ExpireNotRequested {},
+
+    #[error("The expiration request has expired - request it again")]
+    ExpireRequestExpired {},
+
+    #[error("This raffle's expiration request has not cleared its finalize delay yet")]
+    FinalizeDelayNotElapsed {},
+
+    #[error("Raffle is not ExpiryPending")]
+    RaffleNotExpiryPending {},
+
+    #[error("This raffle's challenge window is still open - a legitimate reveal can still land")]
+    ChallengeWindowOpen {},
 }

@@ -21,6 +21,7 @@ overflow-checks = true
 cosmwasm-schema = "1.5.4"
 cosmwasm-std = "1.5.4"
 cw-storage-plus = "1.2.0"
+cw-utils = "1.0.3"
 cw20 = "1.1.2"
 schemars = "0.8.16"
 serde = { version = "1.0.197", default-features = false, features = ["derive"] }

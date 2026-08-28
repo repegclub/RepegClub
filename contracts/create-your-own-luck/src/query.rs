@@ -42,8 +42,9 @@ fn query_raffle_status(deps: Deps, env: Env) -> StdResult<RaffleStatusResponse> 
         opened_at: raffle.opened_at.map(|t| t.seconds()),
         closed_at: raffle.closed_at.map(|t| t.seconds()),
         seconds_remaining,
-        draw_after_height: raffle.draw_after_height,
-        draw_height: raffle.draw_height,
+        closed_at_height: raffle.closed_at_height,
+        commit_used: raffle.commit_used,
+        revealed_preimage: raffle.revealed_preimage,
     })
 }
 
@@ -86,8 +87,6 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         min_players: config.min_players,
         max_players: config.max_players,
         round_timeout_seconds: config.round_timeout_seconds,
-        draw_delay_blocks: config.draw_delay_blocks,
-        draw_window_blocks: config.draw_window_blocks,
         unclaimed_deadline_days: config.unclaimed_deadline_days,
         prize_asset: config.prize_asset,
         fee_amount_usdc: config.fee_amount_usdc,
