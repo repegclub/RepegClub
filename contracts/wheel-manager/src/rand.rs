@@ -21,10 +21,20 @@ use sha2::{Digest, Sha256};
 ///
 /// `contract_addr` is included as a domain separator: without it, reusing the
 /// same `preimage` across two different contract instances by operational
-/// mistake would make them pick the same relative winner index, and revealing
-/// one would leak the other's secret early. Nothing else here depends on
-/// `info.sender`, `env.block.*`, or any other value a caller controls or can
-/// observe before committing to a transaction.
+/// mistake would make them pick the same relative winner index. **This does
+/// NOT prevent a leak** (corrected 2026-08-28, Ronda 10 audit fix, Opus,
+/// CYOL-3/medium - a prior version of this comment claimed it did): if
+/// `preimage` becomes public from instance A (e.g. a legitimate `RevealDraw`
+/// tx), anyone can compute instance B's winner too, using B's own public
+/// `contract_addr` - the separator only stops the two picks from coincidentally
+/// matching, it does nothing to keep the preimage itself confined to A. The
+/// only real protection is procedural: **never push the same commit
+/// (`sha256(preimage)`) to more than one of this project's independent commit
+/// queues** (this contract's own `COMMIT_QUEUE`, weekly-round's, and
+/// create-your-own-luck-factory's - each with its own separate `USED_COMMITS`,
+/// so nothing on-chain stops a duplicate across them). Nothing else in this
+/// function depends on `info.sender`, `env.block.*`, or any other value a
+/// caller controls or can observe before committing to a transaction.
 pub fn pick_winner_index(
     contract_addr: &Addr,
     round_id: u64,

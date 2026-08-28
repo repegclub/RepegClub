@@ -869,6 +869,10 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_round() {
 
     let mut claim_env = finalize_env.clone();
     claim_env.block.height += 100; // EXPIRE_CHALLENGE_BLOCKS
+    let err = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 1 }).unwrap_err();
+    assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }), "REVEAL_PRIORITY_MARGIN_BLOCKS hasn't elapsed yet");
+
+    claim_env.block.height += 20; // REVEAL_PRIORITY_MARGIN_BLOCKS
     let res = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 1 }).unwrap();
     assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "claim_expired_round"));
 
@@ -901,6 +905,58 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_round() {
 }
 
 #[test]
+fn request_and_finalize_expire_reject_a_round_that_is_not_the_queue_front() {
+    // Ronda 10 audit fix regression test (Opus, WM-1/medium): before this fix,
+    // RequestExpireClosedRound/FinalizeExpireClosedRound had no front-of-queue
+    // check (only ClaimExpiredRound did) - a round stuck behind an earlier
+    // undrawn one could run its whole 3-phase clock "in the shadow" and become
+    // claimable the instant it reached the front, with zero real
+    // EXPIRE_CHALLENGE_BLOCKS window at that point. This test both proves the
+    // rejection while blocked AND that the round gets a genuine, fresh window
+    // once it's actually the front.
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap(); // round 1 closes, round 2 opens
+    buy_ticket(&mut deps, &env, "player3").unwrap();
+    buy_ticket(&mut deps, &env, "player4").unwrap(); // round 2 closes, round 3 opens
+
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+
+    // Round 2 is Closed and overdue too, but round 1 is still the front -
+    // both steps must reject it.
+    let err = execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRound { round_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::QueueMismatch { front: 1, round_id: 2 }));
+
+    // Resolve round 1 normally (the operator finally reveals it) - this pops
+    // the queue, making round 2 the front.
+    reveal(&mut deps, &overdue_env, 1, 1).unwrap();
+    assert_eq!(round_history(&deps, &overdue_env, 1).status, RoundStatus::Drawn);
+
+    // A FinalizeExpireClosedRound{2} attempt still fails - no request was ever
+    // made (rejected above), regardless of front-of-queue status now.
+    let err = execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::ExpireNotRequested { round_id: 2 }));
+
+    // Now that round 2 is genuinely the front, the real 3-phase clock can
+    // start, and gets its own full window from here - not zero.
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRound { round_id: 2 }).unwrap();
+    let mut finalize_env = overdue_env.clone();
+    finalize_env.block.height += 100; // EXPIRE_FINALIZE_DELAY_BLOCKS
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 2 }).unwrap();
+    assert_eq!(round_history(&deps, &finalize_env, 2).status, RoundStatus::ExpiryPending);
+
+    // Genuine, un-consumed challenge window: claiming right at finalize fails.
+    let err = execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
+
+    let mut claim_env = finalize_env.clone();
+    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 2 }).unwrap();
+    assert_eq!(round_history(&deps, &claim_env, 2).status, RoundStatus::Expired);
+}
+
+#[test]
 fn claim_expired_round_correctly_routes_a_nonzero_carried_in_amount_to_the_next_round() {
     // Round 1 reveals normally, carrying 5% of its pool into round 2 via
     // route_carry. Round 2 then closes but is NEVER revealed - it goes
@@ -929,7 +985,7 @@ fn claim_expired_round_correctly_routes_a_nonzero_carried_in_amount_to_the_next_
     finalize_env.block.height += 100;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 2 }).unwrap();
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100;
+    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
     let res = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 2 }).unwrap();
 
     // carry_forward = pool (2_100_000) - tickets_value (2_000_000) = 100_000

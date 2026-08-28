@@ -3,9 +3,9 @@ use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
 use crate::execute::{
-    execute_add_cw20_to_whitelist, execute_create_raffle, execute_remove_cw20_from_whitelist,
-    execute_report_cw20_failure, execute_set_cancellation_penalty_bps, execute_unblacklist_cw20,
-    CREATE_RAFFLE_REPLY_ID,
+    execute_add_cw20_to_whitelist, execute_consume_commit, execute_create_raffle, execute_push_commits,
+    execute_remove_cw20_from_whitelist, execute_report_cw20_failure, execute_return_commit,
+    execute_set_cancellation_penalty_bps, execute_unblacklist_cw20, CREATE_RAFFLE_REPLY_ID,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -57,8 +57,6 @@ pub fn execute(
             min_players,
             max_players,
             round_timeout_seconds,
-            draw_delay_blocks,
-            draw_window_blocks,
             unclaimed_deadline_days,
             prize_native_denom,
             prize_cw20_address,
@@ -74,8 +72,6 @@ pub fn execute(
             min_players,
             max_players,
             round_timeout_seconds,
-            draw_delay_blocks,
-            draw_window_blocks,
             unclaimed_deadline_days,
             prize_native_denom,
             prize_cw20_address,
@@ -91,6 +87,9 @@ pub fn execute(
             base_bps,
             late_additional_bps,
         } => execute_set_cancellation_penalty_bps(deps, info, base_bps, late_additional_bps),
+        ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
+        ExecuteMsg::ConsumeCommit {} => execute_consume_commit(deps, info),
+        ExecuteMsg::ReturnCommit {} => execute_return_commit(deps, info),
     }
 }
 
@@ -142,7 +141,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{
-        coins, from_json, Addr, CosmosMsg, SubMsgResponse, SubMsgResult, Uint128, WasmMsg,
+        coins, from_json, Addr, CosmosMsg, HexBinary, SubMsgResponse, SubMsgResult, Uint128, WasmMsg,
     };
 
     use crate::msg::{CreatorCooldownResponse, ExecuteMsg, QueryMsg, RaffleRecordResponse, RaffleType, RafflesResponse};
@@ -162,8 +161,6 @@ mod tests {
             min_players: 2,
             max_players: 10,
             round_timeout_seconds: 3600,
-            draw_delay_blocks: 2,
-            draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
             prize_native_denom: Some("uustc".to_string()),
             prize_cw20_address: None,
@@ -181,8 +178,6 @@ mod tests {
                 allowed_entrants,
                 min_players,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -196,8 +191,6 @@ mod tests {
                 min_players,
                 max_players: 50,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -217,8 +210,6 @@ mod tests {
                 min_players,
                 max_players,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -232,8 +223,6 @@ mod tests {
                 min_players,
                 max_players,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -253,8 +242,6 @@ mod tests {
                 min_players,
                 max_players,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -268,8 +255,6 @@ mod tests {
                 min_players,
                 max_players,
                 round_timeout_seconds,
-                draw_delay_blocks,
-                draw_window_blocks,
                 unclaimed_deadline_days,
                 prize_native_denom,
                 prize_cw20_address,
@@ -859,5 +844,198 @@ mod tests {
         let penalty: crate::msg::CancellationPenaltyResponse = from_json(bin).unwrap();
         assert_eq!(penalty.base_bps, 1_000);
         assert_eq!(penalty.late_additional_bps, 9_000);
+    }
+
+    /// Registers a raffle the same way `CreateRaffle`'s own reply does (see
+    /// `only_a_raffle_this_factory_deployed_can_report_a_cw20_failure` above
+    /// for the pattern this mirrors), returning its address for `ConsumeCommit`/
+    /// `ReturnCommit` tests below - both are authenticated via `KNOWN_RAFFLES`,
+    /// the same set this populates.
+    fn known_raffle(deps: cosmwasm_std::DepsMut) -> Addr {
+        known_raffle_at(deps, "terra1newraffle0000000000000000000000000000000", "creator1")
+    }
+
+    fn known_raffle_at(mut deps: cosmwasm_std::DepsMut, raffle_addr: &str, creator: &str) -> Addr {
+        execute(deps.branch(), mock_env(), mock_info(creator, &[]), sample_create_raffle_msg()).unwrap();
+        reply(deps.branch(), mock_env(), fake_reply(CREATE_RAFFLE_REPLY_ID, raffle_addr)).unwrap();
+        Addr::unchecked(raffle_addr)
+    }
+
+    #[test]
+    fn push_commits_requires_admin() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("not-admin", &[]),
+            ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+    }
+
+    #[test]
+    fn push_commits_rejects_wrong_length_and_empty_or_oversized_batches() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 31])] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::InvalidCommitLength {}));
+
+        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![] })
+            .unwrap_err();
+        assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
+
+        let too_many: Vec<HexBinary> = (0..51u16).map(|n| HexBinary::from([n as u8, (n >> 8) as u8].repeat(16))).collect();
+        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: too_many })
+            .unwrap_err();
+        assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
+    }
+
+    #[test]
+    fn push_commits_rejects_duplicates_within_a_batch_and_across_batches() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let c1 = HexBinary::from([1u8; 32]);
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::PushCommits { commits: vec![c1.clone(), c1.clone()] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
+
+        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
+            .unwrap();
+
+        // Same commit again in a later batch - rejected even though it hasn't
+        // been consumed by any raffle yet, same permanent-dedup rule as
+        // wheel-manager's own USED_COMMITS.
+        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1] })
+            .unwrap_err();
+        assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
+    }
+
+    #[test]
+    fn consume_commit_requires_a_known_raffle() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] })
+            .unwrap();
+
+        let err = execute(deps.as_mut(), mock_env(), mock_info("random-wallet", &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+    }
+
+    #[test]
+    fn consume_commit_returns_the_front_of_the_queue_and_rejects_a_second_call() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_addr = known_raffle(deps.as_mut());
+        let c1 = HexBinary::from([1u8; 32]);
+        let c2 = HexBinary::from([2u8; 32]);
+        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2] })
+            .unwrap();
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+        let returned: HexBinary = from_json(res.data.unwrap()).unwrap();
+        assert_eq!(returned, c1, "must return the front of the queue, not any other entry");
+
+        // Still holding c1, never returned it - a second dispatch must be
+        // rejected rather than handing out c2 too (RAFFLE_COMMITS dedup).
+        let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::CommitAlreadyConsumed {}));
+    }
+
+    #[test]
+    fn consume_commit_rejects_when_the_queue_is_empty() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_addr = known_raffle(deps.as_mut());
+        // No PushCommits at all.
+        let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::NoCommitsAvailable {}));
+    }
+
+    #[test]
+    fn return_commit_requires_a_known_raffle_and_a_previously_consumed_commit() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_addr = known_raffle(deps.as_mut());
+
+        let err = execute(deps.as_mut(), mock_env(), mock_info("random-wallet", &[]), ExecuteMsg::ReturnCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        // Known raffle, but never called ConsumeCommit - nothing to return.
+        let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ReturnCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::NoCommitToReturn {}));
+    }
+
+    #[test]
+    fn return_commit_recycles_to_the_front_of_the_queue_closing_the_commit_dos() {
+        // Traces the Fix J DoS from the project's Obsidian notes ("Grinding
+        // vía SubMsg+reply", Ronda 9): a raffle that consumes a commit but
+        // never reveals with it (cancelled with 0 players, here) must be able
+        // to hand it back so the queue doesn't shrink for nothing.
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_addr = known_raffle(deps.as_mut());
+        let c1 = HexBinary::from([1u8; 32]);
+        let c2 = HexBinary::from([2u8; 32]);
+        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2.clone()] })
+            .unwrap();
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+        let consumed: HexBinary = from_json(res.data.unwrap()).unwrap();
+        assert_eq!(consumed, c1);
+
+        execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ReturnCommit {}).unwrap();
+
+        // A second ConsumeCommit (a fresh raffle, or this one again after a
+        // fresh CreateRaffle in reality - reusing the same address here only
+        // to keep the test focused) gets c1 back, at the front, not c2.
+        let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+        let reconsumed: HexBinary = from_json(res.data.unwrap()).unwrap();
+        assert_eq!(reconsumed, c1, "the returned commit must come back at the front of the queue");
+    }
+
+    #[test]
+    fn return_commit_recycles_across_two_distinct_raffles() {
+        // Ronda 10 audit fix regression test (Opus, Q14 gap #2, feeding
+        // CYOL-1/critical): the factory's own mechanics have no way to know
+        // WHY a commit came back, only that it did - a genuinely different
+        // raffle (not the one that consumed it) can receive a recycled commit
+        // via a plain ConsumeCommit call. This is exactly the step that makes
+        // CYOL-1 exploitable in create-your-own-luck (a commit returned from a
+        // raffle whose preimage may already be public lands on a completely
+        // unrelated, healthy raffle) - the factory alone can't prevent it, the
+        // fix has to be (and is, as of this same audit round) on the caller
+        // side: create-your-own-luck's `claim_expired_raffle` never calls
+        // `ReturnCommit` in the first place. This test only fixes the factory's
+        // own recycling mechanics as observable behavior, for the record.
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_a = known_raffle_at(deps.as_mut(), "terra1raffleaaaa00000000000000000000000000000", "creator1");
+        let raffle_b = known_raffle_at(deps.as_mut(), "terra1rafflebbbb00000000000000000000000000000", "creator2");
+        let c1 = HexBinary::from([1u8; 32]);
+        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
+            .unwrap();
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_a.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+        assert_eq!(from_json::<HexBinary>(res.data.unwrap()).unwrap(), c1);
+        execute(deps.as_mut(), mock_env(), mock_info(raffle_a.as_str(), &[]), ExecuteMsg::ReturnCommit {}).unwrap();
+
+        // Raffle B - unrelated to A - consumes and gets exactly c1 back.
+        let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_b.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+        assert_eq!(from_json::<HexBinary>(res.data.unwrap()).unwrap(), c1);
     }
 }

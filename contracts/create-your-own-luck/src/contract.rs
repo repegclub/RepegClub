@@ -55,21 +55,20 @@ const MAX_PLAYERS_SINGLE_WINNER_PODIUM: u32 = 100;
 /// price-independent check instead of leaning on the fee lookup again.
 const MAX_PLAYERS_AIRDROP: u32 = 1000;
 
-/// Bounds on `unclaimed_deadline_days`, a creator-chosen field with two
-/// distinct uses: how long before an Airdrop's unclaimed shares can be
-/// swept back to the creator (`execute_reclaim_unclaimed`), and - reused,
-/// not a separate field - how long a `Closed` raffle stays creator-only
-/// before `DrawWinner` falls back to permissionless so a lost/unresponsive
-/// creator wallet can never strand it forever (`execute_draw_winner`).
-/// Unvalidated, this was a real gap on both ends: 0 would silently gut the
-/// creator's draw exclusivity down to nothing, and an astronomically large
-/// value (with `overflow-checks = true`) would panic the deadline math -
-/// re-stranding the raffle the fallback exists to rescue. Found by an
-/// Opus+Fable review (2026-07-21) of the fallback fix itself. 365 as an
-/// upper bound keeps the worst case (creator vanishes right after an
-/// absurd-but-not-overflowing value like 9000 days) to at most a year, not
-/// decades - the whole point of the fallback is a real, human-scale ceiling,
-/// not just avoiding a panic.
+/// Bounds on `unclaimed_deadline_days`, a creator-chosen field controlling
+/// how long before an Airdrop's unclaimed shares can be swept back to the
+/// creator (`execute_reclaim_unclaimed`). (Corrected 2026-08-28, Ronda 10
+/// audit fix, Opus/Q2: a prior version of this comment described a second
+/// reuse of this same field - gating how long a `Closed` raffle stayed
+/// creator-only before `DrawWinner` fell back to permissionless - that
+/// mechanism was removed entirely in v9's commit-reveal redesign, where
+/// `RevealDraw` is permissionless from the start with no creator-exclusive
+/// period at all; the field has had only its one Airdrop-sweep purpose since
+/// then, and nothing in the current code reads it for anything else.)
+/// Unvalidated, an astronomically large value (with `overflow-checks = true`)
+/// would panic the sweep-deadline math. Found by an Opus+Fable review
+/// (2026-07-21). 365 as an upper bound keeps the worst case to at most a
+/// year, not decades - a real, human-scale ceiling, not just avoiding a panic.
 const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
 const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
 

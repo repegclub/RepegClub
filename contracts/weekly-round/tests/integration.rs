@@ -670,7 +670,7 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_week() {
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
 
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100;
+    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
     execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredWeek { week_id: 1 }).unwrap();
 
     let week1 = week_history(&deps, &claim_env, 1);
@@ -690,6 +690,50 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_week() {
     } else {
         panic!("expected a BankMsg::Send");
     }
+}
+
+#[test]
+fn request_and_finalize_expire_reject_a_week_that_is_not_the_queue_front() {
+    // Ronda 10 audit fix regression test (Opus, WM-1/medium) - mirrors
+    // wheel-manager's identical fix and test. Before this fix, neither step
+    // checked front-of-queue (only ClaimExpiredWeek did), so a week stuck
+    // behind an earlier undrawn one could run its whole 3-phase clock "in the
+    // shadow" and become claimable the instant it reached the front.
+    let (mut deps, env) = setup_and_seed(2, 2, 7, 3);
+    buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player2", BASE_PRICE).unwrap(); // week 1 closes, week 2 opens
+    buy_at_price(&mut deps, &env, "player3", BASE_PRICE).unwrap();
+    buy_at_price(&mut deps, &env, "player4", BASE_PRICE).unwrap(); // week 2 closes, week 3 opens
+
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+
+    // Week 2 is Closed and overdue too, but week 1 is still the front.
+    let err = execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::QueueMismatch { front: 1, week_id: 2 }));
+
+    // Resolve week 1 normally, popping the queue - week 2 becomes the front.
+    reveal(&mut deps, &overdue_env, 1, 1).unwrap();
+    assert_eq!(week_history(&deps, &overdue_env, 1).status, RoundStatus::Drawn);
+
+    let err = execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::ExpireNotRequested { week_id: 2 }));
+
+    // Now genuinely the front - the real 3-phase clock gets its own full
+    // window from here, not zero.
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 2 }).unwrap();
+    let mut finalize_env = overdue_env.clone();
+    finalize_env.block.height += 100;
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 2 }).unwrap();
+    assert_eq!(week_history(&deps, &finalize_env, 2).status, RoundStatus::ExpiryPending);
+
+    let err = execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredWeek { week_id: 2 }).unwrap_err();
+    assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
+
+    let mut claim_env = finalize_env.clone();
+    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredWeek { week_id: 2 }).unwrap();
+    assert_eq!(week_history(&deps, &claim_env, 2).status, RoundStatus::Expired);
 }
 
 #[test]

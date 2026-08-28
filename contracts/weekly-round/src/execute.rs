@@ -20,6 +20,9 @@ const SECONDS_PER_DAY: u64 = 86400;
 /// See wheel-manager's matching constants' doc comments - same mechanism.
 pub const EXPIRE_FINALIZE_DELAY_BLOCKS: u64 = 100;
 pub const EXPIRE_CHALLENGE_BLOCKS: u64 = 100;
+/// See wheel-manager's matching `REVEAL_PRIORITY_MARGIN_BLOCKS` (Ronda 10
+/// audit fix, Opus, CYOL-2/WM-1).
+pub const REVEAL_PRIORITY_MARGIN_BLOCKS: u64 = 20;
 pub const REQUEST_EXPIRE_TTL_BLOCKS: u64 = 200;
 pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
 pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
@@ -522,12 +525,18 @@ pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
 }
 
 /// Permissionless. First step of the 3-phase expiration - see wheel-manager's
-/// matching `execute_request_expire_closed_round`.
+/// matching `execute_request_expire_closed_round`, including the front-of-
+/// queue requirement (Ronda 10 audit fix, Opus, WM-1/medium - see that
+/// function's own doc comment).
 pub fn execute_request_expire_closed_week(
     deps: DepsMut,
     env: Env,
     week_id: u64,
 ) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != week_id {
+        return Err(ContractError::QueueMismatch { front, week_id });
+    }
     let config = CONFIG.load(deps.storage)?;
     let mut week = WEEKS
         .may_load(deps.storage, week_id)?
@@ -554,12 +563,17 @@ pub fn execute_request_expire_closed_week(
 }
 
 /// Permissionless. Second step - see wheel-manager's matching
-/// `execute_finalize_expire_closed_round`.
+/// `execute_finalize_expire_closed_round`, including the front-of-queue
+/// requirement (Ronda 10 audit fix, Opus, WM-1/medium).
 pub fn execute_finalize_expire_closed_week(
     deps: DepsMut,
     env: Env,
     week_id: u64,
 ) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != week_id {
+        return Err(ContractError::QueueMismatch { front, week_id });
+    }
     let mut week = WEEKS
         .may_load(deps.storage, week_id)?
         .ok_or(ContractError::WeekNotFound { week_id })?;
@@ -597,7 +611,7 @@ pub fn claim_expired_week(deps: DepsMut, env: Env, week_id: u64) -> Result<Respo
         return Err(ContractError::WeekNotExpiryPending { week_id });
     }
     let pending_since = week.expiry_pending_since_height.ok_or(ContractError::WeekNotExpiryPending { week_id })?;
-    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS {
+    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS {
         return Err(ContractError::ChallengeWindowOpen { week_id });
     }
 

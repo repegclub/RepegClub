@@ -1,12 +1,12 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, DepsMut, Empty, Env, MessageInfo, Response, SubMsg, Uint128, WasmMsg};
+use cosmwasm_std::{to_json_binary, DepsMut, Empty, Env, HexBinary, MessageInfo, Response, SubMsg, Uint128, WasmMsg};
 
 use crate::error::ContractError;
 use crate::msg::RaffleType;
 use crate::state::{
-    CreatorCooldown, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS,
-    CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, KNOWN_RAFFLES, PENDING_CREATOR, RAFFLE_CODE_ID,
-    RAFFLE_COUNT,
+    CreatorCooldown, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, COMMIT_QUEUE,
+    CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, KNOWN_RAFFLES, PENDING_CREATOR, RAFFLE_CODE_ID, RAFFLE_COMMITS,
+    RAFFLE_COUNT, USED_COMMITS,
 };
 
 pub const CREATE_RAFFLE_REPLY_ID: u64 = 1;
@@ -71,8 +71,6 @@ struct RaffleInstantiateMsg {
     min_players: u32,
     max_players: u32,
     round_timeout_seconds: u64,
-    draw_delay_blocks: u64,
-    draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
@@ -91,8 +89,6 @@ pub fn execute_create_raffle(
     min_players: u32,
     max_players: u32,
     round_timeout_seconds: u64,
-    draw_delay_blocks: u64,
-    draw_window_blocks: u64,
     unclaimed_deadline_days: u64,
     prize_native_denom: Option<String>,
     prize_cw20_address: Option<String>,
@@ -163,8 +159,6 @@ pub fn execute_create_raffle(
         min_players,
         max_players,
         round_timeout_seconds,
-        draw_delay_blocks,
-        draw_window_blocks,
         unclaimed_deadline_days,
         prize_native_denom,
         prize_cw20_address,
@@ -274,4 +268,89 @@ pub fn execute_set_cancellation_penalty_bps(
         .add_attribute("action", "set_cancellation_penalty_bps")
         .add_attribute("base_bps", base_bps.to_string())
         .add_attribute("late_additional_bps", late_additional_bps.to_string()))
+}
+
+/// Hard ceiling on `PushCommits`'s batch size - same reasoning as
+/// wheel-manager's identical constant: a single call pushing an unbounded
+/// number of commits would risk a transaction too large to fit in gas.
+pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
+/// Bounds the total length of `COMMIT_QUEUE` - same reasoning, applied to the
+/// accumulated total rather than a single batch.
+pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
+
+/// Admin-only. See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the dedup
+/// rules this enforces - identical to wheel-manager's own `PushCommits`.
+pub fn execute_push_commits(deps: DepsMut, info: MessageInfo, commits: Vec<HexBinary>) -> Result<Response, ContractError> {
+    require_admin(&deps, &info)?;
+    if commits.is_empty() || commits.len() as u32 > PUSH_COMMITS_MAX_BATCH {
+        return Err(ContractError::InvalidCommitBatch { max: PUSH_COMMITS_MAX_BATCH });
+    }
+    let current_len = COMMIT_QUEUE.len(deps.storage)?;
+    if current_len + commits.len() as u32 > MAX_COMMIT_QUEUE_LEN {
+        return Err(ContractError::CommitQueueFull { max: MAX_COMMIT_QUEUE_LEN });
+    }
+
+    let mut seen_in_batch: Vec<HexBinary> = Vec::with_capacity(commits.len());
+    for commit in &commits {
+        if commit.len() != 32 {
+            return Err(ContractError::InvalidCommitLength {});
+        }
+        if USED_COMMITS.has(deps.storage, commit.as_slice()) || seen_in_batch.contains(commit) {
+            return Err(ContractError::CommitAlreadyUsed {});
+        }
+        seen_in_batch.push(commit.clone());
+    }
+    for commit in &commits {
+        USED_COMMITS.save(deps.storage, commit.as_slice(), &Empty {})?;
+        COMMIT_QUEUE.push_back(deps.storage, commit)?;
+    }
+
+    Ok(Response::new()
+        .add_attribute("action", "push_commits")
+        .add_attribute("count", commits.len().to_string()))
+}
+
+/// Callable only by a raffle this factory itself deployed (`KNOWN_RAFFLES`) -
+/// dispatched as a `SubMsg::reply_on_success` from create-your-own-luck's
+/// `execute_deposit_prize`/`execute_receive` the moment the fee/prize is
+/// funded. Returns the consumed commit via this call's reply `data` (read
+/// back by the raffle's own `handle_consume_commit_reply` via
+/// `cw_utils::parse_reply_execute_data`) - see `RAFFLE_COMMITS`'s own doc
+/// comment for the dedup this enforces (a raffle can't hold two commits at
+/// once, so it can't call this a second time before either drawing or
+/// returning the one it already has).
+pub fn execute_consume_commit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    if !KNOWN_RAFFLES.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+    if RAFFLE_COMMITS.has(deps.storage, &info.sender) {
+        return Err(ContractError::CommitAlreadyConsumed {});
+    }
+    let commit = COMMIT_QUEUE.pop_front(deps.storage)?.ok_or(ContractError::NoCommitsAvailable {})?;
+    RAFFLE_COMMITS.save(deps.storage, &info.sender, &commit)?;
+
+    Ok(Response::new()
+        .set_data(to_json_binary(&commit)?)
+        .add_attribute("action", "consume_commit")
+        .add_attribute("raffle", info.sender))
+}
+
+/// Callable only by a raffle this factory itself deployed, and only while it
+/// still holds a commit it consumed but never used in any hash - see
+/// `ExecuteMsg::ReturnCommit`'s own doc comment for why this exists (closes a
+/// cheap DoS on the commit queue) and why it's safe (the preimage backing the
+/// commit was never revealed, so recycling it leaks nothing). Pushed to the
+/// FRONT of the queue, not the back - minimizes how "stale" the returned
+/// commit ends up compared to ones still waiting their first turn.
+pub fn execute_return_commit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    if !KNOWN_RAFFLES.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+    let commit = RAFFLE_COMMITS.load(deps.storage, &info.sender).map_err(|_| ContractError::NoCommitToReturn {})?;
+    RAFFLE_COMMITS.remove(deps.storage, &info.sender);
+    COMMIT_QUEUE.push_front(deps.storage, &commit)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "return_commit")
+        .add_attribute("raffle", info.sender))
 }

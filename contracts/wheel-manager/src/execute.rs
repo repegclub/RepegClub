@@ -35,6 +35,25 @@ pub const EXPIRE_FINALIZE_DELAY_BLOCKS: u64 = 100;
 /// possibility of a front-run in the narrow post-outage-recovery window, only
 /// the free/instant version of it.
 pub const EXPIRE_CHALLENGE_BLOCKS: u64 = 100;
+/// Extra blocks added on top of `EXPIRE_CHALLENGE_BLOCKS` before
+/// `ClaimExpiredRound` becomes callable (Ronda 10 audit fix, Opus,
+/// CYOL-2/WM-1 - reserves this margin exclusively for a legitimate
+/// `RevealDraw`, which is valid the whole time a round is `ExpiryPending`).
+/// Without this, at the exact height the challenge window elapses,
+/// `RevealDraw` and `ClaimExpiredRound` are simultaneously valid and whichever
+/// transaction lands first in the block wins - an attacker watching the
+/// mempool for the operator's real reveal (recovering right at that moment
+/// from the outage that triggered this whole path) could race a claim ahead
+/// of it, forcing a healthy raffle to refund instead of draw for real, with no
+/// fund loss but a free, deliberate griefing trigger. 20 blocks (~2 minutes at
+/// Terra Classic's ~6s block time) is deliberately small - once the operator's
+/// reveal is genuinely broadcast, it only needs enough headroom to land ahead
+/// of the claim, not to cover recovery time itself (the operator is already
+/// back online and transmitting by the time this matters) - so this doesn't
+/// meaningfully delay a genuinely abandoned round's refund, on top of the
+/// ~30 minutes `EXPIRE_FINALIZE_DELAY_BLOCKS` + `EXPIRE_CHALLENGE_BLOCKS`
+/// already take.
+pub const REVEAL_PRIORITY_MARGIN_BLOCKS: u64 = 20;
 /// A `RequestExpireClosedRound` expires after this many blocks if
 /// `FinalizeExpireClosedRound` hasn't followed - without this, a single
 /// request stays "armed" forever, which is the exact hole this constant
@@ -540,6 +559,16 @@ pub fn execute_reveal_draw(
 
 /// Admin-only. See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the
 /// dedup rules this enforces.
+///
+/// **Operational rule, not enforced on-chain (Ronda 10 audit fix, Opus,
+/// CYOL-3/medium - see `rand::pick_winner_index`'s own doc comment for why):
+/// never push the same commit (`sha256(preimage)`) to more than one of this
+/// project's 3 independent commit queues** (this contract's own, weekly-
+/// round's, and create-your-own-luck-factory's). Each queue dedups only
+/// against its own `USED_COMMITS` - nothing here stops the admin from
+/// accidentally reusing a commit across contracts, and doing so would let a
+/// preimage revealed in one leak the winner of whichever raffle/round/week
+/// elsewhere ends up with the same commit.
 pub fn execute_push_commits(
     deps: DepsMut,
     info: MessageInfo,
@@ -601,11 +630,26 @@ pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
 
 /// Permissionless. First step of the 3-phase expiration - see
 /// `ExecuteMsg::RequestExpireClosedRound`'s doc comment.
+///
+/// Requires `round_id` to be the front of `REVEAL_QUEUE` (Ronda 10 audit fix,
+/// Opus, WM-1/medium): without this, a round stuck behind an earlier
+/// undrawn one could run its entire 3-phase clock "in the shadow" while
+/// nobody could actually reveal or claim it yet, then become claimable the
+/// instant it reaches the front - with zero real `EXPIRE_CHALLENGE_BLOCKS`
+/// window once a legitimate reveal is actually possible again. Gating the
+/// clock's start on being the front guarantees the reverse: the clock can
+/// only start once the round is the one thing standing between the queue and
+/// progress, so its full `EXPIRE_CHALLENGE_BLOCKS` window is genuine once it
+/// finally elapses.
 pub fn execute_request_expire_closed_round(
     deps: DepsMut,
     env: Env,
     round_id: u64,
 ) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != round_id {
+        return Err(ContractError::QueueMismatch { front, round_id });
+    }
     let config = CONFIG.load(deps.storage)?;
     let mut round = ROUNDS
         .may_load(deps.storage, round_id)?
@@ -632,12 +676,23 @@ pub fn execute_request_expire_closed_round(
 }
 
 /// Permissionless. Second step of the 3-phase expiration - see
-/// `ExecuteMsg::FinalizeExpireClosedRound`'s doc comment.
+/// `ExecuteMsg::FinalizeExpireClosedRound`'s doc comment. Same front-of-queue
+/// requirement as `execute_request_expire_closed_round` and for the same
+/// reason (Ronda 10 audit fix, Opus, WM-1/medium) - re-checked here too since
+/// the round could in principle have fallen behind the front again between
+/// the request and the finalize (it can't in the current design, since
+/// nothing pops `REVEAL_QUEUE` except a reveal/claim of the front itself, but
+/// this keeps the invariant enforced at the point it's actually relied upon
+/// rather than only where it happened to be first checked).
 pub fn execute_finalize_expire_closed_round(
     deps: DepsMut,
     env: Env,
     round_id: u64,
 ) -> Result<Response, ContractError> {
+    let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
+    if front != round_id {
+        return Err(ContractError::QueueMismatch { front, round_id });
+    }
     let mut round = ROUNDS
         .may_load(deps.storage, round_id)?
         .ok_or(ContractError::RoundNotFound { round_id })?;
@@ -679,7 +734,7 @@ pub fn claim_expired_round(deps: DepsMut, env: Env, round_id: u64) -> Result<Res
         return Err(ContractError::RoundNotExpiryPending { round_id });
     }
     let pending_since = round.expiry_pending_since_height.ok_or(ContractError::RoundNotExpiryPending { round_id })?;
-    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS {
+    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS {
         return Err(ContractError::ChallengeWindowOpen { round_id });
     }
 

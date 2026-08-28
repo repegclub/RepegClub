@@ -22,8 +22,14 @@ use sha2::{Digest, Sha256};
 ///
 /// `contract_addr` is included as a domain separator: without it, reusing the
 /// same `preimage` across two different raffle instances by operational
-/// mistake would make them pick the same relative winner index, and
-/// revealing one would leak the other's secret early.
+/// mistake would make them pick the same relative winner index. **This does
+/// NOT prevent a leak** (corrected 2026-08-28, Ronda 10 audit fix, Opus,
+/// CYOL-3/medium) - see wheel-manager's matching `pick_winner_index` doc
+/// comment for the full correction: the separator only stops the two picks
+/// from coincidentally matching, it does nothing to keep a preimage revealed
+/// in one raffle from letting anyone compute another raffle's winner too, if
+/// the same commit was ever pushed to more than one of this project's
+/// independent commit queues.
 pub fn pick_winner_index(contract_addr: &Addr, preimage: &[u8], salt: u64, entrants: &[Addr]) -> usize {
     let mut hasher = Sha256::new();
     hasher.update(contract_addr.as_bytes());

@@ -89,10 +89,14 @@ pub const CONFIG: Item<Config> = Item::new("config");
 pub const STATE: Item<GlobalState> = Item::new("state");
 pub const WEEKS: Map<u64, Week> = Map::new("weeks");
 /// Wheel Manager contributions that arrived while no week was `Open` to
-/// credit them to directly - drained by `open_new_week` the next time a week
-/// opens. See wheel-manager's `GlobalState::next_round_carry` doc comment for
-/// why this should be structurally unreachable in normal operation, but kept
-/// as cheap defense in depth anyway.
+/// credit them to directly - drained by `route_carry`, the next time it runs
+/// with the newly-opened week as `current_week_id` (corrected 2026-08-28,
+/// Ronda 10 audit fix, Opus/WR-1: a prior version of this comment claimed
+/// `open_new_week` itself drains this, which it never has - `open_new_week`
+/// only opens the week; `route_carry` is the only place that ever reads or
+/// clears this field, same as wheel-manager's `GlobalState::next_round_carry`).
+/// See that field's own doc comment for why this should be structurally
+/// unreachable in normal operation, but kept as cheap defense in depth anyway.
 pub const PENDING_CONTRIBUTIONS: Item<Uint128> = Item::new("pending_contributions");
 /// See wheel-manager's matching constant's doc comment - same mechanism.
 pub const REVEAL_QUEUE: Deque<u64> = Deque::new("reveal_queue");

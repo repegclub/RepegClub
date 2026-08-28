@@ -23,4 +23,26 @@ pub enum ContractError {
 
     #[error("base_bps + late_additional_bps must not exceed 10000 (100%)")]
     InvalidCancellationPenaltyBps {},
+
+    // --- v9: commit-reveal queue ---
+    #[error("PushCommits requires 1 to {max} commits per batch")]
+    InvalidCommitBatch { max: u32 },
+
+    #[error("Every commit must be exactly 32 bytes")]
+    InvalidCommitLength {},
+
+    #[error("That commit has already been used - commits cannot be reused across batches")]
+    CommitAlreadyUsed {},
+
+    #[error("The commit queue is already at its maximum length ({max})")]
+    CommitQueueFull { max: u32 },
+
+    #[error("No commits available in the queue")]
+    NoCommitsAvailable {},
+
+    #[error("This raffle already consumed a commit and has not returned it")]
+    CommitAlreadyConsumed {},
+
+    #[error("This raffle has no unconsumed commit to return")]
+    NoCommitToReturn {},
 }

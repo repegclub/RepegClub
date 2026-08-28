@@ -1,5 +1,5 @@
-use cosmwasm_std::{Addr, Empty, Timestamp};
-use cw_storage_plus::{Item, Map};
+use cosmwasm_std::{Addr, Empty, HexBinary, Timestamp};
+use cw_storage_plus::{Deque, Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -94,3 +94,20 @@ pub const KNOWN_RAFFLES: Map<&Addr, Empty> = Map::new("known_raffles");
 pub const CANCELLATION_PENALTY_BASE_BPS: Item<u64> = Item::new("cancellation_penalty_base_bps");
 pub const CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS: Item<u64> =
     Item::new("cancellation_penalty_late_additional_bps");
+
+/// Commits (`sha256(preimage)`) pushed by the admin ahead of time (generated
+/// offline, alongside the preimages the keeper holds) for SingleWinner/Podium
+/// raffles to consume via `ConsumeCommit` when they're funded - same pattern
+/// as wheel-manager/weekly-round's own `COMMIT_QUEUE`, copied verbatim (see
+/// `create-your-own-luck::execute::PUSH_COMMITS_MAX_BATCH`'s sibling here).
+pub const COMMIT_QUEUE: Deque<HexBinary> = Deque::new("commit_queue");
+/// Every commit ever pushed via `PushCommits`, kept forever - prevents the
+/// admin from accidentally pushing the same commit twice across batches
+/// (mirrors wheel-manager's `USED_COMMITS` exactly).
+pub const USED_COMMITS: Map<&[u8], Empty> = Map::new("used_commits");
+/// raffle address -> the commit it currently holds, consumed via
+/// `ConsumeCommit` and not yet returned via `ReturnCommit`. Doubles as the
+/// dedup guard that stops a raffle from calling `ConsumeCommit` a second time
+/// while already holding one, and is what `ReturnCommit` reads to know which
+/// commit to hand back to the front of `COMMIT_QUEUE`.
+pub const RAFFLE_COMMITS: Map<&Addr, HexBinary> = Map::new("raffle_commits");
