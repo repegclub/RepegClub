@@ -1,5 +1,6 @@
 import { LCD } from "./chainConfig";
 import { WEEKLY_ROUND_ADDRESS } from "./deployment";
+import { hexToBytes } from "./hex";
 import { getWeekEntrants, getWeekHistory } from "./queryWeeklyRound";
 
 export type VerifyWeeklyRoundResult = {
@@ -19,15 +20,6 @@ export type VerifyWeeklyRoundResult = {
 // Mirrors contracts/weekly-round/src/rand.rs::pick_winner_index exactly - same
 // formula as Wheel Manager's (see lib/verifyRound.ts for the full writeup),
 // just week_id in place of round_id.
-function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new Error(`Odd-length hex string: ${hex}`);
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
 function u64BigEndian(n: bigint): Uint8Array {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setBigUint64(0, n, false);

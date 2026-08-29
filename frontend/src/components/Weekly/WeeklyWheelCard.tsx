@@ -20,6 +20,7 @@ import {
   withdrawWeeklyTicket,
 } from "../../lib/roundActions";
 import { markRevealed } from "../../lib/revealCache";
+import { friendlyRoundError } from "../../lib/roundErrorMessages";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
 import { WeeklyVerifyRoundPanel } from "./WeeklyVerifyRoundPanel";
 import { RedeemBox } from "../Wheel/RedeemBox";
@@ -62,7 +63,14 @@ export function WeeklyWheelCard({
   const { state: walletState } = useWallet();
 
   const [actionBusy, setActionBusy] = useState<
-    "idle" | "closing" | "expiring" | "reclaiming" | "withdrawing" | "rescuing"
+    | "idle"
+    | "closing"
+    | "expiring"
+    | "reclaiming"
+    | "withdrawing"
+    | "requestingRescue"
+    | "finalizingRescue"
+    | "claimingRescue"
   >("idle");
   const [actionError, setActionError] = useState<string | null>(null);
   const [justReclaimed, setJustReclaimed] = useState(false);
@@ -158,13 +166,13 @@ export function WeeklyWheelCard({
   // own comment on handleRequestExpireClosed for the full reasoning.
   async function handleRequestExpireClosed() {
     if (walletState.status !== "connected" || weekState.status !== "loaded") return;
-    setActionBusy("rescuing");
+    setActionBusy("requestingRescue");
     setActionError(null);
     try {
       await requestExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
       weekState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
@@ -172,27 +180,31 @@ export function WeeklyWheelCard({
 
   async function handleFinalizeExpireClosed() {
     if (walletState.status !== "connected" || weekState.status !== "loaded") return;
-    setActionBusy("rescuing");
+    setActionBusy("finalizingRescue");
     setActionError(null);
     try {
       await finalizeExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
       weekState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
   }
 
+  // Marks the week Expired (like handleExpireWeek above, this never moves
+  // funds itself) - the pre-existing Reclaim Ticket button, already shown for
+  // any Expired week below, is what each entrant then uses to actually get
+  // their ticket money back.
   async function handleClaimExpiredClosed() {
     if (walletState.status !== "connected" || weekState.status !== "loaded") return;
-    setActionBusy("rescuing");
+    setActionBusy("claimingRescue");
     setActionError(null);
     try {
       await claimExpiredWeek(walletState.wallet, weekState.week.week_id, contractAddress);
       weekState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
@@ -544,14 +556,14 @@ export function WeeklyWheelCard({
             onClick={handleRequestExpireClosed}
             disabled={actionBusy !== "idle"}
           >
-            {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
+            {actionBusy === "requestingRescue" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
           </button>
           <button
             className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
             onClick={handleFinalizeExpireClosed}
             disabled={actionBusy !== "idle"}
           >
-            {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
+            {actionBusy === "finalizingRescue" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
           </button>
         </div>
       )}
@@ -561,7 +573,7 @@ export function WeeklyWheelCard({
           onClick={handleClaimExpiredClosed}
           disabled={actionBusy !== "idle"}
         >
-          {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
+          {actionBusy === "claimingRescue" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
         </button>
       )}
 
@@ -677,8 +689,12 @@ export function WeeklyWheelCard({
           <p className="withdraw-lockin-note">{t("wheel.withdrawLockInNote")}</p>
         )}
 
+      {/* Same 2-cause distinction as Wheel of Repeg's WheelCard - see its
+          own comment on this exact check. */}
       {loaded && weekState.week.status === "expired" && (
-        <p className="round-status-note">{t("wheel.expiredNote")}</p>
+        <p className="round-status-note">
+          {hasMinPlayers ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
+        </p>
       )}
 
       {loaded && weekState.week.status === "drawn" && result.kind !== "won" && (

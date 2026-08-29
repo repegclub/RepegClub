@@ -49,7 +49,13 @@ const RULES: { test: RegExp; friendly: string }[] = [
 
   // Close / draw
   { test: /cannot be closed yet/i, friendly: "This raffle can't be closed yet — it hasn't reached the max players or the timeout." },
-  { test: /raffle is not closed/i, friendly: "This raffle isn't closed yet." },
+  // Matches both RaffleNotClosed ("Raffle is not closed") and the rescue
+  // mechanism's RaffleNotClosedForExpiry ("Raffle is not Closed") - the
+  // wording is kept neutral rather than "isn't closed yet" because the
+  // rescue error can also fire on a raffle that's already Drawn/Cancelled
+  // (moved past Closed, not still waiting to reach it), where "not closed
+  // yet" would read backwards.
+  { test: /raffle is not closed/i, friendly: "This raffle isn't in the right state for that action anymore." },
   { test: /cannot be drawn yet/i, friendly: "It's too early to draw this raffle — try again shortly." },
   { test: /not enough players to draw/i, friendly: "Not enough players joined to draw a winner." },
 

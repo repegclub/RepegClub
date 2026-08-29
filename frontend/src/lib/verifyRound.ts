@@ -1,5 +1,6 @@
 import { LCD } from "./chainConfig";
 import { WHEEL_MANAGER_ADDRESS } from "./deployment";
+import { hexToBytes } from "./hex";
 import { getRoundEntrants, getRoundHistory } from "./queryWheelManager";
 
 export type VerifyRoundResult = {
@@ -27,15 +28,6 @@ export type VerifyRoundResult = {
 // winning index. Commit-reveal, not block data - preimage/commit_used come
 // straight from the round's own query response (GetRoundHistory), no RPC
 // block lookup needed at all under v9.
-function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new Error(`Odd-length hex string: ${hex}`);
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
 function u64BigEndian(n: bigint): Uint8Array {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setBigUint64(0, n, false);
