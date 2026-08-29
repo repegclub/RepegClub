@@ -11,7 +11,7 @@ const WASM_PATH = path.resolve(
   "../../../contracts/wheel-manager/artifacts/wheel_manager.wasm"
 );
 
-// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays]
+// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays] [weeklyRoundDeploymentFile]
 const [
   ,
   ,
@@ -23,6 +23,7 @@ const [
   ticketPriceArg,
   maxRevealAgeArg,
   unclaimedDeadlineArg,
+  weeklyRoundDeploymentFileArg,
 ] = process.argv;
 if (!label || !maxPlayersArg || !minPlayersArg) {
   console.error(
@@ -56,7 +57,14 @@ const maxRevealAgeSeconds = maxRevealAgeArg ? Number(maxRevealAgeArg) : 3600;
 // pass 0 to exercise SweepExpiredPrize immediately.
 const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
-const weeklyStubDeploymentPath = path.resolve(__dirname, "../deployment-weekly-stub.json");
+// Defaults to the isolated weekly-round-stub (contribution sink only) - pass
+// a real weekly-round deployment file (e.g. deployment-weekly-round-<label>.json)
+// to wire this Wheel Manager to a real Weekly Round instance for full
+// cross-contract integration testing instead.
+const weeklyStubDeploymentPath = path.resolve(
+  __dirname,
+  `../${weeklyRoundDeploymentFileArg ?? "deployment-weekly-stub.json"}`
+);
 
 async function main() {
   const { contractAddress: weeklyRoundAddress } = JSON.parse(

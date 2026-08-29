@@ -1,28 +1,36 @@
-import { LCD, RPC } from "./chainConfig";
+import { LCD } from "./chainConfig";
 import { getEntrants, getRaffleStatus } from "./queryCyolRaffle";
 
 export type VerifyCyolRaffleResult = {
-  drawHeight: number;
-  blockTimeIso: string;
+  contractAddress: string;
+  commitUsedHex: string;
+  preimageHex: string;
   entrants: string[];
   digestHex: string;
   winnerIndex: number;
   computedWinner: string;
   onChainWinner: string;
   matches: boolean;
-  blockQueryUrl: string;
   entrantsQueryUrl: string;
 };
 
 // Mirrors contracts/create-your-own-luck/src/rand.rs::pick_winner_index
-// exactly (raffle_seed and salt are both always 0 for SingleWinner - only
-// Podium, not exposed in this UI, uses a non-zero salt for its 2nd/3rd
-// places): SHA-256(0 as BE u64 | draw block height BE u64 | draw block time
-// in nanoseconds BE u64 | 0 as BE u64 | for each entrant: utf8 address bytes
-// + 0x00), first 8 bytes (BE) modulo entrant count picks the winning index.
-// Same pattern as lib/verifyRound.ts for Wheel of Repeg - draw_height/
-// drawn_at alone aren't enough (the query only has whole-second precision,
-// the hash needs nanoseconds), so this fetches the real historical block.
+// exactly (salt is always 0 for SingleWinner - only Podium, not exposed in
+// this UI, uses a non-zero salt for its 2nd/3rd places): SHA-256(contract_addr
+// utf8 bytes | 0x00 separator | preimage bytes | salt(0) BE u64 | for each
+// entrant: utf8 address bytes + 0x00), first 8 bytes (BE) modulo entrant
+// count picks the winning index. Commit-reveal, not block data -
+// preimage/commit_used come straight from GetRaffleStatus, no RPC block
+// lookup needed at all under v9 (unlike the pre-v9 formula this replaces).
+function hexToBytes(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error(`Odd-length hex string: ${hex}`);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 function u64BigEndian(n: bigint): Uint8Array {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setBigUint64(0, n, false);
@@ -33,44 +41,24 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function isoToNanos(iso: string): bigint {
-  const match = iso.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.(\d+))?Z$/);
-  if (!match) throw new Error(`Unexpected block time format: ${iso}`);
-  const wholeSeconds = BigInt(Math.floor(new Date(`${match[1]}Z`).getTime() / 1000));
-  const fractionNanos = (match[3] ?? "").padEnd(9, "0").slice(0, 9);
-  return wholeSeconds * 1_000_000_000n + BigInt(fractionNanos);
-}
-
 function entrantsQueryUrl(contractAddress: string): string {
   const query = btoa(JSON.stringify({ get_entrants: {} }));
   return `${LCD}/cosmwasm/wasm/v1/contract/${contractAddress}/smart/${query}`;
 }
 
-async function fetchBlockTimeIso(height: number): Promise<string> {
-  const res = await fetch(`${RPC}/block?height=${height}`);
-  if (!res.ok) throw new Error(`Block query failed (${res.status})`);
-  const body = await res.json();
-  const time = body?.result?.block?.header?.time;
-  if (!time) throw new Error("Block response missing header.time");
-  return time as string;
-}
-
 export async function verifyCyolRaffle(contractAddress: string, onChainWinner: string): Promise<VerifyCyolRaffleResult> {
   const [status, entrantsRes] = await Promise.all([getRaffleStatus(contractAddress), getEntrants(contractAddress)]);
-  if (status.status !== "drawn" || status.draw_height === null) {
+  if (status.status !== "drawn" || !status.revealed_preimage) {
     throw new Error("This raffle has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;
   if (entrants.length === 0) throw new Error("No entrants recorded for this raffle.");
 
-  const blockTimeIso = await fetchBlockTimeIso(status.draw_height);
-  const nanos = isoToNanos(blockTimeIso);
-
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [
-    u64BigEndian(0n), // raffle_seed - always 0
-    u64BigEndian(BigInt(status.draw_height)),
-    u64BigEndian(nanos),
+    encoder.encode(contractAddress),
+    new Uint8Array([0]),
+    hexToBytes(status.revealed_preimage),
     u64BigEndian(0n), // salt - always 0 for SingleWinner
   ];
   for (const addr of entrants) {
@@ -91,15 +79,15 @@ export async function verifyCyolRaffle(contractAddress: string, onChainWinner: s
   const computedWinner = entrants[winnerIndex];
 
   return {
-    drawHeight: status.draw_height,
-    blockTimeIso,
+    contractAddress,
+    commitUsedHex: status.commit_used ?? "",
+    preimageHex: status.revealed_preimage,
     entrants,
     digestHex: toHex(digest),
     winnerIndex,
     computedWinner,
     onChainWinner,
     matches: computedWinner === onChainWinner,
-    blockQueryUrl: `${RPC}/block?height=${status.draw_height}`,
     entrantsQueryUrl: entrantsQueryUrl(contractAddress),
   };
 }
@@ -110,17 +98,16 @@ export function buildCyolVerificationPayload(contractAddress: string, result: Ve
   return {
     raffle_contract_address: contractAddress,
     on_chain_winner: result.onChainWinner,
-    draw_block_height: result.drawHeight,
-    draw_block_time_utc: result.blockTimeIso,
+    commit_used_hex: result.commitUsedHex,
+    revealed_preimage_hex: result.preimageHex,
     entrants_in_order: result.entrants,
     formula:
-      "winner = entrants[ SHA256(0u64 as big-endian || draw_block_height as big-endian u64 || draw_block_time in nanoseconds-since-epoch as big-endian u64 || 0u64 as big-endian || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
+      "winner = entrants[ SHA256(contract_address as UTF-8 bytes || 0x00 || revealed_preimage bytes || 0u64 as big-endian (salt) || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
     sha256_digest_hex: result.digestHex,
     computed_winner_index: result.winnerIndex,
     computed_winner: result.computedWinner,
     matches_on_chain_winner: result.matches,
     sources: {
-      block_data: result.blockQueryUrl,
       entrants_data: result.entrantsQueryUrl,
     },
   };

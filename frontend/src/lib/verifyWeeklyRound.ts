@@ -1,26 +1,33 @@
-import { LCD, RPC } from "./chainConfig";
+import { LCD } from "./chainConfig";
 import { WEEKLY_ROUND_ADDRESS } from "./deployment";
 import { getWeekEntrants, getWeekHistory } from "./queryWeeklyRound";
 
 export type VerifyWeeklyRoundResult = {
   weekId: number;
-  drawHeight: number;
-  drawAfterHeight: number;
-  drawGap: number;
-  blockTimeIso: string;
+  contractAddress: string;
+  commitUsedHex: string;
+  preimageHex: string;
   entrants: string[];
   digestHex: string;
   winnerIndex: number;
   computedWinner: string;
   onChainWinner: string;
   matches: boolean;
-  blockQueryUrl: string;
   entrantsQueryUrl: string;
 };
 
 // Mirrors contracts/weekly-round/src/rand.rs::pick_winner_index exactly - same
 // formula as Wheel Manager's (see lib/verifyRound.ts for the full writeup),
 // just week_id in place of round_id.
+function hexToBytes(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) throw new Error(`Odd-length hex string: ${hex}`);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 function u64BigEndian(n: bigint): Uint8Array {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setBigUint64(0, n, false);
@@ -31,26 +38,9 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function isoToNanos(iso: string): bigint {
-  const match = iso.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.(\d+))?Z$/);
-  if (!match) throw new Error(`Unexpected block time format: ${iso}`);
-  const wholeSeconds = BigInt(Math.floor(new Date(`${match[1]}Z`).getTime() / 1000));
-  const fractionNanos = (match[3] ?? "").padEnd(9, "0").slice(0, 9);
-  return wholeSeconds * 1_000_000_000n + BigInt(fractionNanos);
-}
-
 function entrantsQueryUrl(weekId: number, contractAddress: string): string {
   const query = btoa(JSON.stringify({ get_week_entrants: { week_id: weekId } }));
   return `${LCD}/cosmwasm/wasm/v1/contract/${contractAddress}/smart/${query}`;
-}
-
-async function fetchBlockTimeIso(height: number): Promise<string> {
-  const res = await fetch(`${RPC}/block?height=${height}`);
-  if (!res.ok) throw new Error(`Block query failed (${res.status})`);
-  const body = await res.json();
-  const time = body?.result?.block?.header?.time;
-  if (!time) throw new Error("Block response missing header.time");
-  return time as string;
 }
 
 export async function verifyWeeklyRound(
@@ -61,20 +51,18 @@ export async function verifyWeeklyRound(
     getWeekHistory(weekId, contractAddress),
     getWeekEntrants(weekId, contractAddress),
   ]);
-  if (week.status !== "drawn" || week.draw_height == null || !week.winner) {
+  if (week.status !== "drawn" || !week.revealed_preimage || !week.winner) {
     throw new Error("This week has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;
   if (entrants.length === 0) throw new Error("No entrants recorded for this week.");
 
-  const blockTimeIso = await fetchBlockTimeIso(week.draw_height);
-  const nanos = isoToNanos(blockTimeIso);
-
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [
+    encoder.encode(contractAddress),
+    new Uint8Array([0]),
     u64BigEndian(BigInt(week.week_id)),
-    u64BigEndian(BigInt(week.draw_height)),
-    u64BigEndian(nanos),
+    hexToBytes(week.revealed_preimage),
   ];
   for (const addr of entrants) {
     chunks.push(encoder.encode(addr));
@@ -95,17 +83,15 @@ export async function verifyWeeklyRound(
 
   return {
     weekId,
-    drawHeight: week.draw_height,
-    drawAfterHeight: week.draw_after_height!,
-    drawGap: week.draw_height - week.draw_after_height!,
-    blockTimeIso,
+    contractAddress,
+    commitUsedHex: week.commit_used ?? "",
+    preimageHex: week.revealed_preimage,
     entrants,
     digestHex: toHex(digest),
     winnerIndex,
     computedWinner,
     onChainWinner: week.winner,
     matches: computedWinner === week.winner,
-    blockQueryUrl: `${RPC}/block?height=${week.draw_height}`,
     entrantsQueryUrl: entrantsQueryUrl(weekId, contractAddress),
   };
 }
@@ -113,20 +99,18 @@ export async function verifyWeeklyRound(
 export function buildWeeklyVerificationPayload(result: VerifyWeeklyRoundResult) {
   return {
     week_id: result.weekId,
+    contract_address: result.contractAddress,
     on_chain_winner: result.onChainWinner,
-    draw_block_height: result.drawHeight,
-    draw_eligible_at_height: result.drawAfterHeight,
-    draw_gap_blocks: result.drawGap,
-    draw_block_time_utc: result.blockTimeIso,
+    commit_used_hex: result.commitUsedHex,
+    revealed_preimage_hex: result.preimageHex,
     entrants_in_order: result.entrants,
     formula:
-      "winner = entrants[ SHA256(week_id as big-endian u64 || draw_block_height as big-endian u64 || draw_block_time in nanoseconds-since-epoch as big-endian u64 || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
+      "winner = entrants[ SHA256(contract_address as UTF-8 bytes || 0x00 || week_id as big-endian u64 || revealed_preimage bytes || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
     sha256_digest_hex: result.digestHex,
     computed_winner_index: result.winnerIndex,
     computed_winner: result.computedWinner,
     matches_on_chain_winner: result.matches,
     sources: {
-      block_data: result.blockQueryUrl,
       entrants_data: result.entrantsQueryUrl,
     },
   };

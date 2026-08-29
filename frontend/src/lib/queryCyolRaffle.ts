@@ -3,7 +3,7 @@ import { RPC } from "./chainConfig";
 
 // Mirrors contracts/create-your-own-luck/src/state.rs and msg.rs exactly.
 export type CyolRaffleType = "single_winner" | "podium" | "airdrop";
-export type CyolRaffleStatus = "funding" | "open" | "closed" | "drawn" | "cancelled";
+export type CyolRaffleStatus = "funding" | "open" | "closed" | "expiry_pending" | "drawn" | "cancelled";
 export type CyolPrizeAsset = { native: { denom: string } } | { cw20: { address: string } };
 
 export type CyolRaffleStatusResponse = {
@@ -17,8 +17,14 @@ export type CyolRaffleStatusResponse = {
   opened_at: number | null;
   closed_at: number | null;
   seconds_remaining: number | null;
-  draw_after_height: number | null;
-  draw_height: number | null;
+  closed_at_height: number | null;
+  // The hash this raffle must be revealed against (hex) - null for Airdrop
+  // (never needs one) or before the fee/prize is funded.
+  commit_used: string | null;
+  // The secret that unlocked commit_used (hex), once revealed - lets anyone
+  // independently recompute the winner-selection hash. See
+  // lib/verifyCyolRaffle.ts.
+  revealed_preimage: string | null;
 };
 
 export type CyolConfigResponse = {
@@ -30,8 +36,6 @@ export type CyolConfigResponse = {
   min_players: number;
   max_players: number;
   round_timeout_seconds: number;
-  draw_delay_blocks: number;
-  draw_window_blocks: number;
   unclaimed_deadline_days: number;
   prize_asset: CyolPrizeAsset;
   fee_amount_usdc: string;

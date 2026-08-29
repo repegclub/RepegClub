@@ -11,10 +11,12 @@ import { WEEKLY_PRIZE_SHARE } from "../../lib/queryWeeklyRound";
 import { formatUluna } from "../../lib/format";
 import { useWallet } from "../../contexts/WalletContext";
 import {
+  claimExpiredWeek,
   closeWeek,
-  drawWeeklyWinner,
   expireWeek,
+  finalizeExpireClosedWeek,
   reclaimWeeklyTicket,
+  requestExpireClosedWeek,
   withdrawWeeklyTicket,
 } from "../../lib/roundActions";
 import { markRevealed } from "../../lib/revealCache";
@@ -60,12 +62,11 @@ export function WeeklyWheelCard({
   const { state: walletState } = useWallet();
 
   const [actionBusy, setActionBusy] = useState<
-    "idle" | "closing" | "drawing" | "expiring" | "reclaiming" | "withdrawing"
+    "idle" | "closing" | "expiring" | "reclaiming" | "withdrawing" | "rescuing"
   >("idle");
   const [actionError, setActionError] = useState<string | null>(null);
   const [justReclaimed, setJustReclaimed] = useState(false);
   const [justWithdrawn, setJustWithdrawn] = useState(false);
-  const [triggeredDraw, setTriggeredDraw] = useState(false);
   // Same reasoning as Wheel of Repeg's WheelCard: Redeem opens as a popup
   // instead of inline, so it can't grow this card vertically and distort
   // the wheel-status lab-screen sitting next to the action buttons.
@@ -138,28 +139,6 @@ export function WeeklyWheelCard({
     }
   }
 
-  async function handleDrawWinner() {
-    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
-    const drawnWeekId = weekState.week.week_id;
-    setActionBusy("drawing");
-    setActionError(null);
-    try {
-      await drawWeeklyWinner(walletState.wallet, contractAddress);
-      setTriggeredDraw(true);
-      onWeekFinished(drawnWeekId);
-    } catch (err) {
-      setActionError(
-        err instanceof Error && err.message.includes("cannot be drawn yet")
-          ? t("wheel.drawTooEarly")
-          : err instanceof Error
-            ? err.message
-            : t("wheel.actionFailed")
-      );
-    } finally {
-      setActionBusy("idle");
-    }
-  }
-
   async function handleExpireWeek() {
     if (walletState.status !== "connected" || weekState.status !== "loaded") return;
     const expiredWeekId = weekState.week.week_id;
@@ -168,6 +147,50 @@ export function WeeklyWheelCard({
     try {
       await expireWeek(walletState.wallet, contractAddress);
       onWeekFinished(expiredWeekId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  // 3-phase outage safety net, same as Wheel of Repeg's WheelCard - see its
+  // own comment on handleRequestExpireClosed for the full reasoning.
+  async function handleRequestExpireClosed() {
+    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    setActionBusy("rescuing");
+    setActionError(null);
+    try {
+      await requestExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
+      weekState.refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  async function handleFinalizeExpireClosed() {
+    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    setActionBusy("rescuing");
+    setActionError(null);
+    try {
+      await finalizeExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
+      weekState.refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  async function handleClaimExpiredClosed() {
+    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    setActionBusy("rescuing");
+    setActionError(null);
+    try {
+      await claimExpiredWeek(walletState.wallet, weekState.week.week_id, contractAddress);
+      weekState.refetch();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
     } finally {
@@ -212,7 +235,6 @@ export function WeeklyWheelCard({
     reset();
     setJustReclaimed(false);
     setJustWithdrawn(false);
-    setTriggeredDraw(false);
     onContinue();
   }
 
@@ -258,6 +280,15 @@ export function WeeklyWheelCard({
     !hasMinPlayers &&
     deadlineEstimate !== null &&
     nowSec >= deadlineEstimate + DEADLINE_SAFETY_BUFFER_SECONDS;
+
+  // Mirrors execute_request_expire_closed_week's own condition exactly
+  // (closed_at + max_reveal_age_seconds) - same outage safety net as Wheel of
+  // Repeg's WheelCard.
+  const stuckEligible =
+    loaded &&
+    weekState.week.status === "closed" &&
+    weekState.week.closed_at !== null &&
+    nowSec >= weekState.week.closed_at + weekState.config.max_reveal_age_seconds;
 
   // Same showExpireRound/showWithdrawTicket pattern as WheelCard.tsx -
   // computed once so .weekly-actions-row only renders when it will actually
@@ -346,9 +377,6 @@ export function WeeklyWheelCard({
     }
     if (weekState.week.status === "expired" && justReclaimed) {
       return { type: "horizontal", message: t("wheel.reclaimedNote") };
-    }
-    if (weekState.week.status === "drawn" && result.kind !== "won" && triggeredDraw) {
-      return { type: "rectangulo", message: t("wheel.drawnByYou") };
     }
     return { type: "nube", message: HOST_HYPE_LINES[hypeIndex] };
   })();
@@ -509,13 +537,31 @@ export function WeeklyWheelCard({
         </div>
       )}
 
-      {loaded && weekState.week.status === "closed" && (
+      {stuckEligible && walletState.status === "connected" && (
+        <div className="weekly-actions-row">
+          <button
+            className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
+            onClick={handleRequestExpireClosed}
+            disabled={actionBusy !== "idle"}
+          >
+            {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
+          </button>
+          <button
+            className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
+            onClick={handleFinalizeExpireClosed}
+            disabled={actionBusy !== "idle"}
+          >
+            {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
+          </button>
+        </div>
+      )}
+      {loaded && weekState.week.status === "expiry_pending" && walletState.status === "connected" && (
         <button
           className="round-action-btn"
-          onClick={handleDrawWinner}
-          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+          onClick={handleClaimExpiredClosed}
+          disabled={actionBusy !== "idle"}
         >
-          {actionBusy === "drawing" ? t("wheel.drawing") : t("wheel.drawWinner")}
+          {actionBusy === "rescuing" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
         </button>
       )}
 
@@ -635,7 +681,7 @@ export function WeeklyWheelCard({
         <p className="round-status-note">{t("wheel.expiredNote")}</p>
       )}
 
-      {loaded && weekState.week.status === "drawn" && result.kind !== "won" && !triggeredDraw && (
+      {loaded && weekState.week.status === "drawn" && result.kind !== "won" && (
         <p className="round-status-note">{t("wheel.drawnByOther")}</p>
       )}
 
