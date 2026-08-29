@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -35,8 +36,6 @@ async function main() {
             min_players: 10,
             max_players: 25,
             round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
-            draw_delay_blocks: 2,
-            draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
             prize_native_denom: "uluna",
             prize_cw20_address: null,
@@ -53,6 +52,23 @@ async function main() {
     ?.attributes.find((a) => a.key === "_contract_address")?.value;
   if (!raffleAddress) throw new Error("No raffle address in tx events");
   console.log("Raffle:", raffleAddress);
+
+  // v9: SingleWinner/Podium raffles fetch a commit from the factory's queue
+  // via ConsumeCommit the moment they're funded (PayServiceFee/DepositPrize)
+  // - push one first or that call fails with NoCommitsAvailable.
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
+  const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: factoryAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
 
   const config = await queryContract<{ fee_amount_usdc: string; usdc_denom: string }>(RPC, {
     address: raffleAddress,

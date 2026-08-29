@@ -1,10 +1,11 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { MsgExecuteContract } from "@goblinhunt/cosmes/client";
+import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 
-import { loadWallet } from "./config";
+import { RPC, loadWallet } from "./config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +15,36 @@ async function main() {
   );
   console.log("Wheel Manager (cap-test, max_players=4 -> cap=2):", contractAddress);
 
+  const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   const player1 = loadWallet("PLAYER1_MNEMONIC");
+
+  // v9: BuyTicket refuses to sell before the round has a commit assigned.
+  const round = await queryContract<{ commit_used: string | null }>(RPC, {
+    address: contractAddress,
+    query: { get_current_round: {} },
+  });
+  if (!round.commit_used) {
+    const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+    const pushRes = await commitPusher.broadcastTxSync({
+      msgs: [
+        new MsgExecuteContract({
+          sender: commitPusher.address,
+          contract: contractAddress,
+          msg: { push_commits: { commits: [commit] } },
+          funds: [],
+        }),
+      ],
+    });
+    if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+    const assignRes = await admin.broadcastTxSync({
+      msgs: [
+        new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+      ],
+    });
+    if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+    console.log("Committed and assigned to the current round.");
+  }
 
   for (let i = 1; i <= 3; i++) {
     try {

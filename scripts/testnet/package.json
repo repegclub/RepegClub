@@ -15,14 +15,13 @@
     "check:cyol-oracle": "tsx src/checkCyolOracle.ts",
     "check:sweep": "tsx src/checkSweepExpiredPrize.ts",
     "keeper": "tsx src/keeper.ts",
+    "generate-and-push-commits": "tsx src/generateAndPushCommits.ts",
     "check:ticket-cap": "tsx src/checkTicketCap.ts",
     "check:expire-reclaim": "tsx src/checkExpireAndReclaim.ts",
-    "check:draw-height": "tsx src/checkDrawHeight.ts",
     "mainnet-test:deploy-weekly-stub": "tsx src/deployWeeklyStubMainnetTest.ts",
     "mainnet-test:deploy-wheel": "tsx src/deployWheelManagerMainnetTest.ts",
     "mainnet-test:play": "tsx src/playWheelManagerFlowMainnetTest.ts",
-    "derive-multisig": "tsx src/deriveMultisigAddress.ts",
-    "check:draw-grinding": "tsx src/checkDrawGrinding.ts"
+    "derive-multisig": "tsx src/deriveMultisigAddress.ts"
   },
   "dependencies": {
     "@bufbuild/protobuf": "1.2.0",

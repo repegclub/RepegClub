@@ -557,16 +557,18 @@ pub fn execute_reveal_draw(
         .add_attribute("prize", prize.to_string()))
 }
 
-/// Admin-only. See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the
-/// dedup rules this enforces.
+/// `config.commit_pusher`-only (a role separate from `admin` - see
+/// `Config::commit_pusher`'s own doc comment). See `COMMIT_QUEUE`/
+/// `USED_COMMITS`'s doc comments for the dedup rules this enforces.
 ///
 /// **Operational rule, not enforced on-chain (Ronda 10 audit fix, Opus,
 /// CYOL-3/medium - see `rand::pick_winner_index`'s own doc comment for why):
 /// never push the same commit (`sha256(preimage)`) to more than one of this
 /// project's 3 independent commit queues** (this contract's own, weekly-
 /// round's, and create-your-own-luck-factory's). Each queue dedups only
-/// against its own `USED_COMMITS` - nothing here stops the admin from
-/// accidentally reusing a commit across contracts, and doing so would let a
+/// against its own `USED_COMMITS` - nothing here stops whoever generates
+/// preimages offline from accidentally reusing a commit across contracts,
+/// and doing so would let a
 /// preimage revealed in one leak the winner of whichever raffle/round/week
 /// elsewhere ends up with the same commit.
 pub fn execute_push_commits(
@@ -575,7 +577,7 @@ pub fn execute_push_commits(
     commits: Vec<HexBinary>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.admin {
+    if info.sender != config.commit_pusher {
         return Err(ContractError::Unauthorized {});
     }
     if commits.is_empty() || commits.len() as u32 > PUSH_COMMITS_MAX_BATCH {

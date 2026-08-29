@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -25,10 +26,6 @@ async function ulunaBalance(address: string): Promise<bigint> {
   return uluna ? BigInt(uluna.amount) : 0n;
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function main() {
   const { contractAddress } = JSON.parse(readFileSync(deploymentPath, "utf8"));
   const { contractAddress: weeklyStubAddress } = JSON.parse(
@@ -38,11 +35,38 @@ async function main() {
   console.log("Weekly-round-stub:", weeklyStubAddress);
 
   const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   const playerEnvVars = ["PLAYER1_MNEMONIC", "PLAYER2_MNEMONIC", "PLAYER3_MNEMONIC"].slice(
     0,
     numPlayers
   );
   const players = playerEnvVars.map((v) => loadWallet(v));
+
+  // v9: BuyTicket refuses to sell before the round has a commit assigned
+  // (RoundNotSeeded) - push one and back-fill it onto round 1 before anyone
+  // buys. See wheel-manager's `HexBinary` doc comment (hex_binary.rs) for why
+  // this is a plain hex string, not base64.
+  const preimage = randomBytes(32);
+  const commit = createHash("sha256").update(preimage).digest("hex");
+  console.log(`\nPushing commit ${commit}...`);
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: contractAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  const assignRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+    ],
+  });
+  if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  console.log("  committed and assigned to round 1");
 
   const [treasuryBefore, adminFeeBefore, weeklyBefore] = await Promise.all([
     ulunaBalance(TREASURY_ADDRESS),
@@ -69,35 +93,24 @@ async function main() {
     console.log(`  ok | gasUsed: ${res.txResponse.gasUsed} | auto_closed: ${autoClosed}`);
   }
 
-  console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
-  let drawRes;
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    try {
-      drawRes = await admin.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: admin.address,
-            contract: contractAddress,
-            msg: { draw_winner: {} },
-            funds: [],
-          }),
-        ],
-      });
-      if (drawRes.txResponse.code === 0) break;
-      throw new Error(drawRes.txResponse.rawLog);
-    } catch (err) {
-      console.log(`  attempt ${attempt} not ready yet, waiting 6s... (${(err as Error).message.slice(0, 80)})`);
-      drawRes = undefined;
-      await sleep(6000);
-    }
-  }
-  if (!drawRes || drawRes.txResponse.code !== 0) {
-    throw new Error("draw_winner never succeeded after retries");
+  console.log("\nRevealing draw...");
+  const drawRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: admin.address,
+        contract: contractAddress,
+        msg: { reveal_draw: { round_id: 1, preimage: preimage.toString("hex") } },
+        funds: [],
+      }),
+    ],
+  });
+  if (drawRes.txResponse.code !== 0) {
+    throw new Error(`reveal_draw failed: ${drawRes.txResponse.rawLog}`);
   }
   const wasmEvent = drawRes.txResponse.events.find((e) => e.type === "wasm");
   const winner = wasmEvent?.attributes.find((a) => a.key === "winner")?.value;
   const prize = wasmEvent?.attributes.find((a) => a.key === "prize")?.value;
-  if (!winner || !prize) throw new Error("winner/prize not found in draw_winner events");
+  if (!winner || !prize) throw new Error("winner/prize not found in reveal_draw events");
   console.log(`Winner: ${winner} | prize: ${prize} uluna | gasUsed: ${drawRes.txResponse.gasUsed}`);
 
   const winnerWallet = players.find((p) => p.address === winner);

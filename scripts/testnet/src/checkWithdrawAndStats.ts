@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,6 +11,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type WalletStats = { total_invested: string; total_redeemed: string };
 
+async function pushAndAssignCommitIfNeeded(contractAddress: string, commitUsed: string | null) {
+  if (commitUsed) return;
+  const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
+  const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: contractAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  const assignRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+    ],
+  });
+  if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  console.log("Committed and assigned to the current round/week.");
+}
+
 async function checkWheelManager() {
   const { contractAddress } = JSON.parse(
     readFileSync(path.resolve(__dirname, "../deployment-wheelmanager-frontenddev5.json"), "utf8")
@@ -19,11 +45,14 @@ async function checkWheelManager() {
   const player1 = loadWallet("PLAYER1_MNEMONIC");
   const player2 = loadWallet("PLAYER2_MNEMONIC");
 
-  const round = await queryContract<{ round_id: number }>(RPC, {
+  const round = await queryContract<{ round_id: number; commit_used: string | null }>(RPC, {
     address: contractAddress,
     query: { get_current_round: {} },
   });
   console.log("Current round:", round.round_id);
+
+  // v9: BuyTicket refuses to sell before the round has a commit assigned.
+  await pushAndAssignCommitIfNeeded(contractAddress, round.commit_used);
 
   const buyRes = await player1.broadcastTxSync({
     msgs: [
@@ -132,11 +161,14 @@ async function checkWeeklyRound() {
 
   const player1 = loadWallet("PLAYER1_MNEMONIC");
 
-  const week = await queryContract<{ week_id: number; today_price: string }>(RPC, {
+  const week = await queryContract<{ week_id: number; today_price: string; commit_used: string | null }>(RPC, {
     address: contractAddress,
     query: { get_current_week: {} },
   });
   console.log("Current week:", week.week_id, "price today:", week.today_price);
+
+  // v9: BuyWeeklyTicket refuses to sell before the week has a commit assigned.
+  await pushAndAssignCommitIfNeeded(contractAddress, week.commit_used);
 
   const buyRes = await player1.broadcastTxSync({
     msgs: [

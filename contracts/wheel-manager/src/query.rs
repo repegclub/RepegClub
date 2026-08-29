@@ -97,5 +97,6 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         treasury_address: config.treasury_address,
         admin_fee_address: config.admin_fee_address,
         weekly_round_address: config.weekly_round_address,
+        commit_pusher: config.commit_pusher,
     })
 }

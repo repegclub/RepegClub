@@ -51,6 +51,11 @@ pub const CREATOR_COOLDOWNS: Map<Addr, CreatorCooldown> = Map::new("creator_cool
 /// admin-gated - see its own doc comment on `ExecuteMsg`.
 pub const ADMIN: Item<Addr> = Item::new("admin");
 
+/// See wheel-manager's matching `Config::commit_pusher` doc comment - same
+/// role, same rationale, same "no rotation" caveat. Gates `PushCommits`
+/// only - deliberately NOT `ADMIN` above.
+pub const COMMIT_PUSHER: Item<Addr> = Item::new("commit_pusher");
+
 /// CW20 tokens approved as prizes for PAID raffles - added only after
 /// manual review (liquidity, volume, community standing, confirmed non-
 /// malicious transfer behavior), the same bar create-your-own-luck's own

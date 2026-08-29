@@ -19,6 +19,12 @@ pub struct InstantiateMsg {
     pub treasury_address: String,
     pub admin_fee_address: String,
     pub weekly_round_address: String,
+    /// See `Config::commit_pusher`'s own doc comment. Must be a wallet
+    /// distinct from both `admin` and whatever wallet runs the always-on
+    /// keeper automation - see the project's Obsidian notes on why that
+    /// separation matters (a compromised always-on process must never be
+    /// able to seed its own future commits).
+    pub commit_pusher: String,
 }
 
 #[cw_serde]
@@ -175,4 +181,5 @@ pub struct ConfigResponse {
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
     pub weekly_round_address: Addr,
+    pub commit_pusher: Addr,
 }

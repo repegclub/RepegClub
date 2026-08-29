@@ -45,6 +45,7 @@ fn setup(max_players: u32, min_players: u32, round_duration_days: u64) -> (Deps,
         max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
     };
     let info = mock_info("admin", &[]);
     instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -54,7 +55,7 @@ fn setup(max_players: u32, min_players: u32, round_duration_days: u64) -> (Deps,
 fn setup_and_seed(max_players: u32, min_players: u32, round_duration_days: u64, count: u8) -> (Deps, cosmwasm_std::Env) {
     let (mut deps, env) = setup(max_players, min_players, round_duration_days);
     let commits: Vec<HexBinary> = (1..=count).map(|n| commit_for(&preimage_for(n))).collect();
-    execute(deps.as_mut(), env.clone(), mock_info("admin", &[]), ExecuteMsg::PushCommits { commits }).unwrap();
+    execute(deps.as_mut(), env.clone(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits }).unwrap();
     execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::AssignCommit {}).unwrap();
     (deps, env)
 }
@@ -303,6 +304,24 @@ fn admin_only_actions_reject_non_admin() {
 }
 
 #[test]
+fn commit_pusher_and_admin_roles_cannot_do_each_others_job() {
+    let (mut deps, env) = setup_and_seed(2, 2, 7, 1);
+    // admin (the instantiate sender) is not commit_pusher ("committer").
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(9))] },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    // commit_pusher ("committer") must not be able to do anything admin-only.
+    let err = execute(deps.as_mut(), env, mock_info("committer", &[]), ExecuteMsg::SweepUstc {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+}
+
+#[test]
 fn sweep_expired_prize_is_permissionless_but_gated_by_the_deadline() {
     let (mut deps, env) = setup_and_seed(2, 2, 7, 3);
     buy_at_price(&mut deps, &env, "player1", BASE_PRICE).unwrap();
@@ -367,6 +386,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
         max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
     };
 
     let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0, 5)).unwrap_err();
@@ -392,6 +412,7 @@ fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
         max_reveal_age_seconds,
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
     };
 
     let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0)).unwrap_err();

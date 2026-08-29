@@ -16,6 +16,12 @@ async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin address:", admin.address);
 
+  // See Config::commit_pusher's own doc comment - a role separate from
+  // admin, gating only PushCommits. Only its address is needed here (never
+  // signs anything in this script).
+  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  console.log("commit_pusher address:", commitPusherAddress);
+
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));
   console.log(`Storing weekly-round code (${wasmByteCode.length} bytes)...`);
 
@@ -46,15 +52,15 @@ async function main() {
           min_players: 2,
           max_players: 10,
           // Real "weekly" duration - was 1 (a day) as a testing shortcut to
-          // iterate fast; draw_window_blocks 60 matches the same reasoning
-          // already used for Wheel Manager's 2026-07-15 production redeploy
-          // (keeper crash-restart + VM reboot margin, see project notes).
+          // iterate fast.
           round_duration_days: 7,
-          draw_delay_blocks: 2,
-          draw_window_blocks: 60,
+          // See wheel-manager's matching deploy script for the 1-hour default
+          // rationale (max_reveal_age_seconds, bounded 30min-7days).
+          max_reveal_age_seconds: 3600,
           unclaimed_deadline_days: 90,
           treasury_address: TREASURY_ADDRESS,
           admin_fee_address: ADMIN_FEE_ADDRESS,
+          commit_pusher: commitPusherAddress,
         },
         funds: [],
       }),

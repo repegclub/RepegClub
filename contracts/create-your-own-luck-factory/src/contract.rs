@@ -10,7 +10,7 @@ use crate::execute::{
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{
-    RaffleRecord, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS,
+    RaffleRecord, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, COMMIT_PUSHER,
     KNOWN_RAFFLES, PENDING_CREATOR, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT,
 };
 
@@ -31,6 +31,7 @@ pub fn instantiate(
     RAFFLE_CODE_ID.save(deps.storage, &msg.raffle_code_id)?;
     RAFFLE_COUNT.save(deps.storage, &0u64)?;
     ADMIN.save(deps.storage, &info.sender)?;
+    COMMIT_PUSHER.save(deps.storage, &deps.api.addr_validate(&msg.commit_pusher)?)?;
     CANCELLATION_PENALTY_BASE_BPS.save(deps.storage, &DEFAULT_CANCELLATION_PENALTY_BASE_BPS)?;
     CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS
         .save(deps.storage, &DEFAULT_CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS)?;
@@ -294,6 +295,7 @@ mod tests {
             mock_info("deployer", &[]),
             InstantiateMsg {
                 raffle_code_id: RAFFLE_CODE_ID,
+                commit_pusher: "committer".to_string(),
             },
         )
         .unwrap();
@@ -354,6 +356,7 @@ mod tests {
             mock_info("deployer", &[]),
             InstantiateMsg {
                 raffle_code_id: RAFFLE_CODE_ID,
+                commit_pusher: "committer".to_string(),
             },
         )
         .unwrap();
@@ -378,6 +381,7 @@ mod tests {
             mock_info("deployer", &[]),
             InstantiateMsg {
                 raffle_code_id: RAFFLE_CODE_ID,
+                commit_pusher: "committer".to_string(),
             },
         )
         .unwrap();
@@ -423,6 +427,7 @@ mod tests {
             mock_info("deployer", &[]),
             InstantiateMsg {
                 raffle_code_id: RAFFLE_CODE_ID,
+                commit_pusher: "committer".to_string(),
             },
         )
         .unwrap();
@@ -454,7 +459,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -474,7 +479,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -492,7 +497,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -522,7 +527,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -550,7 +555,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -581,7 +586,7 @@ mod tests {
             deps.as_mut(),
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
 
@@ -606,6 +611,7 @@ mod tests {
             mock_info("deployer", &[]),
             InstantiateMsg {
                 raffle_code_id: RAFFLE_CODE_ID,
+                commit_pusher: "committer".to_string(),
             },
         )
         .unwrap();
@@ -669,7 +675,7 @@ mod tests {
             deps,
             mock_env(),
             mock_info("deployer", &[]),
-            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID },
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "committer".to_string() },
         )
         .unwrap();
     }
@@ -862,13 +868,26 @@ mod tests {
     }
 
     #[test]
-    fn push_commits_requires_admin() {
+    fn push_commits_requires_commit_pusher() {
         let mut deps = mock_dependencies();
         instantiate_factory(deps.as_mut());
         let err = execute(
             deps.as_mut(),
             mock_env(),
             mock_info("not-admin", &[]),
+            ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        // "deployer" is ADMIN (the instantiate sender) but not COMMIT_PUSHER
+        // ("committer" - see `instantiate_factory`) - must not be able to
+        // push commits even though it's the highest-privilege wallet in
+        // every other respect.
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
             ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] },
         )
         .unwrap_err();
@@ -883,18 +902,18 @@ mod tests {
         let err = execute(
             deps.as_mut(),
             mock_env(),
-            mock_info("deployer", &[]),
+            mock_info("committer", &[]),
             ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 31])] },
         )
         .unwrap_err();
         assert!(matches!(err, ContractError::InvalidCommitLength {}));
 
-        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![] })
+        let err = execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![] })
             .unwrap_err();
         assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
 
         let too_many: Vec<HexBinary> = (0..51u16).map(|n| HexBinary::from([n as u8, (n >> 8) as u8].repeat(16))).collect();
-        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: too_many })
+        let err = execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: too_many })
             .unwrap_err();
         assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
     }
@@ -908,19 +927,19 @@ mod tests {
         let err = execute(
             deps.as_mut(),
             mock_env(),
-            mock_info("deployer", &[]),
+            mock_info("committer", &[]),
             ExecuteMsg::PushCommits { commits: vec![c1.clone(), c1.clone()] },
         )
         .unwrap_err();
         assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
 
-        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
             .unwrap();
 
         // Same commit again in a later batch - rejected even though it hasn't
         // been consumed by any raffle yet, same permanent-dedup rule as
         // wheel-manager's own USED_COMMITS.
-        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1] })
+        let err = execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1] })
             .unwrap_err();
         assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
     }
@@ -929,7 +948,7 @@ mod tests {
     fn consume_commit_requires_a_known_raffle() {
         let mut deps = mock_dependencies();
         instantiate_factory(deps.as_mut());
-        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] })
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] })
             .unwrap();
 
         let err = execute(deps.as_mut(), mock_env(), mock_info("random-wallet", &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
@@ -943,7 +962,7 @@ mod tests {
         let raffle_addr = known_raffle(deps.as_mut());
         let c1 = HexBinary::from([1u8; 32]);
         let c2 = HexBinary::from([2u8; 32]);
-        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2] })
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2] })
             .unwrap();
 
         let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
@@ -991,7 +1010,7 @@ mod tests {
         let raffle_addr = known_raffle(deps.as_mut());
         let c1 = HexBinary::from([1u8; 32]);
         let c2 = HexBinary::from([2u8; 32]);
-        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2.clone()] })
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2.clone()] })
             .unwrap();
 
         let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
@@ -1027,7 +1046,7 @@ mod tests {
         let raffle_a = known_raffle_at(deps.as_mut(), "terra1raffleaaaa00000000000000000000000000000", "creator1");
         let raffle_b = known_raffle_at(deps.as_mut(), "terra1rafflebbbb00000000000000000000000000000", "creator2");
         let c1 = HexBinary::from([1u8; 32]);
-        execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] })
             .unwrap();
 
         let res = execute(deps.as_mut(), mock_env(), mock_info(raffle_a.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();

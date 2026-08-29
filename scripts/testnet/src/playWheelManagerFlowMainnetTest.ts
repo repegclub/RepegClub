@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -46,6 +47,32 @@ async function main() {
   console.log("Admin (player 1):", admin.address);
   console.log("Player 2:", player2.address);
 
+  // v9: BuyTicket refuses to sell before the round has a commit assigned.
+  // deployWheelManagerMainnetTest.ts set commit_pusher to admin's own wallet
+  // (disposable test deploy, same reasoning as treasury/admin_fee there) -
+  // hex string, not base64, see the testnet play script for why.
+  const preimage = randomBytes(32);
+  const commit = createHash("sha256").update(preimage).digest("hex");
+  console.log(`\nPushing commit ${commit}...`);
+  const pushRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: admin.address,
+        contract: contractAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  const assignRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+    ],
+  });
+  if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  console.log("  committed and assigned to round 1");
+
   const players = [admin, player2];
   for (const [i, player] of players.entries()) {
     console.log(`\n${player.address} (player ${i + 1}) buying ticket...`);
@@ -92,35 +119,24 @@ async function main() {
   if (!closeRes || closeRes.txResponse.code !== 0) throw new Error("close_round never succeeded");
   console.log(`  ok | gasUsed: ${closeRes.txResponse.gasUsed}`);
 
-  console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
-  let drawRes;
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    try {
-      drawRes = await admin.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: admin.address,
-            contract: contractAddress,
-            msg: { draw_winner: {} },
-            funds: [],
-          }),
-        ],
-      });
-      if (drawRes.txResponse.code === 0) break;
-      throw new Error(drawRes.txResponse.rawLog);
-    } catch (err) {
-      console.log(`  attempt ${attempt} not ready yet, waiting 6s... (${(err as Error).message.slice(0, 100)})`);
-      drawRes = undefined;
-      await sleep(6000);
-    }
-  }
-  if (!drawRes || drawRes.txResponse.code !== 0) throw new Error("draw_winner never succeeded after retries");
+  console.log("\nRevealing draw...");
+  const drawRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: admin.address,
+        contract: contractAddress,
+        msg: { reveal_draw: { round_id: 1, preimage: preimage.toString("hex") } },
+        funds: [],
+      }),
+    ],
+  });
+  if (drawRes.txResponse.code !== 0) throw new Error(`reveal_draw failed: ${drawRes.txResponse.rawLog}`);
   const wasmEvent = drawRes.txResponse.events.find((e) => e.type === "wasm");
   const winner = wasmEvent?.attributes.find((a) => a.key === "winner")?.value;
   const prize = wasmEvent?.attributes.find((a) => a.key === "prize")?.value;
-  if (!winner || !prize) throw new Error("winner/prize not found in draw_winner events");
+  if (!winner || !prize) throw new Error("winner/prize not found in reveal_draw events");
   console.log(`Winner: ${winner} | prize: ${prize} ${USDC_DENOM} | gasUsed: ${drawRes.txResponse.gasUsed}`);
-  reportTax("draw_winner (payouts to treasury/admin/weekly)", drawRes.txResponse.events);
+  reportTax("reveal_draw (payouts to treasury/admin/weekly)", drawRes.txResponse.events);
 
   const winnerWallet = players.find((p) => p.address === winner);
   if (!winnerWallet) throw new Error("winner is not admin or player2");

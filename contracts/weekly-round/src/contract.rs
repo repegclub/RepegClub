@@ -48,6 +48,7 @@ pub fn instantiate(
         max_reveal_age_seconds: msg.max_reveal_age_seconds,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
         admin_fee_address: deps.api.addr_validate(&msg.admin_fee_address)?,
+        commit_pusher: deps.api.addr_validate(&msg.commit_pusher)?,
     };
     CONFIG.save(deps.storage, &config)?;
     STATE.save(deps.storage, &GlobalState { current_week_id: 1 })?;

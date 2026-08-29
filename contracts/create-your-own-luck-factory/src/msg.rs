@@ -17,6 +17,8 @@ pub enum RaffleType {
 #[cw_serde]
 pub struct InstantiateMsg {
     pub raffle_code_id: u64,
+    /// See wheel-manager's matching `InstantiateMsg::commit_pusher`.
+    pub commit_pusher: String,
 }
 
 #[cw_serde]

@@ -467,14 +467,15 @@ pub fn execute_reveal_draw(
         .add_attribute("prize", prize.to_string()))
 }
 
-/// Admin-only. See wheel-manager's matching `execute_push_commits`.
+/// `config.commit_pusher`-only. See wheel-manager's matching
+/// `execute_push_commits`/`Config::commit_pusher`.
 pub fn execute_push_commits(
     deps: DepsMut,
     info: MessageInfo,
     commits: Vec<HexBinary>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.admin {
+    if info.sender != config.commit_pusher {
         return Err(ContractError::Unauthorized {});
     }
     if commits.is_empty() || commits.len() as u32 > PUSH_COMMITS_MAX_BATCH {

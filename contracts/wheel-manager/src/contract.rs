@@ -54,6 +54,7 @@ pub fn instantiate(
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
         admin_fee_address: deps.api.addr_validate(&msg.admin_fee_address)?,
         weekly_round_address: deps.api.addr_validate(&msg.weekly_round_address)?,
+        commit_pusher: deps.api.addr_validate(&msg.commit_pusher)?,
     };
     CONFIG.save(deps.storage, &config)?;
     STATE.save(

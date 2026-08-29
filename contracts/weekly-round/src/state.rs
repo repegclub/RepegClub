@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Config {
     pub admin: Addr,
+    /// See wheel-manager's matching `Config::commit_pusher` doc comment -
+    /// same role, same rationale, same "no rotation" caveat.
+    pub commit_pusher: Addr,
     pub base_ticket_price: Uint128,
     pub price_increment_per_day: Uint128,
     pub ticket_denom: String,

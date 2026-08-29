@@ -6,6 +6,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Config {
     pub admin: Addr,
+    /// Separate role, gating only `PushCommits` - deliberately NOT `admin`
+    /// (which also gates `SweepUstc`). Kept apart so the always-on keeper
+    /// automation that needs to top up the commit queue never has to hold
+    /// the `admin` key: a compromise of this narrower wallet only lets an
+    /// attacker push already-deduped, capacity-bounded commits, not touch
+    /// anything else `admin` can do. Set once at instantiate, no rotation
+    /// (same as `admin` itself).
+    pub commit_pusher: Addr,
     pub ticket_price: Uint128,
     pub ticket_denom: String,
     pub redemption_denom: String,

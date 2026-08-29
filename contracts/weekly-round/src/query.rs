@@ -120,5 +120,6 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         max_reveal_age_seconds: config.max_reveal_age_seconds,
         treasury_address: config.treasury_address,
         admin_fee_address: config.admin_fee_address,
+        commit_pusher: config.commit_pusher,
     })
 }

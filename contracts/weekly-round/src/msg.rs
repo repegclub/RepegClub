@@ -18,6 +18,8 @@ pub struct InstantiateMsg {
     pub max_reveal_age_seconds: u64,
     pub treasury_address: String,
     pub admin_fee_address: String,
+    /// See wheel-manager's matching `InstantiateMsg::commit_pusher`.
+    pub commit_pusher: String,
 }
 
 #[cw_serde]
@@ -165,4 +167,5 @@ pub struct ConfigResponse {
     pub max_reveal_age_seconds: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
+    pub commit_pusher: Addr,
 }

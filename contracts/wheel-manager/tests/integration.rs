@@ -52,6 +52,7 @@ fn setup_with_reveal_age(max_players: u32, min_players: u32, max_reveal_age_seco
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
         weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
     };
     let info = mock_info("admin", &[]);
     instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
@@ -68,7 +69,7 @@ fn setup_and_seed(max_players: u32, min_players: u32, count: u8) -> (Deps, cosmw
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("admin", &[]),
+        mock_info("committer", &[]),
         ExecuteMsg::PushCommits { commits },
     )
     .unwrap();
@@ -396,6 +397,26 @@ fn admin_only_actions_reject_non_admin() {
 }
 
 #[test]
+fn commit_pusher_and_admin_roles_cannot_do_each_others_job() {
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    // admin (the instantiate sender) is not commit_pusher ("committer") -
+    // must not be able to push commits even though it's the highest-
+    // privilege wallet in every other respect.
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(9))] },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    // commit_pusher ("committer") must not be able to do anything admin-only.
+    let err = execute(deps.as_mut(), env, mock_info("committer", &[]), ExecuteMsg::SweepUstc {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+}
+
+#[test]
 fn sweep_expired_prize_is_permissionless_but_gated_by_the_deadline() {
     let (mut deps, env) = setup_and_seed(2, 2, 3);
     buy_ticket(&mut deps, &env, "player1").unwrap();
@@ -493,6 +514,7 @@ fn instantiate_rejects_degenerate_player_bounds() {
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
         weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
     };
 
     // min_players = 0 would let a round close/draw with zero entrants, which
@@ -523,6 +545,7 @@ fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
         treasury_address: "treasury".to_string(),
         admin_fee_address: "adminfee".to_string(),
         weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
     };
 
     // Zero (or anything below the floor) would make RequestExpireClosedRound
@@ -550,7 +573,7 @@ fn buy_ticket_is_rejected_before_a_commit_is_assigned() {
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("admin", &[]),
+        mock_info("committer", &[]),
         ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1))] },
     )
     .unwrap();
@@ -567,20 +590,20 @@ fn push_commits_rejects_duplicates_within_a_batch_and_across_batches() {
     let err = execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("admin", &[]),
+        mock_info("committer", &[]),
         ExecuteMsg::PushCommits { commits: vec![c1.clone(), c1.clone()] },
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
 
     // First push succeeds.
-    execute(deps.as_mut(), env.clone(), mock_info("admin", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] }).unwrap();
+    execute(deps.as_mut(), env.clone(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone()] }).unwrap();
 
     // Pushing the same commit again in a later batch is rejected, even
     // though it hasn't been consumed by any round yet - reusing a commit
     // would let revealing one round leak the secret for another still-
     // pending one.
-    let err = execute(deps.as_mut(), env, mock_info("admin", &[]), ExecuteMsg::PushCommits { commits: vec![c1] }).unwrap_err();
+    let err = execute(deps.as_mut(), env, mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1] }).unwrap_err();
     assert!(matches!(err, ContractError::CommitAlreadyUsed {}));
 }
 
@@ -590,17 +613,17 @@ fn push_commits_rejects_wrong_length_and_empty_or_oversized_batches() {
     let err = execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("admin", &[]),
+        mock_info("committer", &[]),
         ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 31])] },
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::InvalidCommitLength {}));
 
-    let err = execute(deps.as_mut(), env.clone(), mock_info("admin", &[]), ExecuteMsg::PushCommits { commits: vec![] }).unwrap_err();
+    let err = execute(deps.as_mut(), env.clone(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![] }).unwrap_err();
     assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
 
     let too_many: Vec<HexBinary> = (0..51u16).map(|n| commit_for(&HexBinary::from([n as u8, (n >> 8) as u8].repeat(16)))).collect();
-    let err = execute(deps.as_mut(), env, mock_info("admin", &[]), ExecuteMsg::PushCommits { commits: too_many }).unwrap_err();
+    let err = execute(deps.as_mut(), env, mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: too_many }).unwrap_err();
     assert!(matches!(err, ContractError::InvalidCommitBatch { .. }));
 }
 
@@ -614,7 +637,7 @@ fn assign_commit_only_works_while_open_with_no_entrants_and_no_commit_yet() {
     execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("admin", &[]),
+        mock_info("committer", &[]),
         ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1)), commit_for(&preimage_for(2))] },
     )
     .unwrap();

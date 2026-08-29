@@ -4,9 +4,9 @@ use cosmwasm_std::{to_json_binary, DepsMut, Empty, Env, HexBinary, MessageInfo, 
 use crate::error::ContractError;
 use crate::msg::RaffleType;
 use crate::state::{
-    CreatorCooldown, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, COMMIT_QUEUE,
-    CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, KNOWN_RAFFLES, PENDING_CREATOR, RAFFLE_CODE_ID, RAFFLE_COMMITS,
-    RAFFLE_COUNT, USED_COMMITS,
+    CreatorCooldown, ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, COMMIT_PUSHER,
+    COMMIT_QUEUE, CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, KNOWN_RAFFLES, PENDING_CREATOR, RAFFLE_CODE_ID,
+    RAFFLE_COMMITS, RAFFLE_COUNT, USED_COMMITS,
 };
 
 pub const CREATE_RAFFLE_REPLY_ID: u64 = 1;
@@ -278,10 +278,13 @@ pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
 /// accumulated total rather than a single batch.
 pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
 
-/// Admin-only. See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the dedup
+/// `COMMIT_PUSHER`-only (a role separate from `ADMIN` - see its own doc
+/// comment). See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the dedup
 /// rules this enforces - identical to wheel-manager's own `PushCommits`.
 pub fn execute_push_commits(deps: DepsMut, info: MessageInfo, commits: Vec<HexBinary>) -> Result<Response, ContractError> {
-    require_admin(&deps, &info)?;
+    if info.sender != COMMIT_PUSHER.load(deps.storage)? {
+        return Err(ContractError::Unauthorized {});
+    }
     if commits.is_empty() || commits.len() as u32 > PUSH_COMMITS_MAX_BATCH {
         return Err(ContractError::InvalidCommitBatch { max: PUSH_COMMITS_MAX_BATCH });
     }

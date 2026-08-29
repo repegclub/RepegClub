@@ -67,13 +67,15 @@ async function main() {
           min_players: MIN_PLAYERS,
           max_players: MAX_PLAYERS,
           round_timeout_seconds: ROUND_TIMEOUT_SECONDS,
-          draw_delay_blocks: 2,
-          draw_window_blocks: 10,
           unclaimed_deadline_days: 0,
           max_round_age_seconds: MAX_ROUND_AGE_SECONDS,
+          max_reveal_age_seconds: 1800, // 30min floor - irrelevant for this quick test
           treasury_address: admin.address,
           admin_fee_address: admin.address,
           weekly_round_address: weeklyRoundAddress,
+          // Disposable test deploy - admin's own wallet doubles as
+          // commit_pusher too, same reasoning as treasury/admin_fee above.
+          commit_pusher: admin.address,
         },
         funds: [],
       }),
