@@ -26,6 +26,8 @@ pub const REVEAL_PRIORITY_MARGIN_BLOCKS: u64 = 20;
 pub const REQUEST_EXPIRE_TTL_BLOCKS: u64 = 200;
 pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
 pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
+/// See wheel-manager's matching `DISCARD_COMMITS_MAX_BATCH` doc comment.
+pub const DISCARD_COMMITS_MAX_BATCH: u32 = 100;
 
 pub fn open_new_week(storage: &mut dyn Storage, env: &Env, week_id: u64) -> Result<(), ContractError> {
     if WEEKS.has(storage, week_id) {
@@ -523,17 +525,20 @@ pub fn execute_push_commits(
 
 /// Admin-only. See wheel-manager's matching `execute_discard_queued_commits`.
 pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
         return Err(ContractError::Unauthorized {});
     }
     let mut discarded = 0u32;
-    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+    while discarded < DISCARD_COMMITS_MAX_BATCH && COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
         discarded += 1;
     }
+    let remaining = COMMIT_QUEUE.len(deps.storage)?;
     Ok(Response::new()
         .add_attribute("action", "discard_queued_commits")
-        .add_attribute("discarded", discarded.to_string()))
+        .add_attribute("discarded", discarded.to_string())
+        .add_attribute("remaining", remaining.to_string()))
 }
 
 /// Admin-only. See wheel-manager's matching `execute_set_commit_pusher`.
@@ -542,6 +547,7 @@ pub fn execute_set_commit_pusher(
     info: MessageInfo,
     commit_pusher: String,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
         return Err(ContractError::Unauthorized {});

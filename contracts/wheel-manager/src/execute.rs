@@ -66,6 +66,14 @@ pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
 /// Bounds the total length of `COMMIT_QUEUE` - same reasoning, applied to the
 /// cumulative total across every `PushCommits` call instead of a single one.
 pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
+/// Bounds how many commits a single `DiscardQueuedCommits` call pops (round-
+/// review fix, CodeRabbit, commit_pusher audit round, 2026-08-30) - this
+/// contract's own queue can't exceed `MAX_COMMIT_QUEUE_LEN` (nothing here
+/// pushes back onto it the way CYOL's `ReturnCommit` does), but capping the
+/// drain per call keeps the recovery action itself gas-safe regardless, and
+/// matching the same constant across all 3 contracts keeps the mental model
+/// (and the CYOL factory's actual need for it) consistent.
+pub const DISCARD_COMMITS_MAX_BATCH: u32 = 100;
 
 /// Mirrors Weekly Round's `ExecuteMsg::ContributeToPool` just enough to build the
 /// outbound message. Deliberately not a shared crate dependency between the two
@@ -630,17 +638,20 @@ pub fn execute_push_commits(
 /// why this is safe (only unassigned commits) and why it's admin-only, not
 /// commit_pusher-only.
 pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
         return Err(ContractError::Unauthorized {});
     }
     let mut discarded = 0u32;
-    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+    while discarded < DISCARD_COMMITS_MAX_BATCH && COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
         discarded += 1;
     }
+    let remaining = COMMIT_QUEUE.len(deps.storage)?;
     Ok(Response::new()
         .add_attribute("action", "discard_queued_commits")
-        .add_attribute("discarded", discarded.to_string()))
+        .add_attribute("discarded", discarded.to_string())
+        .add_attribute("remaining", remaining.to_string()))
 }
 
 /// Admin-only. See `ExecuteMsg::SetCommitPusher`'s own doc comment.
@@ -649,6 +660,7 @@ pub fn execute_set_commit_pusher(
     info: MessageInfo,
     commit_pusher: String,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
         return Err(ContractError::Unauthorized {});

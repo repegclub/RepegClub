@@ -310,12 +310,11 @@ async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
 // the real admin key with no error and no warning, defeating the exact
 // keeper/admin separation this project's commit_pusher role split exists to
 // model. Confirm the loaded wallet isn't actually admin (or commit_pusher)
-// on any watched contract before starting the poll loop. Only wheel-manager
-// and weekly-round expose admin/commit_pusher via GetConfig - the CYOL
-// factory's ConfigResponse doesn't (see its msg.rs), so this can't cover it.
+// on any watched contract before starting the poll loop - covers all 3
+// target types (the CYOL factory's GetConfig didn't expose admin/
+// commit_pusher until this same round, see its query.rs).
 async function assertKeeperIsNotAPrivilegedWallet(keeperAddress: string, targets: Target[]) {
   for (const target of targets) {
-    if (target.type === "cyol-factory") continue;
     const config = await queryContract<{ admin: string; commit_pusher: string }>(RPC, {
       address: target.address,
       query: { get_config: {} },

@@ -155,7 +155,9 @@ mod tests {
         coins, from_json, Addr, CosmosMsg, HexBinary, SubMsgResponse, SubMsgResult, Uint128, WasmMsg,
     };
 
-    use crate::msg::{CreatorCooldownResponse, ExecuteMsg, QueryMsg, RaffleRecordResponse, RaffleType, RafflesResponse};
+    use crate::msg::{
+        ConfigResponse, CreatorCooldownResponse, ExecuteMsg, QueryMsg, RaffleRecordResponse, RaffleType, RafflesResponse,
+    };
     use crate::state::PENDING_CREATOR;
 
     const RAFFLE_CODE_ID: u64 = 42;
@@ -1024,6 +1026,63 @@ mod tests {
         // proving discard never reached into what a live raffle is holding.
         let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
         assert!(matches!(err, ContractError::CommitAlreadyConsumed {}));
+    }
+
+    #[test]
+    fn discard_queued_commits_rejects_unexpected_funds() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let err = execute(deps.as_mut(), mock_env(), mock_info("deployer", &coins(1, "some_other_denom")), ExecuteMsg::DiscardQueuedCommits {})
+            .unwrap_err();
+        assert!(matches!(err, ContractError::UnexpectedFundsAttached {}));
+    }
+
+    #[test]
+    fn set_commit_pusher_rejects_unexpected_funds() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &coins(1, "some_other_denom")),
+            ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::UnexpectedFundsAttached {}));
+    }
+
+    #[test]
+    fn discard_queued_commits_caps_how_many_it_pops_per_call() {
+        // Round-review fix (CodeRabbit, 2026-08-30): unlike wheel-manager/
+        // weekly-round, this contract's COMMIT_QUEUE can genuinely exceed
+        // MAX_COMMIT_QUEUE_LEN in the wild (ReturnCommit never re-checks
+        // capacity) - capping the drain per call keeps this recovery action
+        // gas-safe regardless of how large the queue actually got.
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        for batch in 0..3u16 {
+            let commits: Vec<HexBinary> =
+                (0..50u16).map(|i| HexBinary::from([((batch * 50 + i) % 255) as u8; 32])).collect();
+            execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits }).unwrap();
+        }
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+        assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "100");
+        assert_eq!(res.attributes.iter().find(|a| a.key == "remaining").unwrap().value, "50");
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+        assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "50");
+        assert_eq!(res.attributes.iter().find(|a| a.key == "remaining").unwrap().value, "0");
+    }
+
+    #[test]
+    fn get_config_exposes_admin_and_commit_pusher() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let bin = query(deps.as_ref(), mock_env(), QueryMsg::GetConfig {}).unwrap();
+        let config: ConfigResponse = from_json(bin).unwrap();
+        assert_eq!(config.admin, Addr::unchecked("deployer"));
+        assert_eq!(config.commit_pusher, Addr::unchecked("committer"));
     }
 
     #[test]

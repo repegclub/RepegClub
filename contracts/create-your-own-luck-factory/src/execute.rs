@@ -277,6 +277,16 @@ pub const PUSH_COMMITS_MAX_BATCH: u32 = 50;
 /// Bounds the total length of `COMMIT_QUEUE` - same reasoning, applied to the
 /// accumulated total rather than a single batch.
 pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
+/// Bounds how many commits a single `DiscardQueuedCommits` call pops (round-
+/// review fix, CodeRabbit, commit_pusher audit round, 2026-08-30). Unlike
+/// wheel-manager/weekly-round, this contract's `COMMIT_QUEUE` genuinely CAN
+/// exceed `MAX_COMMIT_QUEUE_LEN` in the wild: `ReturnCommit` (`push_front`)
+/// never re-checks capacity, so a repeated consume-then-return cycle across
+/// many raffles can grow the queue past the nominal cap over time (bounded
+/// in practice by the real cost of creating+funding+cancelling each raffle,
+/// but not enforced on-chain). Capping the drain per call keeps this
+/// recovery action gas-safe regardless of how large the queue actually got.
+pub const DISCARD_COMMITS_MAX_BATCH: u32 = 100;
 
 /// `COMMIT_PUSHER`-only (a role separate from `ADMIN` - see its own doc
 /// comment). See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the dedup
@@ -318,16 +328,21 @@ pub fn execute_push_commits(deps: DepsMut, info: MessageInfo, commits: Vec<HexBi
 /// not commit_pusher-only, since the scenario is "commit_pusher key
 /// compromised").
 pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    if !info.funds.is_empty() {
+        return Err(ContractError::UnexpectedFundsAttached {});
+    }
     if info.sender != ADMIN.load(deps.storage)? {
         return Err(ContractError::Unauthorized {});
     }
     let mut discarded = 0u32;
-    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+    while discarded < DISCARD_COMMITS_MAX_BATCH && COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
         discarded += 1;
     }
+    let remaining = COMMIT_QUEUE.len(deps.storage)?;
     Ok(Response::new()
         .add_attribute("action", "discard_queued_commits")
-        .add_attribute("discarded", discarded.to_string()))
+        .add_attribute("discarded", discarded.to_string())
+        .add_attribute("remaining", remaining.to_string()))
 }
 
 /// Admin-only. See wheel-manager's matching `execute_set_commit_pusher`.
@@ -336,6 +351,9 @@ pub fn execute_set_commit_pusher(
     info: MessageInfo,
     commit_pusher: String,
 ) -> Result<Response, ContractError> {
+    if !info.funds.is_empty() {
+        return Err(ContractError::UnexpectedFundsAttached {});
+    }
     let admin = ADMIN.load(deps.storage)?;
     if info.sender != admin {
         return Err(ContractError::Unauthorized {});

@@ -183,6 +183,13 @@ pub struct RafflesResponse {
 #[cw_serde]
 pub struct ConfigResponse {
     pub raffle_code_id: u64,
+    /// Round-review fix (CodeRabbit, commit_pusher audit round, 2026-08-30) -
+    /// previously not exposed at all, unlike wheel-manager/weekly-round's own
+    /// `GetConfig`, which meant operational tooling (the keeper bot's own
+    /// startup safety check) couldn't confirm its wallet isn't also admin or
+    /// commit_pusher on this contract the same way it can for the other two.
+    pub admin: Addr,
+    pub commit_pusher: Addr,
 }
 
 #[cw_serde]

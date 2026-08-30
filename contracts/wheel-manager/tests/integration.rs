@@ -503,6 +503,52 @@ fn discard_queued_commits_is_admin_only_and_only_touches_unassigned_commits() {
 }
 
 #[test]
+fn discard_queued_commits_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(2, 2);
+    let err = execute(deps.as_mut(), env, mock_info("admin", &coins(1, "some_other_denom")), ExecuteMsg::DiscardQueuedCommits {})
+        .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn set_commit_pusher_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(2, 2);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("admin", &coins(1, "some_other_denom")),
+        ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn discard_queued_commits_caps_how_many_it_pops_per_call() {
+    // Round-review fix (CodeRabbit, 2026-08-30): a single DiscardQueuedCommits
+    // call must stay gas-safe even if the queue somehow grew past a normal
+    // size - capped at DISCARD_COMMITS_MAX_BATCH (100) per call, same
+    // reasoning as PushCommits' own per-batch cap.
+    let (mut deps, env) = setup(2, 2);
+    // Push 150 commits across 3 batches (PUSH_COMMITS_MAX_BATCH = 50), assign
+    // 1 to round 1, leaving 149 unassigned.
+    for batch in 0..3u16 {
+        let commits: Vec<HexBinary> =
+            (0..50u16).map(|i| commit_for(&preimage_for(((batch * 50 + i) % 255) as u8))).collect();
+        execute(deps.as_mut(), env.clone(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits }).unwrap();
+    }
+    execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::AssignCommit {}).unwrap();
+
+    let res = execute(deps.as_mut(), env.clone(), mock_info("admin", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "100");
+    assert_eq!(res.attributes.iter().find(|a| a.key == "remaining").unwrap().value, "49");
+
+    let res = execute(deps.as_mut(), env, mock_info("admin", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "49");
+    assert_eq!(res.attributes.iter().find(|a| a.key == "remaining").unwrap().value, "0");
+}
+
+#[test]
 fn set_commit_pusher_is_admin_only_rotates_the_role_and_still_rejects_admin() {
     let (mut deps, env) = setup(2, 2);
 
