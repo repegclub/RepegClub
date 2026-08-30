@@ -475,6 +475,82 @@ fn commit_pusher_and_admin_roles_cannot_do_each_others_job() {
 }
 
 #[test]
+fn discard_queued_commits_is_admin_only_and_only_touches_unassigned_commits() {
+    // 3 pushed, 1 consumed by AssignCommit for round 1 - leaves 2 unassigned.
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    let round_before = current_round(&deps, &env);
+    assert!(round_before.commit_used.is_some());
+
+    let err = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+    // Not commit_pusher-only either - this exists precisely for a
+    // compromised commit_pusher key, so the pusher itself must not be able
+    // to call it.
+    let err = execute(deps.as_mut(), env.clone(), mock_info("committer", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    let res = execute(deps.as_mut(), env.clone(), mock_info("admin", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "2");
+
+    // Round 1's already-assigned commit is untouched - discarding only ever
+    // removes commits still sitting in the queue.
+    let round_after = current_round(&deps, &env);
+    assert_eq!(round_after.commit_used, round_before.commit_used);
+
+    // Queue is now empty - a second discard finds nothing left.
+    let res = execute(deps.as_mut(), env, mock_info("admin", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "0");
+}
+
+#[test]
+fn set_commit_pusher_is_admin_only_rotates_the_role_and_still_rejects_admin() {
+    let (mut deps, env) = setup(2, 2);
+
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("committer", &[]),
+        ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        ExecuteMsg::SetCommitPusher { commit_pusher: "admin".to_string() },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::CommitPusherMustDifferFromAdmin {}));
+
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+    )
+    .unwrap();
+
+    // Old commit_pusher can no longer push; new one can.
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("committer", &[]),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1))] },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::Unauthorized {}));
+    execute(
+        deps.as_mut(),
+        env,
+        mock_info("new-committer", &[]),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1))] },
+    )
+    .unwrap();
+}
+
+#[test]
 fn sweep_expired_prize_is_permissionless_but_gated_by_the_deadline() {
     let (mut deps, env) = setup_and_seed(2, 2, 3);
     buy_ticket(&mut deps, &env, "player1").unwrap();
@@ -618,6 +694,29 @@ fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
 
     // In bounds succeeds.
     instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(MAX_REVEAL_AGE_SECONDS)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_commit_pusher_equal_to_admin() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "admin".to_string(), // same as the sender below
+    };
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::CommitPusherMustDifferFromAdmin {}));
 }
 
 #[test]

@@ -93,6 +93,24 @@ pub enum ExecuteMsg {
     /// entrant's ticket (never penalized - a no-fault outage safety net) and
     /// marks the round `Expired`.
     ClaimExpiredRound { round_id: u64 },
+    /// Admin-only. Recovery action for a suspected/confirmed `commit_pusher`
+    /// key compromise (round-review fix, Opus, commit_pusher audit round,
+    /// 2026-08-30) - discards every commit still sitting in `COMMIT_QUEUE`
+    /// unassigned. Only touches unassigned commits: never reassigns or
+    /// changes `Round::commit_used` for any round that already has one
+    /// (open, closed, or drawn), so it can't retroactively change the
+    /// outcome of any round that already has entrants or has been revealed.
+    /// Discarded commits stay in `USED_COMMITS` (never re-pushable) - the
+    /// operator must generate and push a fresh batch afterward. Deliberately
+    /// `admin`-only, not `commit_pusher`-only: the scenario this exists for
+    /// is precisely "the commit_pusher key is compromised", so the pusher
+    /// itself must not be able to call this.
+    DiscardQueuedCommits {},
+    /// Admin-only. Rotates `Config::commit_pusher` to a new wallet - the
+    /// other half of recovering from a suspected/confirmed key compromise
+    /// (pair with `DiscardQueuedCommits` above). Must differ from `admin`,
+    /// same invariant enforced at instantiate.
+    SetCommitPusher { commit_pusher: String },
 }
 
 #[cw_serde]

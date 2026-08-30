@@ -313,6 +313,43 @@ pub fn execute_push_commits(deps: DepsMut, info: MessageInfo, commits: Vec<HexBi
         .add_attribute("count", commits.len().to_string()))
 }
 
+/// Admin-only. See wheel-manager's matching `execute_discard_queued_commits`
+/// doc comment - same reasoning (safe: only unassigned commits; admin-only,
+/// not commit_pusher-only, since the scenario is "commit_pusher key
+/// compromised").
+pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    if info.sender != ADMIN.load(deps.storage)? {
+        return Err(ContractError::Unauthorized {});
+    }
+    let mut discarded = 0u32;
+    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+        discarded += 1;
+    }
+    Ok(Response::new()
+        .add_attribute("action", "discard_queued_commits")
+        .add_attribute("discarded", discarded.to_string()))
+}
+
+/// Admin-only. See wheel-manager's matching `execute_set_commit_pusher`.
+pub fn execute_set_commit_pusher(
+    deps: DepsMut,
+    info: MessageInfo,
+    commit_pusher: String,
+) -> Result<Response, ContractError> {
+    let admin = ADMIN.load(deps.storage)?;
+    if info.sender != admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let commit_pusher = deps.api.addr_validate(&commit_pusher)?;
+    if commit_pusher == admin {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
+    }
+    COMMIT_PUSHER.save(deps.storage, &commit_pusher)?;
+    Ok(Response::new()
+        .add_attribute("action", "set_commit_pusher")
+        .add_attribute("commit_pusher", commit_pusher))
+}
+
 /// Callable only by a raffle this factory itself deployed (`KNOWN_RAFFLES`) -
 /// dispatched as a `SubMsg::reply_on_success` from create-your-own-luck's
 /// `execute_deposit_prize`/`execute_receive` the moment the fee/prize is

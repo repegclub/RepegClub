@@ -626,6 +626,44 @@ pub fn execute_push_commits(
         .add_attribute("count", commits.len().to_string()))
 }
 
+/// Admin-only. See `ExecuteMsg::DiscardQueuedCommits`'s own doc comment for
+/// why this is safe (only unassigned commits) and why it's admin-only, not
+/// commit_pusher-only.
+pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let mut discarded = 0u32;
+    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+        discarded += 1;
+    }
+    Ok(Response::new()
+        .add_attribute("action", "discard_queued_commits")
+        .add_attribute("discarded", discarded.to_string()))
+}
+
+/// Admin-only. See `ExecuteMsg::SetCommitPusher`'s own doc comment.
+pub fn execute_set_commit_pusher(
+    deps: DepsMut,
+    info: MessageInfo,
+    commit_pusher: String,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let commit_pusher = deps.api.addr_validate(&commit_pusher)?;
+    if commit_pusher == config.admin {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
+    }
+    config.commit_pusher = commit_pusher.clone();
+    CONFIG.save(deps.storage, &config)?;
+    Ok(Response::new()
+        .add_attribute("action", "set_commit_pusher")
+        .add_attribute("commit_pusher", commit_pusher))
+}
+
 /// Permissionless backfill for a round that opened while `COMMIT_QUEUE` was
 /// empty. Only valid while the current round is `Open` with no entrants yet
 /// (so nobody bought a ticket against an unfixed commit) and doesn't already

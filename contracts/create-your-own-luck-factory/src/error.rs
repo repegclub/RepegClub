@@ -24,6 +24,9 @@ pub enum ContractError {
     #[error("base_bps + late_additional_bps must not exceed 10000 (100%)")]
     InvalidCancellationPenaltyBps {},
 
+    #[error("commit_pusher must be a different wallet than admin - collapsing the two roles defeats the reason commit_pusher was split off admin in the first place")]
+    CommitPusherMustDifferFromAdmin {},
+
     // --- v9: commit-reveal queue ---
     #[error("PushCommits requires 1 to {max} commits per batch")]
     InvalidCommitBatch { max: u32 },

@@ -521,6 +521,42 @@ pub fn execute_push_commits(
         .add_attribute("count", commits.len().to_string()))
 }
 
+/// Admin-only. See wheel-manager's matching `execute_discard_queued_commits`.
+pub fn execute_discard_queued_commits(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let mut discarded = 0u32;
+    while COMMIT_QUEUE.pop_front(deps.storage)?.is_some() {
+        discarded += 1;
+    }
+    Ok(Response::new()
+        .add_attribute("action", "discard_queued_commits")
+        .add_attribute("discarded", discarded.to_string()))
+}
+
+/// Admin-only. See wheel-manager's matching `execute_set_commit_pusher`.
+pub fn execute_set_commit_pusher(
+    deps: DepsMut,
+    info: MessageInfo,
+    commit_pusher: String,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    let commit_pusher = deps.api.addr_validate(&commit_pusher)?;
+    if commit_pusher == config.admin {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
+    }
+    config.commit_pusher = commit_pusher.clone();
+    CONFIG.save(deps.storage, &config)?;
+    Ok(Response::new()
+        .add_attribute("action", "set_commit_pusher")
+        .add_attribute("commit_pusher", commit_pusher))
+}
+
 /// Permissionless backfill - see wheel-manager's matching `execute_assign_commit`.
 pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;

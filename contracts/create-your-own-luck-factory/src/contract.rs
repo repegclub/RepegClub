@@ -3,9 +3,10 @@ use cw_utils::parse_reply_instantiate_data;
 
 use crate::error::ContractError;
 use crate::execute::{
-    execute_add_cw20_to_whitelist, execute_consume_commit, execute_create_raffle, execute_push_commits,
-    execute_remove_cw20_from_whitelist, execute_report_cw20_failure, execute_return_commit,
-    execute_set_cancellation_penalty_bps, execute_unblacklist_cw20, CREATE_RAFFLE_REPLY_ID,
+    execute_add_cw20_to_whitelist, execute_consume_commit, execute_create_raffle,
+    execute_discard_queued_commits, execute_push_commits, execute_remove_cw20_from_whitelist,
+    execute_report_cw20_failure, execute_return_commit, execute_set_cancellation_penalty_bps,
+    execute_set_commit_pusher, execute_unblacklist_cw20, CREATE_RAFFLE_REPLY_ID,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -28,6 +29,11 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    // See wheel-manager's matching check's own doc comment (round-review
+    // fix, Opus, commit_pusher audit round, 2026-08-30).
+    if msg.commit_pusher == info.sender.as_str() {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
+    }
     RAFFLE_CODE_ID.save(deps.storage, &msg.raffle_code_id)?;
     RAFFLE_COUNT.save(deps.storage, &0u64)?;
     ADMIN.save(deps.storage, &info.sender)?;
@@ -91,6 +97,10 @@ pub fn execute(
         ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
         ExecuteMsg::ConsumeCommit {} => execute_consume_commit(deps, info),
         ExecuteMsg::ReturnCommit {} => execute_return_commit(deps, info),
+        ExecuteMsg::DiscardQueuedCommits {} => execute_discard_queued_commits(deps, info),
+        ExecuteMsg::SetCommitPusher { commit_pusher } => {
+            execute_set_commit_pusher(deps, info, commit_pusher)
+        }
     }
 }
 
@@ -895,6 +905,19 @@ mod tests {
     }
 
     #[test]
+    fn instantiate_rejects_commit_pusher_equal_to_admin() {
+        let mut deps = mock_dependencies();
+        let err = instantiate(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            InstantiateMsg { raffle_code_id: RAFFLE_CODE_ID, commit_pusher: "deployer".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::CommitPusherMustDifferFromAdmin {}));
+    }
+
+    #[test]
     fn push_commits_rejects_wrong_length_and_empty_or_oversized_batches() {
         let mut deps = mock_dependencies();
         instantiate_factory(deps.as_mut());
@@ -973,6 +996,82 @@ mod tests {
         // rejected rather than handing out c2 too (RAFFLE_COMMITS dedup).
         let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
         assert!(matches!(err, ContractError::CommitAlreadyConsumed {}));
+    }
+
+    #[test]
+    fn discard_queued_commits_is_admin_only_and_only_touches_unassigned_commits() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let raffle_addr = known_raffle(deps.as_mut());
+        let c1 = HexBinary::from([1u8; 32]);
+        let c2 = HexBinary::from([2u8; 32]);
+        execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::PushCommits { commits: vec![c1.clone(), c2] })
+            .unwrap();
+        // c1 consumed by a real raffle, c2 left sitting unassigned in the queue.
+        execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap();
+
+        let err = execute(deps.as_mut(), mock_env(), mock_info("random-wallet", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+        // Not commit_pusher-only - this exists for a compromised commit_pusher key.
+        let err = execute(deps.as_mut(), mock_env(), mock_info("committer", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        let res = execute(deps.as_mut(), mock_env(), mock_info("deployer", &[]), ExecuteMsg::DiscardQueuedCommits {}).unwrap();
+        assert_eq!(res.attributes.iter().find(|a| a.key == "discarded").unwrap().value, "1");
+
+        // c1, already consumed by the raffle, is untouched - a second
+        // ConsumeCommit still correctly rejects (RAFFLE_COMMITS dedup),
+        // proving discard never reached into what a live raffle is holding.
+        let err = execute(deps.as_mut(), mock_env(), mock_info(raffle_addr.as_str(), &[]), ExecuteMsg::ConsumeCommit {}).unwrap_err();
+        assert!(matches!(err, ContractError::CommitAlreadyConsumed {}));
+    }
+
+    #[test]
+    fn set_commit_pusher_is_admin_only_rotates_the_role_and_still_rejects_admin() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("committer", &[]),
+            ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::SetCommitPusher { commit_pusher: "deployer".to_string() },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::CommitPusherMustDifferFromAdmin {}));
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("deployer", &[]),
+            ExecuteMsg::SetCommitPusher { commit_pusher: "new-committer".to_string() },
+        )
+        .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("committer", &[]),
+            ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized {}));
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("new-committer", &[]),
+            ExecuteMsg::PushCommits { commits: vec![HexBinary::from([1u8; 32])] },
+        )
+        .unwrap();
     }
 
     #[test]

@@ -64,6 +64,17 @@ async function main() {
     // base64 (see cosmwasm-std's hex_binary.rs Serialize impl) - unlike
     // cosmwasm_std::Binary, which does use base64.
     const commits = pairs.map((p) => p.commit);
+    // Saved before broadcasting, not after checking success (round-review
+    // fix, Opus, commit_pusher audit round, 2026-08-30): if broadcastTxSync's
+    // own pollTx times out (or the process dies) after the tx already landed
+    // on-chain but before this function returns, the old order would lose
+    // the preimage for a commit that's already live in COMMIT_QUEUE - that
+    // round/week/raffle becomes permanently unrevealable once it's assigned,
+    // and blocks REVEAL_QUEUE for everything behind it until the 3-phase
+    // expiration cascade completes. Saving a preimage for a commit that
+    // never actually lands on-chain is harmless - it just sits as dead
+    // weight in the already-gitignored keeper-secrets.json.
+    addSecrets(pairs);
     try {
       const res = await pusher.broadcastTxSync({
         msgs: [
@@ -80,7 +91,6 @@ async function main() {
         console.error(`[${target.label}] push_commits failed: ${res.txResponse.rawLog}`);
         continue;
       }
-      addSecrets(pairs);
       console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
     } catch (err) {
       console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);

@@ -76,6 +76,12 @@ pub enum ExecuteMsg {
     /// Permissionless. Final step - see wheel-manager's matching
     /// `ClaimExpiredRound`.
     ClaimExpiredWeek { week_id: u64 },
+    /// Admin-only. See wheel-manager's matching `DiscardQueuedCommits` doc
+    /// comment.
+    DiscardQueuedCommits {},
+    /// Admin-only. See wheel-manager's matching `SetCommitPusher` doc
+    /// comment.
+    SetCommitPusher { commit_pusher: String },
 }
 
 #[cw_serde]

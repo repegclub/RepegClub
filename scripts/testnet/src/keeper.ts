@@ -303,6 +303,36 @@ async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
   }
 }
 
+// Round-review fix (Fable, commit_pusher audit round, 2026-08-30): the
+// KEEPER_MNEMONIC->ADMIN_MNEMONIC fallback above (kept for local-testing
+// convenience) used to be silent - a production deploy that forgot to set
+// KEEPER_MNEMONIC would start this always-on, internet-exposed process with
+// the real admin key with no error and no warning, defeating the exact
+// keeper/admin separation this project's commit_pusher role split exists to
+// model. Confirm the loaded wallet isn't actually admin (or commit_pusher)
+// on any watched contract before starting the poll loop. Only wheel-manager
+// and weekly-round expose admin/commit_pusher via GetConfig - the CYOL
+// factory's ConfigResponse doesn't (see its msg.rs), so this can't cover it.
+async function assertKeeperIsNotAPrivilegedWallet(keeperAddress: string, targets: Target[]) {
+  for (const target of targets) {
+    if (target.type === "cyol-factory") continue;
+    const config = await queryContract<{ admin: string; commit_pusher: string }>(RPC, {
+      address: target.address,
+      query: { get_config: {} },
+    });
+    if (keeperAddress === config.admin || keeperAddress === config.commit_pusher) {
+      console.error(
+        `FATAL: the keeper's own wallet (${keeperAddress}) is also ${
+          keeperAddress === config.admin ? "admin" : "commit_pusher"
+        } on ${target.type}:${target.label} (${target.address}). Refusing to start - an always-on, ` +
+          `internet-exposed process must never hold either of those roles. Set KEEPER_MNEMONIC to a ` +
+          `dedicated wallet distinct from both admin and commit_pusher.`
+      );
+      process.exit(1);
+    }
+  }
+}
+
 async function main() {
   const keeper = loadWallet(process.env.KEEPER_MNEMONIC ? "KEEPER_MNEMONIC" : "ADMIN_MNEMONIC");
   console.log("Keeper address:", keeper.address);
@@ -312,6 +342,8 @@ async function main() {
     `Watching ${targets.length} contract(s):`,
     targets.map((t) => `${t.type}:${t.label}`).join(", ")
   );
+
+  await assertKeeperIsNotAPrivilegedWallet(keeper.address, targets);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {

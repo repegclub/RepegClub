@@ -110,6 +110,15 @@ pub enum ExecuteMsg {
     /// real refund to players/creator can never be blocked by this call
     /// failing.
     ReturnCommit {},
+    /// Admin-only. See wheel-manager's matching `DiscardQueuedCommits` doc
+    /// comment (round-review fix, Opus, commit_pusher audit round,
+    /// 2026-08-30) - only discards unassigned commits still in
+    /// `COMMIT_QUEUE`, never touches `RAFFLE_COMMITS` (commits already
+    /// consumed by a live raffle).
+    DiscardQueuedCommits {},
+    /// Admin-only. See wheel-manager's matching `SetCommitPusher` doc
+    /// comment.
+    SetCommitPusher { commit_pusher: String },
 }
 
 #[cw_serde]

@@ -48,6 +48,9 @@ pub enum ContractError {
     #[error("min_players must be at least 2, and max_players must be >= min_players")]
     InvalidPlayerBounds {},
 
+    #[error("commit_pusher must be a different wallet than admin - collapsing the two roles defeats the reason commit_pusher was split off admin in the first place")]
+    CommitPusherMustDifferFromAdmin {},
+
     #[error("The unclaimed-prize deadline has not passed yet for round {round_id}")]
     UnclaimedDeadlineNotReached { round_id: u64 },
 

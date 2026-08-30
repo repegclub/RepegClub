@@ -3,10 +3,11 @@ use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Respons
 use crate::error::ContractError;
 use crate::execute::{
     claim_expired_week, execute_assign_commit, execute_buy_weekly_ticket, execute_close_week,
-    execute_contribute_to_pool, execute_expire_week, execute_finalize_expire_closed_week,
-    execute_push_commits, execute_reclaim_ticket, execute_redeem,
-    execute_request_expire_closed_week, execute_reveal_draw, execute_sweep_expired_prize,
-    execute_sweep_ustc, execute_withdraw_ticket, open_new_week,
+    execute_contribute_to_pool, execute_discard_queued_commits, execute_expire_week,
+    execute_finalize_expire_closed_week, execute_push_commits, execute_reclaim_ticket,
+    execute_redeem, execute_request_expire_closed_week, execute_reveal_draw,
+    execute_set_commit_pusher, execute_sweep_expired_prize, execute_sweep_ustc,
+    execute_withdraw_ticket, open_new_week,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -33,6 +34,11 @@ pub fn instantiate(
             min: MIN_MAX_REVEAL_AGE_SECONDS,
             max: MAX_MAX_REVEAL_AGE_SECONDS,
         });
+    }
+    // See wheel-manager's matching check's own doc comment (round-review
+    // fix, Opus, commit_pusher audit round, 2026-08-30).
+    if msg.commit_pusher == info.sender.as_str() {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
     }
 
     let config = Config {
@@ -89,6 +95,10 @@ pub fn execute(
             execute_finalize_expire_closed_week(deps, env, info, week_id)
         }
         ExecuteMsg::ClaimExpiredWeek { week_id } => claim_expired_week(deps, env, info, week_id),
+        ExecuteMsg::DiscardQueuedCommits {} => execute_discard_queued_commits(deps, info),
+        ExecuteMsg::SetCommitPusher { commit_pusher } => {
+            execute_set_commit_pusher(deps, info, commit_pusher)
+        }
     }
 }
 
