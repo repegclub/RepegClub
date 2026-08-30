@@ -100,7 +100,7 @@ pub fn execute(
         ExecuteMsg::ReclaimTicket { round_id } => execute_reclaim_ticket(deps, info, round_id),
         ExecuteMsg::WithdrawTicket { round_id } => execute_withdraw_ticket(deps, info, round_id),
         ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
-        ExecuteMsg::AssignCommit {} => execute_assign_commit(deps),
+        ExecuteMsg::AssignCommit {} => execute_assign_commit(deps, info),
         ExecuteMsg::RequestExpireClosedRound { round_id } => {
             execute_request_expire_closed_round(deps, env, info, round_id)
         }

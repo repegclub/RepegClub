@@ -292,6 +292,9 @@ pub const DISCARD_COMMITS_MAX_BATCH: u32 = 100;
 /// comment). See `COMMIT_QUEUE`/`USED_COMMITS`'s doc comments for the dedup
 /// rules this enforces - identical to wheel-manager's own `PushCommits`.
 pub fn execute_push_commits(deps: DepsMut, info: MessageInfo, commits: Vec<HexBinary>) -> Result<Response, ContractError> {
+    if !info.funds.is_empty() {
+        return Err(ContractError::UnexpectedFundsAttached {});
+    }
     if info.sender != COMMIT_PUSHER.load(deps.storage)? {
         return Err(ContractError::Unauthorized {});
     }

@@ -811,6 +811,27 @@ fn push_commits_rejects_duplicates_within_a_batch_and_across_batches() {
 }
 
 #[test]
+fn push_commits_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(5, 3);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("committer", &coins(1, "some_other_denom")),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1))] },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn assign_commit_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(5, 3);
+    let err =
+        execute(deps.as_mut(), env, mock_info("anyone", &coins(1, "some_other_denom")), ExecuteMsg::AssignCommit {}).unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
 fn push_commits_rejects_wrong_length_and_empty_or_oversized_batches() {
     let (mut deps, env) = setup(5, 3);
     let err = execute(

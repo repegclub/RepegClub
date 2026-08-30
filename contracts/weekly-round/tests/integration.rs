@@ -423,6 +423,27 @@ fn set_commit_pusher_rejects_unexpected_funds() {
 }
 
 #[test]
+fn push_commits_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(2, 2, 7);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("committer", &coins(1, "some_other_denom")),
+        ExecuteMsg::PushCommits { commits: vec![commit_for(&preimage_for(1))] },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn assign_commit_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(2, 2, 7);
+    let err =
+        execute(deps.as_mut(), env, mock_info("anyone", &coins(1, "some_other_denom")), ExecuteMsg::AssignCommit {}).unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
 fn discard_queued_commits_caps_how_many_it_pops_per_call() {
     let (mut deps, env) = setup(2, 2, 7);
     for batch in 0..3u16 {

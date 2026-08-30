@@ -1052,6 +1052,21 @@ mod tests {
     }
 
     #[test]
+    fn push_commits_rejects_unexpected_funds() {
+        let mut deps = mock_dependencies();
+        instantiate_factory(deps.as_mut());
+        let c1 = HexBinary::from([1u8; 32]);
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("committer", &coins(1, "some_other_denom")),
+            ExecuteMsg::PushCommits { commits: vec![c1] },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ContractError::UnexpectedFundsAttached {}));
+    }
+
+    #[test]
     fn discard_queued_commits_caps_how_many_it_pops_per_call() {
         // Round-review fix (CodeRabbit, 2026-08-30): unlike wheel-manager/
         // weekly-round, this contract's COMMIT_QUEUE can genuinely exceed

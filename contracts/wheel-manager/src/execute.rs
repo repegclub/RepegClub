@@ -602,6 +602,7 @@ pub fn execute_push_commits(
     info: MessageInfo,
     commits: Vec<HexBinary>,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     if info.sender != config.commit_pusher {
         return Err(ContractError::Unauthorized {});
@@ -680,7 +681,8 @@ pub fn execute_set_commit_pusher(
 /// empty. Only valid while the current round is `Open` with no entrants yet
 /// (so nobody bought a ticket against an unfixed commit) and doesn't already
 /// have one.
-pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
+pub fn execute_assign_commit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let state = STATE.load(deps.storage)?;
     let mut round = ROUNDS.load(deps.storage, state.current_round_id)?;
     if round.status != RoundStatus::Open || !round.entrants.is_empty() {

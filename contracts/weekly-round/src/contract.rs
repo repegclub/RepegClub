@@ -87,7 +87,7 @@ pub fn execute(
         ExecuteMsg::ReclaimTicket { week_id } => execute_reclaim_ticket(deps, info, week_id),
         ExecuteMsg::WithdrawTicket { week_id } => execute_withdraw_ticket(deps, info, week_id),
         ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
-        ExecuteMsg::AssignCommit {} => execute_assign_commit(deps),
+        ExecuteMsg::AssignCommit {} => execute_assign_commit(deps, info),
         ExecuteMsg::RequestExpireClosedWeek { week_id } => {
             execute_request_expire_closed_week(deps, env, info, week_id)
         }
