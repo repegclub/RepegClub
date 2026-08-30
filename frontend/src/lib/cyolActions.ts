@@ -114,8 +114,20 @@ export function closeRound(wallet: ConnectedWallet, contractAddress: string) {
   return execute(wallet, contractAddress, { close_round: {} });
 }
 
-export function drawWinner(wallet: ConnectedWallet, contractAddress: string) {
-  return execute(wallet, contractAddress, { draw_winner: {} });
+// 3-phase expiration for a Closed raffle that has gone unrevealed too long -
+// same v9 outage safety net as wheel-manager/weekly-round's matching actions
+// (see roundActions.ts), raffle-scoped (no id needed, one raffle per
+// contract instance).
+export function requestExpireClosedRaffle(wallet: ConnectedWallet, contractAddress: string) {
+  return execute(wallet, contractAddress, { request_expire_closed_raffle: {} });
+}
+
+export function finalizeExpireClosedRaffle(wallet: ConnectedWallet, contractAddress: string) {
+  return execute(wallet, contractAddress, { finalize_expire_closed_raffle: {} });
+}
+
+export function claimExpiredRaffle(wallet: ConnectedWallet, contractAddress: string) {
+  return execute(wallet, contractAddress, { claim_expired_raffle: {} });
 }
 
 export function claimAirdropShare(wallet: ConnectedWallet, contractAddress: string) {

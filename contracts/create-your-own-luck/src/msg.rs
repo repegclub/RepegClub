@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, HexBinary, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 use crate::state::{PrizeAsset, RaffleStatus, RaffleType};
@@ -46,8 +46,6 @@ pub struct InstantiateMsg {
     /// round_timeout_seconds`'s doc comment for the full mechanism and the
     /// 24h-31day bounds enforced in contract.rs.
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     /// Exactly one of these two must be set: a native prize (simple, single
     /// `DepositPrize` call) or a CW20 prize (needs `PayServiceFee` first, then
@@ -74,7 +72,30 @@ pub enum ExecuteMsg {
     /// raffle hasn't reached `min_players` yet.
     WithdrawTicket {},
     CloseRound {},
-    DrawWinner {},
+    /// Reveals the winner(s) - SingleWinner/Podium only (Airdrop resolves
+    /// immediately at `CloseRound`, see that message's own doc comment).
+    /// Permissionless: the result never depends on who calls this, only on
+    /// knowing the correct `preimage` for this raffle's committed hash - and
+    /// in practice only the platform's keeper (which generated it offline
+    /// via the factory) ever does. Replaces the old block-hash-based
+    /// `DrawWinner`.
+    RevealDraw { preimage: HexBinary },
+    /// Permissionless. First step of the 3-phase expiration for a `Closed`
+    /// raffle that has gone unrevealed too long - the outage safety net.
+    /// Only marks intent; a legitimate `RevealDraw` is still fully valid
+    /// after this.
+    RequestExpireClosedRaffle {},
+    /// Permissionless. Second step - after the request has sat for
+    /// `contract::EXPIRE_FINALIZE_DELAY_BLOCKS`, transitions the raffle to
+    /// `ExpiryPending`. Still rescuable by a legitimate `RevealDraw`.
+    FinalizeExpireClosedRaffle {},
+    /// Permissionless. Final step - after `ExpiryPending` has sat for
+    /// `contract::EXPIRE_CHALLENGE_BLOCKS` with no reveal, refunds the prize
+    /// + fee to the creator and every ticket to its buyer (never penalized -
+    /// same no-fault reasoning as `ExpireRaffle`: under v9 the creator has no
+    /// exclusivity window over the reveal and can't cause or avoid this) and
+    /// marks the raffle `Cancelled`.
+    ClaimExpiredRaffle {},
     /// SingleWinner/Podium only, permissionless: re-sends the prize share for
     /// any winner whose payout hasn't been confirmed paid yet (see
     /// `state::RaffleState::prize_paid`) - added 2026-08-20 audit fix so a
@@ -135,10 +156,14 @@ pub struct RaffleStatusResponse {
     pub opened_at: Option<u64>,
     pub closed_at: Option<u64>,
     pub seconds_remaining: Option<u64>,
-    pub draw_after_height: Option<u64>,
-    /// The actual block height used in the winner-selection hash, for the
-    /// public verification panel - `None` until the raffle is `Drawn`.
-    pub draw_height: Option<u64>,
+    pub closed_at_height: Option<u64>,
+    /// The hash this raffle must be revealed against - `None` for Airdrop
+    /// (never needs one) or before the fee/prize is funded.
+    pub commit_used: Option<HexBinary>,
+    /// The secret that unlocked `commit_used`, once revealed - lets anyone
+    /// independently recompute the winner-selection hash and check it
+    /// against `GetWinners`.
+    pub revealed_preimage: Option<HexBinary>,
 }
 
 #[cw_serde]
@@ -173,8 +198,6 @@ pub struct ConfigResponse {
     pub min_players: u32,
     pub max_players: u32,
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
     pub fee_amount_usdc: Uint128,

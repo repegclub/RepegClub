@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -15,17 +16,55 @@ async function ulunaBalance(address: string): Promise<bigint> {
   return uluna ? BigInt(uluna.amount) : 0n;
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function main() {
   const { contractAddress } = JSON.parse(readFileSync(DEPLOYMENT_PATH, "utf8"));
   console.log("Weekly Round:", contractAddress);
 
   const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   const player1 = loadWallet("PLAYER1_MNEMONIC");
   const player2 = loadWallet("PLAYER2_MNEMONIC");
+
+  // v9: BuyWeeklyTicket refuses to sell before the week has a commit assigned
+  // - push one and back-fill it onto week 1 before anyone buys. Hex string,
+  // not base64 - see wheel-manager's matching play script for why.
+  const preimage = randomBytes(32);
+  const commit = createHash("sha256").update(preimage).digest("hex");
+  console.log(`\nPushing commit ${commit}...`);
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: contractAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  const assignRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+    ],
+  });
+  if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  // Confirms week 1 actually got THIS commit, not some other one already
+  // sitting ahead of it in COMMIT_QUEUE from an earlier run (round-review
+  // fix, CodeRabbit 2026-08-30) - assign_commit only assigns the front of
+  // the queue, and only if the week doesn't already have one, so this can
+  // silently assign someone else's commit instead of the one just pushed.
+  // Reveal below would otherwise fail with BadPreimage far later, with no
+  // clue why.
+  const assignedWeek = await queryContract<{ commit_used: string | null }>(RPC, {
+    address: contractAddress,
+    query: { get_current_week: {} },
+  });
+  if (assignedWeek.commit_used !== commit) {
+    throw new Error(
+      `Week 1 was assigned commit ${assignedWeek.commit_used}, not the one this script just pushed (${commit}) - COMMIT_QUEUE already had an earlier commit ahead of it.`
+    );
+  }
+  console.log("  committed and assigned to week 1");
 
   const priceBin = await queryContract<{ price: string; denom: string }>(RPC, {
     address: contractAddress,
@@ -57,35 +96,24 @@ async function main() {
     console.log(`  ok | gasUsed: ${res.txResponse.gasUsed} | auto_closed: ${autoClosed}`);
   }
 
-  console.log("\nDrawing weekly winner (retrying until draw_delay_blocks has passed)...");
-  let drawRes;
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    try {
-      drawRes = await admin.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: admin.address,
-            contract: contractAddress,
-            msg: { draw_weekly_winner: {} },
-            funds: [],
-          }),
-        ],
-      });
-      if (drawRes.txResponse.code === 0) break;
-      throw new Error(drawRes.txResponse.rawLog);
-    } catch (err) {
-      console.log(`  attempt ${attempt} not ready yet, waiting 6s... (${(err as Error).message.slice(0, 80)})`);
-      drawRes = undefined;
-      await sleep(6000);
-    }
-  }
-  if (!drawRes || drawRes.txResponse.code !== 0) {
-    throw new Error("draw_weekly_winner never succeeded after retries");
+  console.log("\nRevealing draw...");
+  const drawRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: admin.address,
+        contract: contractAddress,
+        msg: { reveal_draw: { week_id: 1, preimage: preimage.toString("hex") } },
+        funds: [],
+      }),
+    ],
+  });
+  if (drawRes.txResponse.code !== 0) {
+    throw new Error(`reveal_draw failed: ${drawRes.txResponse.rawLog}`);
   }
   const wasmEvent = drawRes.txResponse.events.find((e) => e.type === "wasm");
   const winner = wasmEvent?.attributes.find((a) => a.key === "winner")?.value;
   const prize = wasmEvent?.attributes.find((a) => a.key === "prize")?.value;
-  if (!winner || !prize) throw new Error("winner/prize not found in draw_weekly_winner events");
+  if (!winner || !prize) throw new Error("winner/prize not found in reveal_draw events");
   console.log(`Winner: ${winner} | prize: ${prize} uluna | gasUsed: ${drawRes.txResponse.gasUsed}`);
 
   const winnerWallet = [player1, player2].find((p) => p.address === winner);

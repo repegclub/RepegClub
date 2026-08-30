@@ -11,7 +11,7 @@ const WASM_PATH = path.resolve(
   "../../../contracts/wheel-manager/artifacts/wheel_manager.wasm"
 );
 
-// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [drawWindowBlocks] [unclaimedDeadlineDays]
+// node src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays] [weeklyRoundDeploymentFile]
 const [
   ,
   ,
@@ -21,12 +21,13 @@ const [
   timeoutArg,
   maxAgeArg,
   ticketPriceArg,
-  drawWindowArg,
+  maxRevealAgeArg,
   unclaimedDeadlineArg,
+  weeklyRoundDeploymentFileArg,
 ] = process.argv;
 if (!label || !maxPlayersArg || !minPlayersArg) {
   console.error(
-    "Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [drawWindowBlocks] [unclaimedDeadlineDays]"
+    "Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays] [weeklyRoundDeploymentFile]"
   );
   process.exit(1);
 }
@@ -41,20 +42,31 @@ const ticketPrice = ticketPriceArg ?? "1000000";
 // range. Real deploys should keep this default; testnet/dev deploys can pass
 // something much shorter to actually exercise ExpireRound/ReclaimTicket.
 const maxRoundAgeSeconds = maxAgeArg ? Number(maxAgeArg) : 172_800;
-// Width of the anti-grinding draw window (see draw_window_blocks in the
-// contract) - defaults to 60 blocks (~5-6 min at Terra Classic's ~5.6s block
-// time), sized to cover a keeper crash-restart (systemd: <=5s + up to 15s to
-// the next poll) and a typical VM reboot with comfortable margin, decided
-// 2026-07-15. Testnet/dev deploys can pass something much shorter to
-// exercise the rearm path without waiting minutes.
-const drawWindowBlocks = drawWindowArg ? Number(drawWindowArg) : 60;
+// How long a Closed round can wait for a legitimate RevealDraw before the
+// 3-phase expiration safety net becomes callable (see max_reveal_age_seconds
+// in the contract, bounded 30min-7days at instantiate) - defaults to 1 hour,
+// matching create-your-own-luck's own fixed MAX_REVEAL_AGE_SECONDS for
+// consistency across the 3 contracts. Under normal keeper operation this
+// should never actually matter (RevealDraw fires within one poll cycle of
+// closing) - it only becomes relevant during an outage. Testnet/dev deploys
+// can pass the 1800s floor to exercise the expiration cascade without a long wait.
+const maxRevealAgeSeconds = maxRevealAgeArg ? Number(maxRevealAgeArg) : 3600;
 // Days before an unredeemed prize/pot becomes sweepable (see
 // unclaimed_deadline_days in the contract) - defaults to 90, matching the
 // design doc and the contract's own test defaults. Testnet/dev deploys can
 // pass 0 to exercise SweepExpiredPrize immediately.
 const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
-const weeklyStubDeploymentPath = path.resolve(__dirname, "../deployment-weekly-stub.json");
+// Defaults to the isolated weekly-round-stub (contribution sink only) - pass
+// a real weekly-round deployment file (e.g. deployment-weekly-round.json,
+// the fixed filename deployWeeklyRound.ts always writes to - weekly-round is
+// a platform singleton, unlike this contract's own per-label deploys) to
+// wire this Wheel Manager to a real Weekly Round instance for full
+// cross-contract integration testing instead.
+const weeklyStubDeploymentPath = path.resolve(
+  __dirname,
+  `../${weeklyRoundDeploymentFileArg ?? "deployment-weekly-stub.json"}`
+);
 
 async function main() {
   const { contractAddress: weeklyRoundAddress } = JSON.parse(
@@ -64,6 +76,12 @@ async function main() {
 
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin address:", admin.address);
+
+  // See Config::commit_pusher's own doc comment - a role separate from
+  // admin, gating only PushCommits. Only its address is needed here (never
+  // signs anything in this script).
+  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  console.log("commit_pusher address:", commitPusherAddress);
 
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));
   console.log(`Storing wheel-manager code (${wasmByteCode.length} bytes)...`);
@@ -94,13 +112,13 @@ async function main() {
           min_players: minPlayers,
           max_players: maxPlayers,
           round_timeout_seconds: roundTimeoutSeconds,
-          draw_delay_blocks: 2,
-          draw_window_blocks: drawWindowBlocks,
           unclaimed_deadline_days: unclaimedDeadlineDays,
           max_round_age_seconds: maxRoundAgeSeconds,
+          max_reveal_age_seconds: maxRevealAgeSeconds,
           treasury_address: TREASURY_ADDRESS,
           admin_fee_address: ADMIN_FEE_ADDRESS,
           weekly_round_address: weeklyRoundAddress,
+          commit_pusher: commitPusherAddress,
         },
         funds: [],
       }),

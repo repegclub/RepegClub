@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -16,13 +17,38 @@ async function main() {
   );
   console.log("Wheel Manager (frontenddev4, max_round_age_seconds=180):", contractAddress);
 
+  const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   const player1 = loadWallet("PLAYER1_MNEMONIC");
 
-  const round = await queryContract<{ round_id: number }>(RPC, {
+  const round = await queryContract<{ round_id: number; commit_used: string | null }>(RPC, {
     address: contractAddress,
     query: { get_current_round: {} },
   });
   console.log("Current round before buying:", round.round_id);
+
+  // v9: BuyTicket refuses to sell before the round has a commit assigned.
+  if (!round.commit_used) {
+    const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+    const pushRes = await commitPusher.broadcastTxSync({
+      msgs: [
+        new MsgExecuteContract({
+          sender: commitPusher.address,
+          contract: contractAddress,
+          msg: { push_commits: { commits: [commit] } },
+          funds: [],
+        }),
+      ],
+    });
+    if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+    const assignRes = await admin.broadcastTxSync({
+      msgs: [
+        new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+      ],
+    });
+    if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+    console.log("Committed and assigned to the current round.");
+  }
 
   const buyRes = await player1.broadcastTxSync({
     msgs: [

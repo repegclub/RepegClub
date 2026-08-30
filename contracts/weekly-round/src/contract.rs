@@ -1,16 +1,21 @@
-use cosmwasm_std::{
-    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
-};
+use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 
 use crate::error::ContractError;
 use crate::execute::{
-    execute_buy_weekly_ticket, execute_close_week, execute_contribute_to_pool,
-    execute_draw_weekly_winner, execute_expire_week, execute_reclaim_ticket, execute_redeem,
-    execute_sweep_expired_prize, execute_sweep_ustc, execute_withdraw_ticket, open_new_week,
+    claim_expired_week, execute_assign_commit, execute_buy_weekly_ticket, execute_close_week,
+    execute_contribute_to_pool, execute_discard_queued_commits, execute_expire_week,
+    execute_finalize_expire_closed_week, execute_push_commits, execute_reclaim_ticket,
+    execute_redeem, execute_request_expire_closed_week, execute_reveal_draw,
+    execute_set_commit_pusher, execute_sweep_expired_prize, execute_sweep_ustc,
+    execute_withdraw_ticket, open_new_week,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
 use crate::state::{Config, GlobalState, CONFIG, STATE};
+
+/// See wheel-manager's matching constants' doc comments - same rationale.
+pub const MIN_MAX_REVEAL_AGE_SECONDS: u64 = 1800; // 30 min
+pub const MAX_MAX_REVEAL_AGE_SECONDS: u64 = 604_800; // 7 days
 
 #[entry_point]
 pub fn instantiate(
@@ -22,6 +27,19 @@ pub fn instantiate(
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
     }
+    if msg.max_reveal_age_seconds < MIN_MAX_REVEAL_AGE_SECONDS
+        || msg.max_reveal_age_seconds > MAX_MAX_REVEAL_AGE_SECONDS
+    {
+        return Err(ContractError::InvalidMaxRevealAgeSeconds {
+            min: MIN_MAX_REVEAL_AGE_SECONDS,
+            max: MAX_MAX_REVEAL_AGE_SECONDS,
+        });
+    }
+    // See wheel-manager's matching check's own doc comment (round-review
+    // fix, Opus, commit_pusher audit round, 2026-08-30).
+    if msg.commit_pusher == info.sender.as_str() {
+        return Err(ContractError::CommitPusherMustDifferFromAdmin {});
+    }
 
     let config = Config {
         admin: info.sender.clone(),
@@ -32,15 +50,15 @@ pub fn instantiate(
         min_players: msg.min_players,
         max_players: msg.max_players,
         round_duration_days: msg.round_duration_days,
-        draw_delay_blocks: msg.draw_delay_blocks,
-        draw_window_blocks: msg.draw_window_blocks,
         unclaimed_deadline_days: msg.unclaimed_deadline_days,
+        max_reveal_age_seconds: msg.max_reveal_age_seconds,
         treasury_address: deps.api.addr_validate(&msg.treasury_address)?,
         admin_fee_address: deps.api.addr_validate(&msg.admin_fee_address)?,
+        commit_pusher: deps.api.addr_validate(&msg.commit_pusher)?,
     };
     CONFIG.save(deps.storage, &config)?;
     STATE.save(deps.storage, &GlobalState { current_week_id: 1 })?;
-    open_new_week(deps.storage, &env, 1, Uint128::zero())?;
+    open_new_week(deps.storage, &env, 1)?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
@@ -61,13 +79,26 @@ pub fn execute(
         } => execute_contribute_to_pool(deps, info, source_wheel, source_round_id),
         ExecuteMsg::BuyWeeklyTicket {} => execute_buy_weekly_ticket(deps, env, info),
         ExecuteMsg::CloseWeek {} => execute_close_week(deps, env),
-        ExecuteMsg::DrawWeeklyWinner {} => execute_draw_weekly_winner(deps, env),
+        ExecuteMsg::RevealDraw { week_id, preimage } => execute_reveal_draw(deps, env, info, week_id, preimage),
         ExecuteMsg::Redeem { week_id } => execute_redeem(deps, info, week_id),
         ExecuteMsg::SweepUstc {} => execute_sweep_ustc(deps, env, info),
         ExecuteMsg::SweepExpiredPrize { week_id } => execute_sweep_expired_prize(deps, env, week_id),
         ExecuteMsg::ExpireWeek {} => execute_expire_week(deps, env),
         ExecuteMsg::ReclaimTicket { week_id } => execute_reclaim_ticket(deps, info, week_id),
         ExecuteMsg::WithdrawTicket { week_id } => execute_withdraw_ticket(deps, info, week_id),
+        ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
+        ExecuteMsg::AssignCommit {} => execute_assign_commit(deps, info),
+        ExecuteMsg::RequestExpireClosedWeek { week_id } => {
+            execute_request_expire_closed_week(deps, env, info, week_id)
+        }
+        ExecuteMsg::FinalizeExpireClosedWeek { week_id } => {
+            execute_finalize_expire_closed_week(deps, env, info, week_id)
+        }
+        ExecuteMsg::ClaimExpiredWeek { week_id } => claim_expired_week(deps, env, info, week_id),
+        ExecuteMsg::DiscardQueuedCommits {} => execute_discard_queued_commits(deps, info),
+        ExecuteMsg::SetCommitPusher { commit_pusher } => {
+            execute_set_commit_pusher(deps, info, commit_pusher)
+        }
     }
 }
 

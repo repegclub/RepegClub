@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, HexBinary, Uint128};
 
 /// Mirrors `create-your-own-luck`'s own `RaffleType` field-for-field (same
 /// snake_case serde rename via `cw_serde`) - each contract in this project
@@ -17,6 +17,8 @@ pub enum RaffleType {
 #[cw_serde]
 pub struct InstantiateMsg {
     pub raffle_code_id: u64,
+    /// See wheel-manager's matching `InstantiateMsg::commit_pusher`.
+    pub commit_pusher: String,
 }
 
 #[cw_serde]
@@ -40,8 +42,6 @@ pub enum ExecuteMsg {
         min_players: u32,
         max_players: u32,
         round_timeout_seconds: u64,
-        draw_delay_blocks: u64,
-        draw_window_blocks: u64,
         unclaimed_deadline_days: u64,
         prize_native_denom: Option<String>,
         prize_cw20_address: Option<String>,
@@ -79,6 +79,46 @@ pub enum ExecuteMsg {
         base_bps: u64,
         late_additional_bps: u64,
     },
+    /// Restricted to the factory's own `COMMIT_PUSHER` (round-review fix,
+    /// CodeRabbit 2026-08-30 - this comment previously said "Admin-only").
+    /// Adds commits (`sha256(preimage)`) to the queue SingleWinner/Podium
+    /// raffles draw from via `ConsumeCommit` - see `COMMIT_QUEUE`'s own
+    /// doc comment. Batch size and total queue length are bounded (see
+    /// `execute::PUSH_COMMITS_MAX_BATCH`/`MAX_COMMIT_QUEUE_LEN`), and every
+    /// commit must be new (never pushed before) and exactly 32 bytes.
+    PushCommits { commits: Vec<HexBinary> },
+    /// Consumes the next queued commit and returns it via this call's reply
+    /// `data` - only accepted from a raffle this factory itself deployed (see
+    /// `KNOWN_RAFFLES`), and only once per raffle until it's returned via
+    /// `ReturnCommit`. Dispatched as a `SubMsg::reply_on_success` from
+    /// create-your-own-luck's `execute_deposit_prize`/`execute_receive`.
+    ConsumeCommit {},
+    /// Returns an unconsumed commit to the front of the queue - only valid for
+    /// a raffle that consumed one via `ConsumeCommit` but never used it in any
+    /// hash (never reached `Drawn`). Closes a cheap DoS on the commit queue:
+    /// without this, repeatedly creating and cancelling a minimal raffle would
+    /// drain `COMMIT_QUEUE` permanently at ~$0.60/commit with no way for the
+    /// admin to recover the drained commits. Dispatched ONLY from create-your-
+    /// own-luck's `execute_cancel_raffle`/`execute_expire_raffle` (both
+    /// `Funding`/`Open` only - Ronda 10 audit fix, Opus: a raffle that reached
+    /// `Closed` may have had a `RevealDraw` broadcast with its real preimage,
+    /// which a losing race against `claim_expired_raffle` can leave public even
+    /// though the raffle itself never reached `Drawn` - recycling that commit
+    /// would hand a possibly-public preimage to whichever raffle consumes it
+    /// next, so `claim_expired_raffle` deliberately never calls this). Via
+    /// `SubMsg::reply_on_error` that swallows the error, so a raffle's
+    /// real refund to players/creator can never be blocked by this call
+    /// failing.
+    ReturnCommit {},
+    /// Admin-only. See wheel-manager's matching `DiscardQueuedCommits` doc
+    /// comment (round-review fix, Opus, commit_pusher audit round,
+    /// 2026-08-30) - only discards unassigned commits still in
+    /// `COMMIT_QUEUE`, never touches `RAFFLE_COMMITS` (commits already
+    /// consumed by a live raffle).
+    DiscardQueuedCommits {},
+    /// Admin-only. See wheel-manager's matching `SetCommitPusher` doc
+    /// comment.
+    SetCommitPusher { commit_pusher: String },
 }
 
 #[cw_serde]
@@ -143,6 +183,13 @@ pub struct RafflesResponse {
 #[cw_serde]
 pub struct ConfigResponse {
     pub raffle_code_id: u64,
+    /// Round-review fix (CodeRabbit, commit_pusher audit round, 2026-08-30) -
+    /// previously not exposed at all, unlike wheel-manager/weekly-round's own
+    /// `GetConfig`, which meant operational tooling (the keeper bot's own
+    /// startup safety check) couldn't confirm its wallet isn't also admin or
+    /// commit_pusher on this contract the same way it can for the other two.
+    pub admin: Addr,
+    pub commit_pusher: Addr,
 }
 
 #[cw_serde]

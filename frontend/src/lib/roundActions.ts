@@ -89,15 +89,41 @@ export function closeRound(wallet: ConnectedWallet, contractAddress: string = WH
   return execute(wallet, contractAddress, { close_round: {} });
 }
 
-export function drawWinner(wallet: ConnectedWallet, contractAddress: string = WHEEL_MANAGER_ADDRESS) {
-  return execute(wallet, contractAddress, { draw_winner: {} });
-}
-
 // Marks a round Expired once min_players was never reached and
 // max_round_age_seconds has elapsed - permissionless, opens the next round
 // automatically. See ReclaimTicket below for getting ticket money back.
 export function expireRound(wallet: ConnectedWallet, contractAddress: string = WHEEL_MANAGER_ADDRESS) {
   return execute(wallet, contractAddress, { expire_round: {} });
+}
+
+// 3-phase expiration for a Closed round that has gone unrevealed too long
+// (the keeper is down or the commit was somehow never assigned) - the v9
+// outage safety net, separate from expireRound above (which only covers a
+// round that never reached min_players). RequestExpireClosedRound only marks
+// intent; a legitimate RevealDraw is still valid after any of these 3 steps
+// until ClaimExpiredRound actually refunds everyone.
+export function requestExpireClosedRound(
+  wallet: ConnectedWallet,
+  roundId: number,
+  contractAddress: string = WHEEL_MANAGER_ADDRESS
+) {
+  return execute(wallet, contractAddress, { request_expire_closed_round: { round_id: roundId } });
+}
+
+export function finalizeExpireClosedRound(
+  wallet: ConnectedWallet,
+  roundId: number,
+  contractAddress: string = WHEEL_MANAGER_ADDRESS
+) {
+  return execute(wallet, contractAddress, { finalize_expire_closed_round: { round_id: roundId } });
+}
+
+export function claimExpiredRound(
+  wallet: ConnectedWallet,
+  roundId: number,
+  contractAddress: string = WHEEL_MANAGER_ADDRESS
+) {
+  return execute(wallet, contractAddress, { claim_expired_round: { round_id: roundId } });
 }
 
 // Refunds exactly what this wallet paid in an Expired round's tickets.
@@ -189,15 +215,37 @@ export function closeWeek(wallet: ConnectedWallet, contractAddress: string = WEE
   return execute(wallet, contractAddress, { close_week: {} });
 }
 
-export function drawWeeklyWinner(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
-  return execute(wallet, contractAddress, { draw_weekly_winner: {} });
-}
-
 // Marks the current week Expired once min_players was never reached and
 // round_duration_days has elapsed - permissionless, opens the next week
 // automatically. See reclaimWeeklyTicket below for getting ticket money back.
 export function expireWeek(wallet: ConnectedWallet, contractAddress: string = WEEKLY_ROUND_ADDRESS) {
   return execute(wallet, contractAddress, { expire_week: {} });
+}
+
+// Same 3-phase expiration as Wheel Manager's requestExpireClosedRound/etc
+// above, week-scoped.
+export function requestExpireClosedWeek(
+  wallet: ConnectedWallet,
+  weekId: number,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  return execute(wallet, contractAddress, { request_expire_closed_week: { week_id: weekId } });
+}
+
+export function finalizeExpireClosedWeek(
+  wallet: ConnectedWallet,
+  weekId: number,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  return execute(wallet, contractAddress, { finalize_expire_closed_week: { week_id: weekId } });
+}
+
+export function claimExpiredWeek(
+  wallet: ConnectedWallet,
+  weekId: number,
+  contractAddress: string = WEEKLY_ROUND_ADDRESS
+) {
+  return execute(wallet, contractAddress, { claim_expired_week: { week_id: weekId } });
 }
 
 // Refunds exactly what this wallet paid (per that day's price) in an

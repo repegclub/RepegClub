@@ -6,19 +6,16 @@ import { CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS } from "./deployment";
 // roundActions.ts.
 const MEMO = "REPEG CLUB";
 
-// Fields the creator doesn't choose - fixed to the exact production values
+// Fields the creator doesn't choose - fixed to the exact production value
 // already used platform-wide (Wheel Manager/Weekly Round's own redeploys):
-// draw_window_blocks comfortably covers a keeper crash/restart before the
-// draw window would need to auto-rearm; unclaimed_deadline_days matches the
-// platform's standard unclaimed-prize sweep window everywhere else. No
-// max_raffle_age_seconds here anymore (2026-08-20 soft-close redesign) - the
-// raffle's max age is now a fixed platform-wide constant
-// (MAX_RAFFLE_AGE_SECONDS, 60 days) baked into the contract itself, not a
-// per-raffle field the factory's CreateRaffle accepts - sending it would be
-// an unknown field and get the whole message rejected (cw_serde's
-// deny_unknown_fields).
-const DRAW_DELAY_BLOCKS = 2;
-const DRAW_WINDOW_BLOCKS = 60;
+// unclaimed_deadline_days matches the platform's standard unclaimed-prize
+// sweep window everywhere else. No draw_delay_blocks/draw_window_blocks
+// anymore (v9 commit-reveal removed the block-window draw mechanism these
+// governed) and no max_raffle_age_seconds here either (2026-08-20 soft-close
+// redesign) - both are fixed platform-wide constants baked into the contract
+// itself now, not per-raffle fields the factory's CreateRaffle accepts -
+// sending either would be an unknown field and get the whole message
+// rejected (cw_serde's deny_unknown_fields).
 const UNCLAIMED_DEADLINE_DAYS = 90;
 
 export type CreateRaffleParams = {
@@ -57,8 +54,6 @@ export async function createRaffle(wallet: ConnectedWallet, params: CreateRaffle
             min_players: params.minPlayers,
             max_players: params.maxPlayers,
             round_timeout_seconds: params.roundTimeoutSeconds,
-            draw_delay_blocks: DRAW_DELAY_BLOCKS,
-            draw_window_blocks: DRAW_WINDOW_BLOCKS,
             unclaimed_deadline_days: UNCLAIMED_DEADLINE_DAYS,
             prize_native_denom: params.prizeNativeDenom,
             prize_cw20_address: null,

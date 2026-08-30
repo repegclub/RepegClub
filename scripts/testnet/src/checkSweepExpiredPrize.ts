@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -14,10 +15,6 @@ async function ulunaBalance(address: string): Promise<bigint> {
   return uluna ? BigInt(uluna.amount) : 0n;
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function main() {
   const { contractAddress } = JSON.parse(
     readFileSync(path.resolve(__dirname, "../deployment-wheelmanager-sweep-test.json"), "utf8")
@@ -25,9 +22,32 @@ async function main() {
   console.log("Wheel Manager (sweep-test):", contractAddress);
 
   const admin = loadWallet("ADMIN_MNEMONIC");
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   const player1 = loadWallet("PLAYER1_MNEMONIC");
   const player2 = loadWallet("PLAYER2_MNEMONIC");
   const player3 = loadWallet("PLAYER3_MNEMONIC"); // uninvolved bystander, will trigger the sweep
+
+  // v9: BuyTicket refuses to sell before the round has a commit assigned.
+  const preimage = randomBytes(32);
+  const commit = createHash("sha256").update(preimage).digest("hex");
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: contractAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  const assignRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),
+    ],
+  });
+  if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  console.log("Committed and assigned to round 1.");
 
   for (const player of [player1, player2]) {
     const res = await player.broadcastTxSync({
@@ -44,29 +64,18 @@ async function main() {
     console.log(`${player.address} bought a ticket | gasUsed: ${res.txResponse.gasUsed}`);
   }
 
-  console.log("\nDrawing winner (retrying until draw_delay_blocks has passed)...");
-  let drawRes;
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    try {
-      drawRes = await admin.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: admin.address,
-            contract: contractAddress,
-            msg: { draw_winner: {} },
-            funds: [],
-          }),
-        ],
-      });
-      if (drawRes.txResponse.code === 0) break;
-      throw new Error(drawRes.txResponse.rawLog);
-    } catch (err) {
-      console.log(`  attempt ${attempt} not ready yet, waiting 6s...`);
-      drawRes = undefined;
-      await sleep(6000);
-    }
-  }
-  if (!drawRes || drawRes.txResponse.code !== 0) throw new Error("draw_winner never succeeded");
+  console.log("\nRevealing draw...");
+  const drawRes = await admin.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: admin.address,
+        contract: contractAddress,
+        msg: { reveal_draw: { round_id: 1, preimage: preimage.toString("hex") } },
+        funds: [],
+      }),
+    ],
+  });
+  if (drawRes.txResponse.code !== 0) throw new Error(`reveal_draw failed: ${drawRes.txResponse.rawLog}`);
   console.log(`Drawn | gasUsed: ${drawRes.txResponse.gasUsed}`);
 
   // Deliberately do NOT redeem - simulate a winner who never claims.

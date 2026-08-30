@@ -1,39 +1,33 @@
-import { LCD, RPC } from "./chainConfig";
+import { LCD } from "./chainConfig";
 import { WHEEL_MANAGER_ADDRESS } from "./deployment";
+import { hexToBytes } from "./hex";
 import { getRoundEntrants, getRoundHistory } from "./queryWheelManager";
 
 export type VerifyRoundResult = {
   roundId: number;
-  drawHeight: number;
-  // How many blocks after the round became eligible to draw it was actually
-  // drawn. A healthy, promptly-acting keeper produces 0-2; a much larger gap
-  // means whoever drew waited through several blocks first - not proof of
-  // anything by itself (shown as plain fact, not an accusation), but the
-  // signal worth watching for a pattern across rounds.
-  drawAfterHeight: number;
-  drawGap: number;
-  blockTimeIso: string;
+  contractAddress: string;
+  commitUsedHex: string;
+  preimageHex: string;
   entrants: string[];
   digestHex: string;
   winnerIndex: number;
   computedWinner: string;
   onChainWinner: string;
   matches: boolean;
-  // Plain, independently-fetchable sources for the two raw inputs - a
-  // technical reader (or an AI asked to double-check) can hit these directly
-  // and redo everything below without trusting this app's own computation.
-  blockQueryUrl: string;
+  // Plain, independently-fetchable source for the one raw input not already
+  // in the round response itself - a technical reader (or an AI asked to
+  // double-check) can hit this directly and redo everything below without
+  // trusting this app's own computation.
   entrantsQueryUrl: string;
 };
 
 // Mirrors contracts/wheel-manager/src/rand.rs::pick_winner_index exactly:
-// SHA-256(round_id BE u64 | draw block height BE u64 | draw block time in
-// nanoseconds BE u64 | for each entrant: utf8 address bytes + 0x00), then
-// the first 8 bytes of the digest (BE) modulo the entrant count picks the
-// winning index. draw_height/drawn_at alone (from the contract's own query)
-// aren't enough to redo this - the query only stores whole-second precision,
-// but the hash needs full nanosecond precision - so this fetches the actual
-// historical block from the chain's RPC to get the real, exact time used.
+// SHA-256(contract_addr utf8 bytes | 0x00 separator | round_id BE u64 |
+// preimage bytes | for each entrant: utf8 address bytes + 0x00), then the
+// first 8 bytes of the digest (BE) modulo the entrant count picks the
+// winning index. Commit-reveal, not block data - preimage/commit_used come
+// straight from the round's own query response (GetRoundHistory), no RPC
+// block lookup needed at all under v9.
 function u64BigEndian(n: bigint): Uint8Array {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setBigUint64(0, n, false);
@@ -44,26 +38,9 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function isoToNanos(iso: string): bigint {
-  const match = iso.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.(\d+))?Z$/);
-  if (!match) throw new Error(`Unexpected block time format: ${iso}`);
-  const wholeSeconds = BigInt(Math.floor(new Date(`${match[1]}Z`).getTime() / 1000));
-  const fractionNanos = (match[3] ?? "").padEnd(9, "0").slice(0, 9);
-  return wholeSeconds * 1_000_000_000n + BigInt(fractionNanos);
-}
-
 function entrantsQueryUrl(roundId: number, contractAddress: string): string {
   const query = btoa(JSON.stringify({ get_round_entrants: { round_id: roundId } }));
   return `${LCD}/cosmwasm/wasm/v1/contract/${contractAddress}/smart/${query}`;
-}
-
-async function fetchBlockTimeIso(height: number): Promise<string> {
-  const res = await fetch(`${RPC}/block?height=${height}`);
-  if (!res.ok) throw new Error(`Block query failed (${res.status})`);
-  const body = await res.json();
-  const time = body?.result?.block?.header?.time;
-  if (!time) throw new Error("Block response missing header.time");
-  return time as string;
 }
 
 export async function verifyRound(
@@ -74,20 +51,30 @@ export async function verifyRound(
     getRoundHistory(roundId, contractAddress),
     getRoundEntrants(roundId, contractAddress),
   ]);
-  if (round.status !== "drawn" || round.draw_height === null || !round.winner) {
+  if (round.status !== "drawn" || !round.revealed_preimage || !round.commit_used || !round.winner) {
     throw new Error("This round has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;
   if (entrants.length === 0) throw new Error("No entrants recorded for this round.");
 
-  const blockTimeIso = await fetchBlockTimeIso(round.draw_height);
-  const nanos = isoToNanos(blockTimeIso);
+  // Binds the reveal to its commitment, independently of the contract's own
+  // check (round-review fix, CodeRabbit 2026-08-30): without this, a
+  // self-consistent but never-actually-committed preimage - from a buggy
+  // contract or a compromised RPC response - would still make this function
+  // recompute *a* winner and report a false "verified" if it happened to
+  // match. sha256(revealed_preimage) must equal commit_used before the
+  // winner-selection hash below means anything.
+  const preimageDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", hexToBytes(round.revealed_preimage)));
+  const commitBytes = hexToBytes(round.commit_used);
+  const commitmentValid =
+    preimageDigest.length === commitBytes.length && preimageDigest.every((b, i) => b === commitBytes[i]);
 
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [
+    encoder.encode(contractAddress),
+    new Uint8Array([0]),
     u64BigEndian(BigInt(round.round_id)),
-    u64BigEndian(BigInt(round.draw_height)),
-    u64BigEndian(nanos),
+    hexToBytes(round.revealed_preimage),
   ];
   for (const addr of entrants) {
     chunks.push(encoder.encode(addr));
@@ -108,17 +95,15 @@ export async function verifyRound(
 
   return {
     roundId,
-    drawHeight: round.draw_height,
-    drawAfterHeight: round.draw_after_height!,
-    drawGap: round.draw_height - round.draw_after_height!,
-    blockTimeIso,
+    contractAddress,
+    commitUsedHex: round.commit_used ?? "",
+    preimageHex: round.revealed_preimage,
     entrants,
     digestHex: toHex(digest),
     winnerIndex,
     computedWinner,
     onChainWinner: round.winner,
-    matches: computedWinner === round.winner,
-    blockQueryUrl: `${RPC}/block?height=${round.draw_height}`,
+    matches: commitmentValid && computedWinner === round.winner,
     entrantsQueryUrl: entrantsQueryUrl(roundId, contractAddress),
   };
 }
@@ -126,24 +111,22 @@ export async function verifyRound(
 // Bundles every raw input and output into one plain-JSON blob - meant to be
 // copy-pasted to anyone (or anything, including an AI asked to double-check)
 // so the whole computation can be redone independently of this app, using
-// only the two public data sources linked inside it.
+// only the public data source linked inside it.
 export function buildVerificationPayload(result: VerifyRoundResult) {
   return {
     round_id: result.roundId,
+    contract_address: result.contractAddress,
     on_chain_winner: result.onChainWinner,
-    draw_block_height: result.drawHeight,
-    draw_eligible_at_height: result.drawAfterHeight,
-    draw_gap_blocks: result.drawGap,
-    draw_block_time_utc: result.blockTimeIso,
+    commit_used_hex: result.commitUsedHex,
+    revealed_preimage_hex: result.preimageHex,
     entrants_in_order: result.entrants,
     formula:
-      "winner = entrants[ SHA256(round_id as big-endian u64 || draw_block_height as big-endian u64 || draw_block_time in nanoseconds-since-epoch as big-endian u64 || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
+      "winner = entrants[ SHA256(contract_address as UTF-8 bytes || 0x00 || round_id as big-endian u64 || revealed_preimage bytes || for each entrant address: its UTF-8 bytes followed by one 0x00 byte)[first 8 bytes as big-endian u64] modulo entrants.length ]",
     sha256_digest_hex: result.digestHex,
     computed_winner_index: result.winnerIndex,
     computed_winner: result.computedWinner,
     matches_on_chain_winner: result.matches,
     sources: {
-      block_data: result.blockQueryUrl,
       entrants_data: result.entrantsQueryUrl,
     },
   };

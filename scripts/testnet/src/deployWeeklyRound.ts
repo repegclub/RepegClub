@@ -10,11 +10,30 @@ const WASM_PATH = path.resolve(
   __dirname,
   "../../../contracts/weekly-round/artifacts/weekly_round.wasm"
 );
+
+// node src/deployWeeklyRound.ts [label] [maxPlayers] [minPlayers] [roundDurationDays]
+// All optional, same convention as deployWheelManager.ts - lets a testnet/dev
+// deploy reach max_players with a couple of test wallets instead of waiting
+// out the real 7-day round_duration_days default.
+const [, , labelArg, maxPlayersArg, minPlayersArg, durationArg] = process.argv;
+const label = labelArg ?? "weekly-round";
+const maxPlayers = maxPlayersArg ? Number(maxPlayersArg) : 10;
+const minPlayers = minPlayersArg ? Number(minPlayersArg) : 2;
+const roundDurationDays = durationArg ? Number(durationArg) : 7;
+// Fixed filename regardless of label - weekly-round is a platform singleton
+// (unlike wheel-manager's multiple tiers or CYOL's many raffles), and
+// keeperTargets.ts's discoverTargets() looks for this exact name.
 const DEPLOYMENT_PATH = path.resolve(__dirname, "../deployment-weekly-round.json");
 
 async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin address:", admin.address);
+
+  // See Config::commit_pusher's own doc comment - a role separate from
+  // admin, gating only PushCommits. Only its address is needed here (never
+  // signs anything in this script).
+  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  console.log("commit_pusher address:", commitPusherAddress);
 
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));
   console.log(`Storing weekly-round code (${wasmByteCode.length} bytes)...`);
@@ -37,24 +56,22 @@ async function main() {
       new MsgInstantiateContract({
         sender: admin.address,
         codeId,
-        label: "weekly-round",
+        label: `weekly-round-${label}`,
         msg: {
           base_ticket_price: "10000000",
           price_increment_per_day: "1000000",
           ticket_denom: "uluna",
           redemption_denom: "uluna",
-          min_players: 2,
-          max_players: 10,
-          // Real "weekly" duration - was 1 (a day) as a testing shortcut to
-          // iterate fast; draw_window_blocks 60 matches the same reasoning
-          // already used for Wheel Manager's 2026-07-15 production redeploy
-          // (keeper crash-restart + VM reboot margin, see project notes).
-          round_duration_days: 7,
-          draw_delay_blocks: 2,
-          draw_window_blocks: 60,
+          min_players: minPlayers,
+          max_players: maxPlayers,
+          round_duration_days: roundDurationDays,
+          // See wheel-manager's matching deploy script for the 1-hour default
+          // rationale (max_reveal_age_seconds, bounded 30min-7days).
+          max_reveal_age_seconds: 3600,
           unclaimed_deadline_days: 90,
           treasury_address: TREASURY_ADDRESS,
           admin_fee_address: ADMIN_FEE_ADDRESS,
+          commit_pusher: commitPusherAddress,
         },
         funds: [],
       }),

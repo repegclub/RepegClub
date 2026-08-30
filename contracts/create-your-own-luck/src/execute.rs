@@ -1,10 +1,11 @@
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Empty, Env, MessageInfo, Order, Reply,
-    Response, SubMsg, SubMsgResult, Timestamp, Uint128, WasmMsg,
+    from_json, to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Empty, Env, HexBinary, MessageInfo, Order,
+    Reply, Response, SubMsg, SubMsgResult, Timestamp, Uint128, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use sha2::{Digest, Sha256};
 
-use crate::contract::{ANTI_SNIPE_EXTENSION_SECONDS, MAX_RAFFLE_AGE_SECONDS};
+use crate::contract::{ANTI_SNIPE_EXTENSION_SECONDS, MAX_RAFFLE_AGE_SECONDS, MAX_REVEAL_AGE_SECONDS};
 use crate::error::ContractError;
 use crate::factory_msgs::{FactoryExecuteMsg, FactoryQueryMsg};
 use crate::msg::Cw20HookMsg;
@@ -32,16 +33,18 @@ const CANCEL_PRIZE_REFUND_REPLY_ID: u64 = 4;
 /// `handle_report_cw20_failure_reply` swallowing the error the same way
 /// `handle_cancel_prize_refund_reply` already does.
 const REPORT_CW20_FAILURE_REPLY_ID: u64 = 5;
-/// Base reply id for a payout `SubMsg` dispatched by `DrawWinner`'s own
-/// `perform_draw` call - the actual id is this plus the winner's index into
-/// `RaffleState::winners` (`draw_payout_reply_id`), so `reply` can tell
-/// which specific winner's transfer resolved without needing extra
-/// pending-state storage. Safe without a pending map (unlike
-/// `ClaimAirdropShare`, see `AIRDROP_CLAIM_REPLY_ID_BASE`'s own doc
-/// comment): `DrawWinner` is creator-gated for its exclusive period, so a
-/// reentrant prize-token callback can't call it back as anyone else, and
-/// once permissionless, it can still only run once per raffle (`Closed` ->
-/// `Drawn`), giving no window to double-dispatch the same index.
+/// Base reply id for a payout `SubMsg` dispatched by `RevealDraw`'s own
+/// `resolve_single_winner_or_podium` call - the actual id is this plus the
+/// winner's index into `RaffleState::winners` (`draw_payout_reply_id`), so
+/// `reply` can tell which specific winner's transfer resolved without
+/// needing extra pending-state storage. Safe without a pending map (unlike
+/// `ClaimAirdropShare`, see `AIRDROP_CLAIM_REPLY_ID_BASE`'s own doc comment):
+/// `RevealDraw` is 100% permissionless (no creator-exclusive period exists
+/// under v9 - corrected 2026-08-28, Ronda 10 audit fix, Opus/Q2: a prior
+/// version of this comment cited a creator-gated fallback that no longer
+/// exists), but it can still only run once per raffle (`Closed`/`ExpiryPending`
+/// -> `Drawn`), giving no window to double-dispatch the same index even to a
+/// reentrant prize-token callback.
 const DRAW_PAYOUT_REPLY_ID_BASE: u64 = 1000;
 fn draw_payout_reply_id(winner_index: u32) -> u64 {
     DRAW_PAYOUT_REPLY_ID_BASE + winner_index as u64
@@ -95,6 +98,36 @@ fn retry_payout_reply_id(winner_index: u32) -> u64 {
 /// detection/auto-blacklist mechanism too. A per-id map closes this
 /// entirely: a nested claim gets its own id and its own map entry, so
 /// resolving it can never clobber an outer, still-pending one.
+/// Reply id for the `ConsumeCommit` `SubMsg` to the factory, dispatched from
+/// `execute_deposit_prize`/`execute_receive` the moment the fee/prize is
+/// funded (SingleWinner/Podium only). `SubMsg::reply_on_success`, not
+/// `reply_always`: if the factory's queue is empty (or the call fails for
+/// any other reason), the whole funding transaction reverts - the fee/prize
+/// payment never actually leaves the creator's wallet, so there's nothing to
+/// clean up, and they can simply retry once the admin restocks the queue.
+const CONSUME_COMMIT_REPLY_ID: u64 = 20_000;
+/// Reply id for the `ReturnCommit` `SubMsg` dispatched from
+/// `execute_cancel_raffle`/`execute_expire_raffle`/`claim_expired_raffle`
+/// when the raffle held a commit it never used in any hash - see the
+/// factory's own `ExecuteMsg::ReturnCommit` doc comment. `reply_on_error`,
+/// not `reply_on_success`: unlike `ConsumeCommit` (where a failure means the
+/// funding transaction has nothing to finalize and should simply revert), a
+/// failure here must never block the real refund to players/creator this
+/// SubMsg rides alongside - see `handle_return_commit_reply`.
+const RETURN_COMMIT_REPLY_ID: u64 = 6;
+/// Width, in blocks, of the "second step" wait in the 3-phase expiration -
+/// see wheel-manager's matching `EXPIRE_FINALIZE_DELAY_BLOCKS` for the full
+/// rationale.
+const EXPIRE_FINALIZE_DELAY_BLOCKS: u64 = 100;
+/// Width, in blocks, of the "third step" wait - see wheel-manager's matching
+/// `EXPIRE_CHALLENGE_BLOCKS`.
+const EXPIRE_CHALLENGE_BLOCKS: u64 = 100;
+/// See wheel-manager's matching `REVEAL_PRIORITY_MARGIN_BLOCKS` (Ronda 10
+/// audit fix, Opus, CYOL-2/WM-1).
+const REVEAL_PRIORITY_MARGIN_BLOCKS: u64 = 20;
+/// See wheel-manager's matching `REQUEST_EXPIRE_TTL_BLOCKS`.
+const REQUEST_EXPIRE_TTL_BLOCKS: u64 = 200;
+
 const AIRDROP_CLAIM_REPLY_ID_BASE: u64 = 10_000;
 fn next_airdrop_claim_reply_id(storage: &mut dyn cosmwasm_std::Storage) -> Result<u64, ContractError> {
     let next = NEXT_AIRDROP_CLAIM_REPLY_ID
@@ -134,44 +167,86 @@ fn next_airdrop_claim_reply_id(storage: &mut dyn cosmwasm_std::Storage) -> Resul
 /// end-to-end by an independent reviewer re-testing this exact fix.
 const PRIZE_TRANSFER_FAILURE_THRESHOLD: u32 = 3;
 
-/// Caps how many times `DrawWinner` can rearm (see the "past the window"
-/// branch below) before two things happen at once: (1) anyone, not just the
-/// creator, is authorized to call `DrawWinner`, instead of waiting the full
-/// `unclaimed_deadline_days`; and (2) rearming itself stops - the next
-/// eligible call draws immediately, at whatever height it lands on, instead
-/// of resetting the window again. Both halves matter: (1) alone (an earlier,
-/// buggy version of this fix) only *permitted* someone else to draw - it
-/// never actually stopped the creator from rearming, so if no one else
-/// happened to call `DrawWinner` in the meantime, the creator could keep
-/// re-arming forever regardless of the cap (found by an Opus+Fable review,
-/// 2026-07-22, of that first version). Without (2), a creator willing to run
-/// a script could sit on the free, no-cost rearm loop indefinitely: watch
-/// each new block within the window, compute off-chain (same public
-/// SHA-256) if it favors them, and if not just let the window lapse and
-/// rearm again - no validator collusion needed, just patience. Over
-/// `unclaimed_deadline_days` (up to 365, creator-chosen) that's potentially
-/// hundreds of thousands of free samples. Capping rearms at 2 - and actually
-/// forcing the draw once the cap is spent - bounds it to a couple hundred at
-/// most: still not zero (no block-based randomness scheme is, see rand.rs),
-/// but a dramatic reduction, and a real creator drawing in good faith has no
-/// reason to ever hit this limit in the first place. Alongside folding the
-/// max-players sellout draw into the same atomic transaction as the closing
-/// ticket purchase (see `execute_buy_ticket`), which removes this grinding
-/// surface entirely for that path.
-const MAX_REARMS_BEFORE_PERMISSIONLESS: u32 = 2;
+/// Shared tail of every payout: the creator's ticket revenue and the
+/// founder/treasury fee split. Reused by both `resolve_airdrop` (called at
+/// close time - Airdrop needs no preimage, see that function's own doc
+/// comment) and `resolve_single_winner_or_podium` (called at reveal time) -
+/// deliberately the SAME code, not a re-derived copy, so the Airdrop close
+/// path can never silently drift from what `perform_draw` used to pay before
+/// v9 (see the project's Obsidian notes on the Ronda 9 finding this closes:
+/// an earlier v9 spec's Airdrop shortcut paid only `airdrop_share`, silently
+/// dropping `ticket_revenue`/`fee_amount` - real, permanent fund loss).
+fn dispatch_ticket_revenue_and_fee_payouts(config: &Config, raffle: &RaffleState) -> Vec<SubMsg> {
+    let mut messages: Vec<SubMsg> = vec![];
 
-/// Runs the actual winner-selection + payout logic, shared by the two paths
-/// that can trigger a draw: `execute_buy_ticket`'s sellout auto-draw (same
-/// atomic transaction as the closing ticket, no separate window to grind)
-/// and `execute_draw_winner`'s manual path (for raffles that close via
-/// timeout instead of selling out). Mutates `raffle` in place and returns
-/// the payout messages; the caller is responsible for saving state.
-fn perform_draw(config: &Config, raffle: &mut RaffleState, height: u64, time: Timestamp) -> Vec<SubMsg> {
+    if !raffle.ticket_revenue.is_zero() {
+        messages.push(SubMsg::new(CosmosMsg::from(BankMsg::Send {
+            to_address: config.creator.to_string(),
+            amount: vec![Coin {
+                denom: config.ticket_denom.clone(),
+                amount: raffle.ticket_revenue,
+            }],
+        })));
+    }
+
+    if !raffle.fee_amount.is_zero() {
+        let founder_cut = raffle.fee_amount.multiply_ratio(FEE_SPLIT_BPS, FEE_SPLIT_DENOM);
+        let treasury_cut = raffle.fee_amount.checked_sub(founder_cut).unwrap_or_default();
+
+        for (addr, amount) in [
+            (&config.founder_fee_address, founder_cut),
+            (&config.treasury_address, treasury_cut),
+        ] {
+            if !amount.is_zero() {
+                messages.push(SubMsg::new(CosmosMsg::from(BankMsg::Send {
+                    to_address: addr.to_string(),
+                    amount: vec![Coin {
+                        denom: config.usdc_denom.clone(),
+                        amount,
+                    }],
+                })));
+            }
+        }
+    }
+
+    messages
+}
+
+/// Airdrop only, called from `execute_close_round`/the sold-out branch of
+/// `execute_buy_ticket` - never needs a preimage (the split is a pure
+/// deterministic function of `prize_amount`/`unique_players`, no draw), so it
+/// resolves immediately at close instead of waiting for a separate
+/// `RevealDraw` the way SingleWinner/Podium now must. This is also why
+/// Airdrop never consumes a commit (see `execute_deposit_prize`/
+/// `execute_receive`) and never reaches `RaffleStatus::Closed` at all -
+/// straight from `Open` to `Drawn` in the same transaction that closes it.
+fn resolve_airdrop(config: &Config, raffle: &mut RaffleState, time: Timestamp) -> Vec<SubMsg> {
+    raffle.airdrop_share = raffle
+        .prize_amount
+        .multiply_ratio(1u128, raffle.unique_players.len() as u128);
+    let messages = dispatch_ticket_revenue_and_fee_payouts(config, raffle);
+    raffle.status = RaffleStatus::Drawn;
+    raffle.drawn_at = Some(time);
+    messages
+}
+
+/// SingleWinner/Podium only, called from `execute_reveal_draw` once the
+/// `preimage` has already been verified against `commit_used`. Same
+/// winner-selection shape as the pre-v9 `perform_draw` (Podium's `pool.retain`
+/// loop, dust rounding into the first place), with `preimage` (not block
+/// data) as the entropy source - see `rand::pick_winner_index`'s doc comment.
+fn resolve_single_winner_or_podium(
+    contract_addr: &Addr,
+    config: &Config,
+    raffle: &mut RaffleState,
+    preimage: &[u8],
+    time: Timestamp,
+) -> Vec<SubMsg> {
     let mut messages: Vec<SubMsg> = vec![];
 
     match config.raffle_type {
         RaffleType::SingleWinner => {
-            let idx = pick_winner_index(0, height, time.nanos(), 0, &raffle.entrants);
+            let idx = pick_winner_index(contract_addr, preimage, 0, &raffle.entrants);
             let winner = raffle.entrants[idx].clone();
             raffle.winners = vec![winner.clone()];
             raffle.prize_shares = vec![raffle.prize_amount];
@@ -197,7 +272,7 @@ fn perform_draw(config: &Config, raffle: &mut RaffleState, height: u64, time: Ti
             let mut winners: Vec<Addr> = vec![];
             let mut pool = raffle.entrants.clone();
             for place in 0..config.podium_shares_bps.len() as u64 {
-                let idx = pick_winner_index(0, height, time.nanos(), place, &pool);
+                let idx = pick_winner_index(contract_addr, preimage, place, &pool);
                 let winner = pool[idx].clone();
                 winners.push(winner.clone());
                 pool.retain(|e| *e != winner);
@@ -234,46 +309,13 @@ fn perform_draw(config: &Config, raffle: &mut RaffleState, height: u64, time: Ti
             raffle.prize_shares = shares;
             raffle.prize_paid = prize_paid;
         }
-        RaffleType::Airdrop => {
-            raffle.airdrop_share = raffle
-                .prize_amount
-                .multiply_ratio(1u128, raffle.unique_players.len() as u128);
-        }
+        RaffleType::Airdrop => unreachable!("resolve_single_winner_or_podium is never called for Airdrop"),
     }
 
-    if !raffle.ticket_revenue.is_zero() {
-        messages.push(SubMsg::new(CosmosMsg::from(BankMsg::Send {
-            to_address: config.creator.to_string(),
-            amount: vec![Coin {
-                denom: config.ticket_denom.clone(),
-                amount: raffle.ticket_revenue,
-            }],
-        })));
-    }
-
-    if !raffle.fee_amount.is_zero() {
-        let founder_cut = raffle.fee_amount.multiply_ratio(FEE_SPLIT_BPS, FEE_SPLIT_DENOM);
-        let treasury_cut = raffle.fee_amount.checked_sub(founder_cut).unwrap_or_default();
-
-        for (addr, amount) in [
-            (&config.founder_fee_address, founder_cut),
-            (&config.treasury_address, treasury_cut),
-        ] {
-            if !amount.is_zero() {
-                messages.push(SubMsg::new(CosmosMsg::from(BankMsg::Send {
-                    to_address: addr.to_string(),
-                    amount: vec![Coin {
-                        denom: config.usdc_denom.clone(),
-                        amount,
-                    }],
-                })));
-            }
-        }
-    }
+    messages.extend(dispatch_ticket_revenue_and_fee_payouts(config, raffle));
 
     raffle.status = RaffleStatus::Drawn;
     raffle.drawn_at = Some(time);
-    raffle.draw_height = Some(height);
 
     messages
 }
@@ -507,10 +549,88 @@ fn handle_report_cw20_failure_reply(result: SubMsgResult) -> Result<Response, Co
     }
 }
 
+/// Swallows a failed `ReturnCommit` call to the factory - see
+/// `RETURN_COMMIT_REPLY_ID`'s own doc comment for why this must never block
+/// the real refund it rides alongside.
+fn handle_return_commit_reply(result: SubMsgResult) -> Result<Response, ContractError> {
+    match result {
+        SubMsgResult::Ok(_) => Ok(Response::new()),
+        SubMsgResult::Err(_) => Ok(Response::new().add_attribute("return_commit_failed", "true")),
+    }
+}
+
+/// Builds the `ReturnCommit` `SubMsg` for a raffle terminating without ever
+/// revealing (Cancelled/Expired), so the factory can recycle a commit that
+/// was never used in any hash - see the factory's own `ExecuteMsg::
+/// ReturnCommit` doc comment for the DoS this closes. `None` for Airdrop
+/// (never consumes a commit, so `commit_used` is always `None`).
+///
+/// Deliberately called ONLY from `execute_cancel_raffle`/`execute_expire_raffle`
+/// (both `Funding`/`Open` only) - NEVER from `claim_expired_raffle` (Ronda 10
+/// audit fix, Opus, CYOL-1/critical). A raffle only reaches `claim_expired_raffle`
+/// after sitting `Closed` long enough to go through the full 3-phase expiration,
+/// and `execute_reveal_draw` accepts `Closed`/`ExpiryPending` too - so in the
+/// exact block where `ClaimExpiredRaffle` first becomes callable, a legitimate
+/// `RevealDraw{preimage}` is *also* valid, and whichever transaction lands
+/// first wins the race. If `ClaimExpiredRaffle` wins, the operator's `RevealDraw`
+/// either still gets included and fails (`RaffleNotRevealable`, but the
+/// `preimage` argument is now permanently public on-chain regardless of the
+/// tx's outcome) or was already visible in the mempool (how the attacker won
+/// the race in the first place). Recycling that commit here - unlike the
+/// `Funding`/`Open` call sites, where the raffle never reached `Closed` and no
+/// `RevealDraw` could ever have been broadcast - would hand a commit whose
+/// preimage may already be public to whichever raffle consumes it next via
+/// `ConsumeCommit`, letting that raffle's winner be computed offline: exactly
+/// the grinding v9 exists to close, reopened through the recycling path. A
+/// commit "burned" this way (never returned) is a permanent loss of one queued
+/// commit, not a fund-safety issue - the DoS `ReturnCommit` exists to close
+/// (repeatedly creating and cancelling a raffle from `Funding`/`Open` for
+/// ~$0.60) is still fully covered by the other two call sites.
+fn return_commit_message(config: &Config, raffle: &RaffleState) -> Result<Option<SubMsg>, ContractError> {
+    if raffle.commit_used.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(SubMsg::reply_on_error(
+        WasmMsg::Execute {
+            contract_addr: config.factory_address.to_string(),
+            msg: to_json_binary(&FactoryExecuteMsg::ReturnCommit {})?,
+            funds: vec![],
+        },
+        RETURN_COMMIT_REPLY_ID,
+    )))
+}
+
+/// Finalizes the `ConsumeCommit` `SubMsg` dispatched by `execute_deposit_prize`/
+/// `execute_receive` - reads the commit back from the factory's reply `data`
+/// and transitions `AwaitingCommit -> Open`. Only reachable on success
+/// (`SubMsg::reply_on_success` - see `CONSUME_COMMIT_REPLY_ID`'s own doc
+/// comment for why a failure here instead reverts the whole funding
+/// transaction, with nothing to finalize).
+///
+/// With `cosmwasm-std = "1.5.4"`, a `WasmMsg::Execute` reply's `data` is the
+/// protobuf-encoded `MsgExecuteContractResponse`, not the callee's
+/// `Response.data` verbatim - `cw_utils::parse_reply_execute_data` unwraps
+/// that layer (same pattern the factory's own `reply` handler already uses
+/// for its instantiate replies, via `parse_reply_instantiate_data`).
+fn handle_consume_commit_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    let response = cw_utils::parse_reply_execute_data(msg).map_err(|_| ContractError::NoCommitInReply {})?;
+    let data = response.data.ok_or(ContractError::NoCommitInReply {})?;
+    let commit: HexBinary = from_json(&data)?;
+
+    let mut raffle = RAFFLE.load(deps.storage)?;
+    raffle.commit_used = Some(commit);
+    raffle.status = RaffleStatus::Open;
+    RAFFLE.save(deps.storage, &raffle)?;
+
+    Ok(Response::new().add_attribute("action", "consume_commit"))
+}
+
 pub fn reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         CANCEL_PRIZE_REFUND_REPLY_ID => handle_cancel_prize_refund_reply(msg.result),
         REPORT_CW20_FAILURE_REPLY_ID => handle_report_cw20_failure_reply(msg.result),
+        RETURN_COMMIT_REPLY_ID => handle_return_commit_reply(msg.result),
+        CONSUME_COMMIT_REPLY_ID => handle_consume_commit_reply(deps, msg),
         id if id >= AIRDROP_CLAIM_REPLY_ID_BASE => handle_airdrop_claim_reply(deps, id, msg.result),
         id if id >= RETRY_PAYOUT_REPLY_ID_BASE => {
             let winner_index = (id - RETRY_PAYOUT_REPLY_ID_BASE) as u32;
@@ -693,12 +813,41 @@ pub fn execute_deposit_prize(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
     }
 
     raffle.prize_amount = prize_sent;
-    raffle.status = RaffleStatus::Open;
     raffle.opened_at = Some(env.block.time);
+
+    if config.raffle_type == RaffleType::Airdrop {
+        // Airdrop never needs a commit - no draw, deterministic split. Goes
+        // straight to Open, exactly as before v9 (see
+        // `resolve_airdrop`/`execute_close_round`'s doc comments for the
+        // rest of its lifecycle). Applied here AND in `execute_receive`
+        // below (the CW20 path) - both are independent Funding->Open entry
+        // points, and both need this same bifurcation (Ronda 9 finding,
+        // confirmed by both auditors independently: a version that only
+        // bifurcated one of the two would leave the other type of Airdrop
+        // prize forced through ConsumeCommit for nothing).
+        raffle.status = RaffleStatus::Open;
+        RAFFLE.save(deps.storage, &raffle)?;
+        return Ok(Response::new()
+            .add_messages(messages)
+            .add_attribute("action", "deposit_prize")
+            .add_attribute("prize_amount", prize_sent.to_string())
+            .add_attribute("fee_amount", raffle.fee_amount.to_string()));
+    }
+
+    raffle.status = RaffleStatus::AwaitingCommit;
     RAFFLE.save(deps.storage, &raffle)?;
+    let consume_commit = SubMsg::reply_on_success(
+        WasmMsg::Execute {
+            contract_addr: config.factory_address.to_string(),
+            msg: to_json_binary(&FactoryExecuteMsg::ConsumeCommit {})?,
+            funds: vec![],
+        },
+        CONSUME_COMMIT_REPLY_ID,
+    );
 
     Ok(Response::new()
         .add_messages(messages)
+        .add_submessage(consume_commit)
         .add_attribute("action", "deposit_prize")
         .add_attribute("prize_amount", prize_sent.to_string())
         .add_attribute("fee_amount", raffle.fee_amount.to_string()))
@@ -789,11 +938,33 @@ pub fn execute_receive(deps: DepsMut, env: Env, info: MessageInfo, wrapper: Cw20
     match from_json::<Cw20HookMsg>(&wrapper.msg)? {
         Cw20HookMsg::DepositPrize {} => {
             raffle.prize_amount = wrapper.amount;
-            raffle.status = RaffleStatus::Open;
             raffle.opened_at = Some(env.block.time);
+
+            // Same bifurcation as execute_deposit_prize's native path - see
+            // its own doc comment for why Airdrop is exempt and why both
+            // entry points need this applied independently.
+            if config.raffle_type == RaffleType::Airdrop {
+                raffle.status = RaffleStatus::Open;
+                RAFFLE.save(deps.storage, &raffle)?;
+                return Ok(Response::new()
+                    .add_attribute("action", "deposit_prize")
+                    .add_attribute("prize_amount", wrapper.amount.to_string())
+                    .add_attribute("fee_amount", raffle.fee_amount.to_string()));
+            }
+
+            raffle.status = RaffleStatus::AwaitingCommit;
             RAFFLE.save(deps.storage, &raffle)?;
+            let consume_commit = SubMsg::reply_on_success(
+                WasmMsg::Execute {
+                    contract_addr: config.factory_address.to_string(),
+                    msg: to_json_binary(&FactoryExecuteMsg::ConsumeCommit {})?,
+                    funds: vec![],
+                },
+                CONSUME_COMMIT_REPLY_ID,
+            );
 
             Ok(Response::new()
+                .add_submessage(consume_commit)
                 .add_attribute("action", "deposit_prize")
                 .add_attribute("prize_amount", wrapper.amount.to_string())
                 .add_attribute("fee_amount", raffle.fee_amount.to_string()))
@@ -957,23 +1128,23 @@ pub fn execute_buy_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> Result<
     let auto_closed = raffle.unique_players.len() as u32 >= config.max_players;
     let mut messages: Vec<SubMsg> = vec![];
     if auto_closed {
-        raffle.status = RaffleStatus::Closed;
-        raffle.closed_at = Some(env.block.time);
-        // Sold out - draw right here, in the same atomic transaction as the
-        // ticket purchase that completed the cap, instead of leaving a
-        // separate DrawWinner call pending. Removes the free-rearm grinding
-        // hole (see MAX_REARMS_BEFORE_PERMISSIONLESS) for this path - no
-        // window to wait for, no separate call, no free re-rolls. Doesn't
-        // remove every residual timing angle: whichever wallet ends up
-        // buying the closing ticket still weakly picks the block that seeds
-        // the hash by choosing when to submit - same single-shot,
-        // can't-predict-a-future-block's-exact-nanosecond-timestamp caveat
-        // already accepted platform-wide (see rand.rs), not the
-        // repeatable-for-free grinding this fix targets. Always safe to draw
-        // immediately here - max_players >= min_players is enforced at
-        // instantiate, so reaching max_players already implies min_players
-        // is met.
-        messages = perform_draw(&config, &mut raffle, env.block.height, env.block.time);
+        // Sold out. Airdrop resolves immediately (no preimage needed - see
+        // `resolve_airdrop`'s doc comment); SingleWinner/Podium just close
+        // and wait for a separate, permissionless `RevealDraw` - v9 removed
+        // the old atomic in-transaction draw here (it used to call
+        // `perform_draw` directly, seeded by this very transaction's own
+        // block data - exactly the grinding hole the project's Obsidian
+        // notes on "Grinding vía SubMsg+reply" describe). Always safe to
+        // close immediately here - max_players >= min_players is enforced
+        // at instantiate, so reaching max_players already implies
+        // min_players is met.
+        if config.raffle_type == RaffleType::Airdrop {
+            messages = resolve_airdrop(&config, &mut raffle, env.block.time);
+        } else {
+            raffle.status = RaffleStatus::Closed;
+            raffle.closed_at = Some(env.block.time);
+            raffle.closed_at_height = Some(env.block.height);
+        }
     }
 
     RAFFLE.save(deps.storage, &raffle)?;
@@ -1068,9 +1239,15 @@ pub fn execute_withdraw_ticket(deps: DepsMut, info: MessageInfo) -> Result<Respo
 /// extra path on top: they can close early, on their own judgment, without
 /// waiting for either condition - they're the one paying for and running
 /// this raffle, and are best placed to decide "enough people showed up".
-/// Still can't go below min_players even as the creator: DrawWinner enforces
-/// that floor separately regardless of how the raffle got closed, so an
-/// early close under it would just strand the raffle Closed-but-undrawable.
+/// Still can't go below min_players even as the creator: `creator_early_close`
+/// below requires `has_min` explicitly. (Corrected 2026-08-28, Ronda 10 audit
+/// fix, Opus/Q2: a prior version of this comment claimed `DrawWinner`
+/// enforced this floor separately at reveal time - under v9 `RevealDraw`
+/// checks no such thing, and doesn't need to: every path that reaches
+/// `Closed` already requires `min_players` to be met, here or via
+/// `reached_max`, which itself implies it since `min_players <= max_players`
+/// is enforced at instantiate - a raffle can never reach `Closed` below the
+/// floor in the first place.)
 pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
@@ -1097,102 +1274,148 @@ pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result
         return Err(ContractError::CannotCloseRound {});
     }
 
-    raffle.status = RaffleStatus::Closed;
-    raffle.closed_at = Some(env.block.time);
-    raffle.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
+    // Airdrop resolves immediately (no preimage needed - see
+    // `resolve_airdrop`'s doc comment); SingleWinner/Podium just close and
+    // wait for a separate, permissionless `RevealDraw` - same v9 bifurcation
+    // already applied to the sold-out branch of `execute_buy_ticket` (see
+    // that function's own "Sold out." comment for the full rationale).
+    let mut messages: Vec<SubMsg> = vec![];
+    if config.raffle_type == RaffleType::Airdrop {
+        messages = resolve_airdrop(&config, &mut raffle, env.block.time);
+    } else {
+        raffle.status = RaffleStatus::Closed;
+        raffle.closed_at = Some(env.block.time);
+        raffle.closed_at_height = Some(env.block.height);
+    }
     RAFFLE.save(deps.storage, &raffle)?;
 
-    Ok(Response::new().add_attribute("action", "close_round"))
+    Ok(Response::new().add_submessages(messages).add_attribute("action", "close_round"))
 }
 
-/// Creator-exclusive at first, unlike CloseRound - the creator paid the
-/// service fee and put up the prize, and drawing is the moment the winner
-/// gets announced, so they get to be the one who cuts the ribbon and tells
-/// their own community first, instead of finding out secondhand that
-/// someone else already ran it. A deliberate correction (2026-07-21) from
-/// the platform's usual fully-permissionless close/draw pattern - CloseRound
-/// stays permissionless for non-creators, only DrawWinner is restricted.
-///
-/// That exclusivity isn't forever, though: once `unclaimed_deadline_days`
-/// has passed since the raffle *closed* (same field/duration already used
-/// for sweeping unclaimed Airdrop shares, reused here for a second,
-/// separate deadline - not the same clock), anyone can draw it. A raffle
-/// reaches `Closed` on its own (auto-close on the last ticket, or anyone's
-/// permissionless CloseRound at timeout) - if the creator's wallet is then
-/// lost or unresponsive, a `Closed` raffle with no fallback would strand
-/// its prize/ticket revenue/fee forever, since CancelRaffle is blocked once
-/// Closed. Found by an Opus+Fable review (2026-07-21) of the first,
-/// fallback-less version of this creator-only restriction.
-pub fn execute_draw_winner(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+/// Permissionless - the result never depends on who calls this, only on
+/// knowing the correct `preimage` for `raffle.commit_used`, and in practice
+/// only the platform's keeper (which generated it offline via the factory)
+/// ever does. Replaces the pre-v9 `execute_draw_winner`'s block-hash draw and
+/// its creator-exclusivity/rearm-window fallback entirely - see the
+/// project's Obsidian notes on "Grinding vía SubMsg+reply" for why that
+/// mechanism was replaced. No id parameter: unlike wheel-manager/weekly-round
+/// this contract only ever has one raffle per instance, so there's no reveal
+/// queue to front-check.
+pub fn execute_reveal_draw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    preimage: HexBinary,
+) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
 
-    reject_unexpected_funds(&info.funds, &[])?;
-
-    if raffle.status != RaffleStatus::Closed {
-        return Err(ContractError::RaffleNotClosed {});
+    if raffle.status != RaffleStatus::Closed && raffle.status != RaffleStatus::ExpiryPending {
+        return Err(ContractError::RaffleNotRevealable {});
     }
-    if info.sender != config.creator {
-        // `closed_at` is always set atomically with status becoming Closed
-        // (both the auto-close in execute_buy_ticket and the close below
-        // do this), so this is never actually reached - but propagating an
-        // error here instead of defaulting to `env.block.time` matters: a
-        // silent "now" default would make the fallback deadline recede
-        // into the future on every call, permanently defeating the one
-        // thing this fallback exists to guarantee. Same defensive pattern
-        // ReclaimUnclaimed already uses for its own timestamp field.
-        let closed_at = raffle.closed_at.ok_or(ContractError::RaffleNotClosed {})?;
-        let fallback_deadline = closed_at.seconds() + config.unclaimed_deadline_days * 86400;
-        // Grinding-resistance fallback (2026-07-22): a creator can rearm the
-        // window for free, indefinitely, up to `unclaimed_deadline_days` -
-        // see `MAX_REARMS_BEFORE_PERMISSIONLESS`'s doc comment for why that's
-        // a real risk, not just theoretical. Once the raffle has rearmed
-        // that many times without drawing, anyone can draw immediately
-        // instead of waiting out the full deadline.
-        let rearm_limit_reached = raffle.rearm_count >= MAX_REARMS_BEFORE_PERMISSIONLESS;
-        if env.block.time.seconds() < fallback_deadline && !rearm_limit_reached {
-            return Err(ContractError::Unauthorized {});
-        }
-    }
-    let required_height = raffle.draw_after_height.unwrap_or(u64::MAX);
-    if env.block.height < required_height {
-        return Err(ContractError::DrawTooEarly { required_height });
-    }
-    // Ceiling on the draw window - see wheel-manager's execute_draw_winner
-    // for the full rationale. Not an error, just a rearm to a fresh window -
-    // *unless* the rearm cap is already spent (2026-07-22 Opus+Fable review):
-    // rearming unconditionally here would let the creator keep re-rolling
-    // forever whenever no one else bothers to call DrawWinner in the
-    // meantime, silently defeating MAX_REARMS_BEFORE_PERMISSIONLESS (that
-    // constant only granted *permission* for someone else to draw - it never
-    // actually stopped the creator from rearming). Once the cap is spent,
-    // there's no more free re-roll for anyone: this call just draws right
-    // here, at whatever height it landed on, instead of resetting the window
-    // again.
-    if env.block.height >= required_height + config.draw_window_blocks
-        && raffle.rearm_count < MAX_REARMS_BEFORE_PERMISSIONLESS
-    {
-        raffle.rearm_count += 1;
-        raffle.draw_after_height = Some(env.block.height + config.draw_delay_blocks);
-        RAFFLE.save(deps.storage, &raffle)?;
-        return Ok(Response::new()
-            .add_attribute("action", "rearm_draw_window")
-            .add_attribute("new_draw_after_height", raffle.draw_after_height.unwrap().to_string())
-            .add_attribute("rearm_count", raffle.rearm_count.to_string()));
-    }
-    if (raffle.unique_players.len() as u32) < config.min_players {
-        return Err(ContractError::NotEnoughPlayers {
-            min_players: config.min_players,
-        });
+    let commit = raffle.commit_used.clone().ok_or(ContractError::RaffleNotSeeded {})?;
+    let digest = Sha256::digest(preimage.as_slice());
+    if digest.as_slice() != commit.as_slice() {
+        return Err(ContractError::BadPreimage {});
     }
 
-    let messages = perform_draw(&config, &mut raffle, env.block.height, env.block.time);
+    raffle.revealed_preimage = Some(preimage.clone());
+    raffle.expire_requested_at_height = None;
+    raffle.expiry_pending_since_height = None;
+
+    let messages =
+        resolve_single_winner_or_podium(&env.contract.address, &config, &mut raffle, preimage.as_slice(), env.block.time);
     RAFFLE.save(deps.storage, &raffle)?;
 
     Ok(Response::new()
         .add_submessages(messages)
-        .add_attribute("action", "draw_winner")
+        .add_attribute("action", "reveal_draw")
         .add_attribute("winners", raffle.winners.iter().map(|w| w.to_string()).collect::<Vec<_>>().join(",")))
+}
+
+/// Permissionless. First step of the 3-phase expiration for a `Closed`
+/// raffle that has gone unrevealed too long - the outage safety net. See
+/// `ExecuteMsg::RequestExpireClosedRaffle`'s doc comment.
+pub fn execute_request_expire_closed_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
+    let mut raffle = RAFFLE.load(deps.storage)?;
+    if raffle.status != RaffleStatus::Closed {
+        return Err(ContractError::RaffleNotClosedForExpiry {});
+    }
+    let closed_at = raffle.closed_at.ok_or(ContractError::RaffleNotClosedForExpiry {})?;
+    if env.block.time.seconds() < closed_at.seconds() + MAX_REVEAL_AGE_SECONDS {
+        return Err(ContractError::RevealNotYetOverdue {});
+    }
+    let request_live = raffle
+        .expire_requested_at_height
+        .is_some_and(|h| env.block.height < h + REQUEST_EXPIRE_TTL_BLOCKS);
+    if request_live {
+        return Err(ContractError::ExpireAlreadyRequested {});
+    }
+    raffle.expire_requested_at_height = Some(env.block.height);
+    RAFFLE.save(deps.storage, &raffle)?;
+
+    Ok(Response::new().add_attribute("action", "request_expire_closed_raffle"))
+}
+
+/// Permissionless. Second step of the 3-phase expiration - see
+/// `ExecuteMsg::FinalizeExpireClosedRaffle`'s doc comment. Still rescuable by
+/// a legitimate `RevealDraw` after this.
+pub fn execute_finalize_expire_closed_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
+    let mut raffle = RAFFLE.load(deps.storage)?;
+    if raffle.status != RaffleStatus::Closed {
+        return Err(ContractError::RaffleNotClosedForExpiry {});
+    }
+    let requested_at = raffle.expire_requested_at_height.ok_or(ContractError::ExpireNotRequested {})?;
+    if env.block.height >= requested_at + REQUEST_EXPIRE_TTL_BLOCKS {
+        return Err(ContractError::ExpireRequestExpired {});
+    }
+    if env.block.height < requested_at + EXPIRE_FINALIZE_DELAY_BLOCKS {
+        return Err(ContractError::FinalizeDelayNotElapsed {});
+    }
+    raffle.status = RaffleStatus::ExpiryPending;
+    raffle.expiry_pending_since_height = Some(env.block.height);
+    RAFFLE.save(deps.storage, &raffle)?;
+
+    Ok(Response::new().add_attribute("action", "finalize_expire_closed_raffle"))
+}
+
+/// Permissionless. Final step of the 3-phase expiration - see
+/// `ExecuteMsg::ClaimExpiredRaffle`'s doc comment. Never penalized - same
+/// no-fault reasoning `execute_expire_raffle` already uses for a
+/// never-reached-min-players raffle: under v9 the creator has no exclusivity
+/// window over the reveal (no preimage, nothing to "choose" not to do), so a
+/// reveal that never comes isn't a decision on their part. Resolves to the
+/// same `Cancelled` terminal `ExpireRaffle`/`CancelRaffle` already use,
+/// rather than a separate status.
+///
+/// Deliberately does NOT call `return_commit_message` (Ronda 10 audit fix,
+/// Opus, CYOL-1/critical) - see that function's own doc comment for why
+/// recycling a commit from this specific call site can hand a raffle whose
+/// preimage may already be public to a future, healthy raffle. The commit
+/// this raffle held is simply never returned to the factory's queue.
+pub fn claim_expired_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
+    let config = CONFIG.load(deps.storage)?;
+    let mut raffle = RAFFLE.load(deps.storage)?;
+    if raffle.status != RaffleStatus::ExpiryPending {
+        return Err(ContractError::RaffleNotExpiryPending {});
+    }
+    let pending_since = raffle.expiry_pending_since_height.ok_or(ContractError::RaffleNotExpiryPending {})?;
+    if env.block.height < pending_since + EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS {
+        return Err(ContractError::ChallengeWindowOpen {});
+    }
+
+    let (prize_submsgs, messages) = cancel_refund_messages(&config, &raffle, raffle.fee_amount);
+    raffle.status = RaffleStatus::Cancelled;
+    RAFFLE.save(deps.storage, &raffle)?;
+
+    Ok(Response::new()
+        .add_submessages(prize_submsgs)
+        .add_messages(messages)
+        .add_attribute("action", "claim_expired_raffle"))
 }
 
 /// SingleWinner/Podium only, permissionless (same reasoning as `CloseRound`'s
@@ -1535,6 +1758,8 @@ pub fn execute_cancel_raffle(deps: DepsMut, info: MessageInfo) -> Result<Respons
         RaffleStatus::Funding | RaffleStatus::Open => {}
         RaffleStatus::Cancelled => return Err(ContractError::AlreadyCancelled {}),
         RaffleStatus::Closed | RaffleStatus::Drawn => return Err(ContractError::CannotCancel {}),
+        RaffleStatus::AwaitingCommit => return Err(ContractError::CannotCancel {}),
+        RaffleStatus::ExpiryPending => return Err(ContractError::CannotCancel {}),
     }
 
     // SingleWinner/Podium only, in effect: Airdrop's own
@@ -1562,7 +1787,7 @@ pub fn execute_cancel_raffle(deps: DepsMut, info: MessageInfo) -> Result<Respons
     let penalty_amount = raffle.fee_amount.multiply_ratio(penalty_bps, 10_000u128);
     let fee_refund = raffle.fee_amount.checked_sub(penalty_amount).unwrap_or_default();
 
-    let (prize_submsgs, mut messages) = cancel_refund_messages(&config, &raffle, fee_refund);
+    let (mut prize_submsgs, mut messages) = cancel_refund_messages(&config, &raffle, fee_refund);
     if !penalty_amount.is_zero() {
         // Forfeited fee - same 50/50 founder/treasury split used for the
         // regular service fee elsewhere (confirmed with the user,
@@ -1586,6 +1811,10 @@ pub fn execute_cancel_raffle(deps: DepsMut, info: MessageInfo) -> Result<Respons
                 );
             }
         }
+    }
+
+    if let Some(return_commit_msg) = return_commit_message(&config, &raffle)? {
+        prize_submsgs.push(return_commit_msg);
     }
 
     raffle.status = RaffleStatus::Cancelled;
@@ -1628,7 +1857,10 @@ pub fn execute_expire_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Resu
     // unresponsive creator, not something the creator chose to walk away
     // from (see CancelRaffle's own penalty logic for the case that IS a
     // creator's choice).
-    let (prize_submsgs, messages) = cancel_refund_messages(&config, &raffle, raffle.fee_amount);
+    let (mut prize_submsgs, messages) = cancel_refund_messages(&config, &raffle, raffle.fee_amount);
+    if let Some(return_commit_msg) = return_commit_message(&config, &raffle)? {
+        prize_submsgs.push(return_commit_msg);
+    }
     raffle.status = RaffleStatus::Cancelled;
     RAFFLE.save(deps.storage, &raffle)?;
 

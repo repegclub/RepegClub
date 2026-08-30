@@ -32,6 +32,12 @@ async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin (creator) address:", admin.address);
 
+  // See COMMIT_PUSHER's own doc comment (state.rs) - a role separate from
+  // ADMIN, gating only PushCommits. Only its address is needed here (never
+  // signs anything in this script).
+  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  console.log("commit_pusher address:", commitPusherAddress);
+
   const raffleWasmByteCode = new Uint8Array(readFileSync(RAFFLE_WASM_PATH));
   console.log(`Storing create-your-own-luck code (${raffleWasmByteCode.length} bytes)...`);
   const raffleStoreRes = await admin.broadcastTxSync({
@@ -68,7 +74,7 @@ async function main() {
         sender: admin.address,
         codeId: factoryCodeId,
         label: `create-your-own-luck-factory-${label}`,
-        msg: { raffle_code_id: Number(raffleCodeId) },
+        msg: { raffle_code_id: Number(raffleCodeId), commit_pusher: commitPusherAddress },
         funds: [],
       }),
     ],

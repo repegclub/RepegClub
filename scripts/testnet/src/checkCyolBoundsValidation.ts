@@ -30,8 +30,6 @@ const baseFields = {
   // raffles from the same admin wallet. Unrelated to what this script tests
   // (round_timeout_seconds bounds).
   max_players: 25,
-  draw_delay_blocks: 2,
-  draw_window_blocks: 60,
   unclaimed_deadline_days: 90,
   prize_native_denom: "uluna",
   prize_cw20_address: null,

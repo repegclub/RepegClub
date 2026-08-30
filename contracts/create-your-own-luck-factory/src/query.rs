@@ -6,8 +6,8 @@ use crate::msg::{
     RafflesResponse,
 };
 use crate::state::{
-    CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, CREATOR_COOLDOWNS,
-    CW20_BLACKLIST, CW20_WHITELIST, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT,
+    ADMIN, CANCELLATION_PENALTY_BASE_BPS, CANCELLATION_PENALTY_LATE_ADDITIONAL_BPS, COMMIT_PUSHER,
+    CREATOR_COOLDOWNS, CW20_BLACKLIST, CW20_WHITELIST, RAFFLES, RAFFLE_CODE_ID, RAFFLE_COUNT,
 };
 
 pub fn query(deps: Deps, msg: QueryMsg) -> StdResult<Binary> {
@@ -78,6 +78,8 @@ fn query_raffles(
 fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     Ok(ConfigResponse {
         raffle_code_id: RAFFLE_CODE_ID.load(deps.storage)?,
+        admin: ADMIN.load(deps.storage)?,
+        commit_pusher: COMMIT_PUSHER.load(deps.storage)?,
     })
 }
 

@@ -146,10 +146,10 @@ export function CyolVerifyPanel({ contractAddress, winnerAddress }: Props) {
                 <div className={`verify-result ${state.result.matches ? "verify-result-ok" : "verify-result-error"}`}>
                   <p>{state.result.matches ? t("verify.matchTrue") : t("verify.matchFalse")}</p>
                   <dl className="verify-details">
-                    <dt>{t("verify.drawHeight")}</dt>
-                    <dd>{state.result.drawHeight}</dd>
-                    <dt>{t("verify.blockTime")}</dt>
-                    <dd>{state.result.blockTimeIso}</dd>
+                    <dt>{t("verify.commitUsed")}</dt>
+                    <dd className="verify-mono-wrap">{state.result.commitUsedHex}</dd>
+                    <dt>{t("verify.revealedPreimage")}</dt>
+                    <dd className="verify-mono-wrap">{state.result.preimageHex}</dd>
                     <dt>{t("verify.entrantsCount")}</dt>
                     <dd>{state.result.entrants.length}</dd>
                   </dl>
@@ -175,11 +175,6 @@ export function CyolVerifyPanel({ contractAddress, winnerAddress }: Props) {
                       <dt>{t("verify.winnerIndex")}</dt>
                       <dd>{state.result.winnerIndex}</dd>
                     </dl>
-
-                    <a className="verify-raw-link" href={state.result.blockQueryUrl} target="_blank" rel="noreferrer">
-                      {t("verify.rawBlockLink")}
-                    </a>
-                    <p className="verify-raw-caption">{t("verify.rawBlockCaption")}</p>
 
                     <a className="verify-raw-link" href={state.result.entrantsQueryUrl} target="_blank" rel="noreferrer">
                       {t("verify.rawEntrantsLink")}

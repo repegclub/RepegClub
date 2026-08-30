@@ -4,7 +4,7 @@ import { WEEKLY_ROUND_ADDRESS } from "./deployment";
 
 // Mirrors contracts/weekly-round/src/state.rs - same RoundStatus enum shape
 // as Wheel Manager's, just week-scoped instead of round-scoped.
-export type WeeklyRoundStatus = "open" | "closed" | "drawn" | "expired";
+export type WeeklyRoundStatus = "open" | "closed" | "expiry_pending" | "drawn" | "expired";
 
 export type WeekResponse = {
   week_id: number;
@@ -21,11 +21,14 @@ export type WeekResponse = {
   opened_at: number;
   closed_at: number | null;
   seconds_remaining: number;
-  draw_after_height: number | null;
+  closed_at_height: number | null;
   drawn_at: number | null;
-  // Exact block height the winner-picking hash was computed at - lets
-  // anyone re-derive and verify the draw independently. See lib/verifyWeeklyRound.ts.
-  draw_height: number | null;
+  // The hash this week must be revealed against (hex).
+  commit_used: string | null;
+  // The secret that unlocked commit_used (hex), once revealed - lets anyone
+  // independently recompute pick_winner_index and check it against winner.
+  // See lib/verifyWeeklyRound.ts.
+  revealed_preimage: string | null;
   winner: string | null;
   prize_remaining: string;
   expired_at: number | null;
@@ -40,11 +43,13 @@ export type WeeklyConfigResponse = {
   min_players: number;
   max_players: number;
   round_duration_days: number;
-  draw_delay_blocks: number;
-  draw_window_blocks: number;
   unclaimed_deadline_days: number;
+  // How long a Closed week can go unrevealed before the 3-phase outage
+  // expiration becomes callable - see lib/roundActions.ts.
+  max_reveal_age_seconds: number;
   treasury_address: string;
   admin_fee_address: string;
+  commit_pusher: string;
 };
 
 export function getCurrentWeek(contractAddress: string = WEEKLY_ROUND_ADDRESS) {

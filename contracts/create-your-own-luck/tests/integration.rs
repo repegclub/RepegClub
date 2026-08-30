@@ -1,9 +1,10 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 use cosmwasm_std::{
-    coin, coins, from_json, to_json_binary, ContractResult, CosmosMsg, Reply, ReplyOn, SubMsgResponse,
-    SubMsgResult, SystemError, SystemResult, Uint128, WasmMsg, WasmQuery,
+    coin, coins, from_json, to_json_binary, Binary, ContractResult, CosmosMsg, HexBinary, Reply, ReplyOn,
+    SubMsgResponse, SubMsgResult, SystemError, SystemResult, Uint128, WasmMsg, WasmQuery,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use sha2::{Digest, Sha256};
 
 use create_your_own_luck::contract::{execute, instantiate, query, reply};
 use create_your_own_luck::factory_msgs::{CancellationPenaltyResponse, FactoryQueryMsg};
@@ -95,8 +96,6 @@ fn setup(
         min_players,
         max_players,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -107,15 +106,74 @@ fn setup(
     (deps, env)
 }
 
+/// A deterministic 32-byte preimage for test index `n`, and its commit
+/// (`sha256(preimage)`) - same convention as wheel-manager/weekly-round's own
+/// test suites. A unit test never actually executes the mocked factory's own
+/// code (only `reply()` gets simulated - see `simulate_consume_commit_reply`),
+/// so the bytes returned as "the factory's commit" don't need to come from a
+/// real queue, only be internally consistent so `RevealDraw` can later be
+/// exercised with the matching preimage.
+fn preimage_for(n: u8) -> HexBinary {
+    HexBinary::from([n; 32])
+}
+fn commit_for(preimage: &HexBinary) -> HexBinary {
+    HexBinary::from(Sha256::digest(preimage.as_slice()).to_vec())
+}
+
+/// Manually encodes the same minimal protobuf shape cw-utils'
+/// `parse_execute_response_data` decodes: field 1 (the callee's own
+/// `Response.data`) as a length-delimited byte string - same technique the
+/// factory's own test suite already uses for its instantiate replies
+/// (`encode_instantiate_reply_data`), just for `MsgExecuteContractResponse`
+/// instead of `MsgInstantiateContractResponse`.
+fn encode_execute_reply_data(inner: &[u8]) -> Binary {
+    assert!(inner.len() < 128);
+    let mut bytes = vec![0x0a, inner.len() as u8];
+    bytes.extend_from_slice(inner);
+    Binary(bytes)
+}
+
+/// Simulates the factory's `ConsumeCommit` reply succeeding with `commit` as
+/// the reply data - see create-your-own-luck-factory's own
+/// `execute_consume_commit` and this contract's own `handle_consume_commit_reply`.
+fn simulate_consume_commit_reply(deps: &mut Deps, env: &cosmwasm_std::Env, id: u64, commit: &HexBinary) {
+    let inner = to_json_binary(commit).unwrap();
+    let wrapped = encode_execute_reply_data(&inner);
+    let result = SubMsgResult::Ok(SubMsgResponse { events: vec![], data: Some(wrapped) });
+    reply(deps.as_mut(), env.clone(), Reply { id, result }).unwrap();
+}
+
+/// Reveals with the fixed `preimage_for(1)` every `deposit_prize`/
+/// `receive_cw20_prize` helper call below consumes as its commit.
+/// Permissionless (v9) - the caller identity is irrelevant to the result.
+fn reveal(deps: &mut Deps, env: &cosmwasm_std::Env) -> Result<cosmwasm_std::Response, ContractError> {
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("anyone", &[]),
+        ExecuteMsg::RevealDraw { preimage: preimage_for(1) },
+    )
+}
+
+/// Deposits the native prize, then - for SingleWinner/Podium, which dispatch
+/// a `ConsumeCommit` `SubMsg` to the mocked factory - immediately simulates
+/// that `SubMsg`'s reply, transitioning `AwaitingCommit -> Open` in the same
+/// call, exactly as it would in the same real transaction on-chain. Airdrop
+/// never dispatches `ConsumeCommit` at all (see `resolve_airdrop`'s own doc
+/// comment), so `res.messages` has nothing with `ReplyOn::Success` for it.
 fn deposit_prize(deps: &mut Deps, env: &cosmwasm_std::Env, prize_amount: u128, fee_sent: u128) -> Result<cosmwasm_std::Response, ContractError> {
     let mut funds = coins(prize_amount, PRIZE_DENOM);
     funds.push(cosmwasm_std::coin(fee_sent, USDC_DENOM));
-    execute(
+    let res = execute(
         deps.as_mut(),
         env.clone(),
         mock_info("creator", &funds),
         ExecuteMsg::DepositPrize {},
-    )
+    )?;
+    if let Some(consume_commit) = res.messages.iter().find(|m| m.reply_on == ReplyOn::Success) {
+        simulate_consume_commit_reply(deps, env, consume_commit.id, &commit_for(&preimage_for(1)));
+    }
+    Ok(res)
 }
 
 fn buy_ticket(deps: &mut Deps, env: &cosmwasm_std::Env, sender: &str, price: u128) -> Result<cosmwasm_std::Response, ContractError> {
@@ -154,8 +212,6 @@ fn podium_needs_min_players_covering_all_places() {
         min_players: 2,
         max_players: 5,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -179,8 +235,6 @@ fn podium_shares_must_sum_to_10000() {
         min_players: 3,
         max_players: 5,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -204,8 +258,6 @@ fn podium_shares_reject_a_zero_percent_place() {
         min_players: 2,
         max_players: 5,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -233,8 +285,6 @@ fn podium_shares_reject_too_many_places() {
         min_players: 11,
         max_players: 15,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -258,8 +308,6 @@ fn podium_shares_rejected_for_non_podium_raffle() {
         min_players: 2,
         max_players: 5,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -303,8 +351,6 @@ fn airdrop_rejects_max_players_over_1000_for_free_raffles() {
         min_players: 2,
         max_players: 1001,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -333,8 +379,6 @@ fn single_winner_and_podium_reject_max_players_over_100() {
         min_players: 2,
         max_players: 101,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -355,8 +399,6 @@ fn single_winner_and_podium_reject_max_players_over_100() {
         min_players: 3,
         max_players: 101,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -395,7 +437,8 @@ fn deposit_prize_charges_the_fixed_usdc_fee_and_refunds_overpayment() {
     assert!(matches!(err, ContractError::WrongFeePayment { .. }));
 
     let res = deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC + 500).unwrap();
-    assert_eq!(res.messages.len(), 1); // refund of the 500 overpayment
+    // refund of the 500 overpayment + the ConsumeCommit dispatch to the factory
+    assert_eq!(res.messages.len(), 2);
     if let CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) = &res.messages[0].msg {
         assert_eq!(to_address, "creator");
         assert_eq!(amount, &coins(500, USDC_DENOM));
@@ -434,11 +477,17 @@ fn free_ticket_raffle_lets_anyone_enter_without_funds() {
     let res = buy_ticket(&mut deps, &env, "player2", 0).unwrap();
     assert!(res.attributes.iter().any(|a| a.key == "auto_closed" && a.value == "true"));
 
-    // Selling out draws immediately, in the same transaction as the closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
+    // Selling out only closes for SingleWinner/Podium under v9 - no more
+    // same-transaction draw (that's exactly the grinding hole this project's
+    // Obsidian notes on "Grinding vía SubMsg+reply" describe). A separate,
+    // permissionless RevealDraw is required to actually pick the winner.
+    let status = raffle_status(&deps, &env);
+    assert_eq!(status.status, RaffleStatus::Closed);
+    assert_eq!(status.unique_player_count, 2);
+
+    reveal(&mut deps, &env).unwrap();
     let status = raffle_status(&deps, &env);
     assert_eq!(status.status, RaffleStatus::Drawn);
-    assert_eq!(status.unique_player_count, 2);
 }
 
 #[test]
@@ -454,8 +503,6 @@ fn allowlist_rejects_wallets_not_on_the_list() {
         min_players: 2,
         max_players: 2,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -475,9 +522,11 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
-    // Selling out draws immediately, in the same transaction as this closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
-    let res = buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+    // Selling out only closes for SingleWinner under v9 - a separate,
+    // permissionless RevealDraw actually picks the winner and dispatches the
+    // payouts.
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+    let res = reveal(&mut deps, &env).unwrap();
 
     // 1 prize payout + 1 ticket-revenue-to-creator + 2 fee-split payouts (founder/treasury) = 4
     assert_eq!(res.messages.len(), 4);
@@ -507,63 +556,43 @@ fn single_winner_pays_the_full_prize_and_ticket_revenue_and_fee_split() {
 }
 
 #[test]
-fn only_creator_can_draw_winner() {
-    // max_players=10 (not 2) so buying 2 tickets doesn't sell out and
-    // auto-draw (2026-07-22) - CloseRound early instead, to still exercise a
-    // separate, manual DrawWinner call.
+fn reveal_draw_is_permissionless_and_requires_the_correct_preimage() {
+    // v9 replaces the pre-v9 creator-exclusivity/fallback-deadline dance
+    // (only the creator could DrawWinner, until a long unclaimed_deadline_days
+    // fallback let anyone in) entirely - RevealDraw never checks who calls it,
+    // only whether the preimage matches raffle.commit_used. max_players=10 (not
+    // 2) so buying 2 tickets doesn't sell out and auto-close, to exercise a
+    // separate CloseRound instead.
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
     buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
     execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
 
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("anyone", &[]),
+        ExecuteMsg::RevealDraw { preimage: preimage_for(2) }, // wrong preimage - commit_for(1) was consumed
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::BadPreimage {}));
 
-    let err = execute(deps.as_mut(), later_env.clone(), mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
-    assert!(matches!(err, ContractError::Unauthorized {}));
-
-    execute(deps.as_mut(), later_env, mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    // A random, uninvolved wallet succeeds with the right one.
+    let res = reveal(&mut deps, &env).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "reveal_draw");
+    let status = raffle_status(&deps, &env);
+    assert_eq!(status.status, RaffleStatus::Drawn);
 }
 
 #[test]
-fn non_creator_can_draw_winner_after_the_long_fallback_deadline() {
-    // default unclaimed_deadline_days from `setup` is 90. Time is advanced
-    // between opening (deposit_prize) and closing (early creator close,
-    // max_players=10 so it doesn't sell out and auto-draw, 2026-07-22) so
-    // opened_at != closed_at - otherwise this test couldn't tell a correct
-    // closed_at-anchored deadline apart from a regression that accidentally
-    // anchored it to opened_at instead.
+fn reveal_draw_rejects_a_raffle_that_is_not_closed_or_expiry_pending() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
-
-    let mut close_env = env.clone();
-    close_env.block.time = close_env.block.time.plus_seconds(20 * 86400);
-    buy_ticket(&mut deps, &close_env, "player2", 1_000_000).unwrap(); // reaches min_players=2, still below max_players=10
-    execute(deps.as_mut(), close_env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap(); // closed_at = opened_at + 20 days
-
-    // opened_at + 90 days == closed_at + 70 days - a deadline wrongly
-    // anchored to opened_at would already have passed here. Assert it's
-    // still rejected, proving the deadline actually tracks closed_at.
-    let mut wrong_anchor_env = env.clone();
-    wrong_anchor_env.block.height = env.block.height + 5;
-    wrong_anchor_env.block.time = env.block.time.plus_seconds(90 * 86400);
-    let err = execute(deps.as_mut(), wrong_anchor_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
-    assert!(matches!(err, ContractError::Unauthorized {}));
-
-    // 1 second before the real (closed_at-based) deadline: still rejected.
-    let mut just_before_env = close_env.clone();
-    just_before_env.block.height = env.block.height + 5;
-    just_before_env.block.time = close_env.block.time.plus_seconds(90 * 86400 - 1);
-    let err = execute(deps.as_mut(), just_before_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
-    assert!(matches!(err, ContractError::Unauthorized {}));
-
-    // Exactly at the real deadline: succeeds.
-    let mut after_env = close_env.clone();
-    after_env.block.height = env.block.height + 5;
-    after_env.block.time = close_env.block.time.plus_seconds(90 * 86400);
-    execute(deps.as_mut(), after_env, mock_info("player1", &[]), ExecuteMsg::DrawWinner {}).unwrap();
+    // Still Open (min_players not yet even reached) - nothing to reveal.
+    let err = reveal(&mut deps, &env).unwrap_err();
+    assert!(matches!(err, ContractError::RaffleNotRevealable {}));
 }
 
 #[test]
@@ -602,103 +631,170 @@ fn creator_cannot_close_round_below_min_players() {
     assert!(matches!(err, ContractError::CannotCloseRound {}));
 }
 
-#[test]
-fn draw_winner_past_the_window_rearms_instead_of_drawing() {
-    // max_players=10 (not 2) so buying 2 tickets doesn't sell out and
-    // auto-draw (2026-07-22) - CloseRound early instead, to still exercise a
-    // separate, manual DrawWinner call with a window to grind against.
-    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
-    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
-    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
-    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
-    execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap(); // draw_after_height = height + 5, window width 10
-
-    let mut too_late_env = env.clone();
-    too_late_env.block.height += 15; // first height past the ceiling
-    let res = execute(deps.as_mut(), too_late_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-
-    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "rearm_draw_window");
-    assert_eq!(res.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
-    assert!(res.messages.is_empty());
-
-    let status = raffle_status(&deps, &too_late_env);
-    assert_eq!(status.status, RaffleStatus::Closed);
-    assert_eq!(status.draw_after_height, Some(too_late_env.block.height + 5));
-
-    let err = execute(deps.as_mut(), too_late_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
-    assert!(matches!(err, ContractError::DrawTooEarly { .. }));
-
-    let mut drawable_env = too_late_env.clone();
-    drawable_env.block.height += 5;
-    let draw_res = execute(deps.as_mut(), drawable_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    assert_eq!(draw_res.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
-    let winners_bin = query(deps.as_ref(), drawable_env, QueryMsg::GetWinners {}).unwrap();
-    let winners: WinnersResponse = from_json(winners_bin).unwrap();
-    assert_eq!(winners.winners.len(), 1);
-}
+/// See create-your-own-luck's own `contract::MAX_REVEAL_AGE_SECONDS` -
+/// `pub(crate)`, not exported, so mirrored here as a literal (same technique
+/// wheel-manager's own test suite already uses for the same constant).
+const MAX_REVEAL_AGE_SECONDS: u64 = 3_600;
+/// See create-your-own-luck's own `execute::EXPIRE_FINALIZE_DELAY_BLOCKS`/
+/// `EXPIRE_CHALLENGE_BLOCKS`/`REVEAL_PRIORITY_MARGIN_BLOCKS` - all private,
+/// mirrored the same way.
+const EXPIRE_FINALIZE_DELAY_BLOCKS: u64 = 100;
+const EXPIRE_CHALLENGE_BLOCKS: u64 = 100;
+const REVEAL_PRIORITY_MARGIN_BLOCKS: u64 = 20;
 
 #[test]
-fn draw_winner_becomes_permissionless_after_2_rearms_without_waiting_the_full_deadline() {
-    // Mirrors MAX_REARMS_BEFORE_PERMISSIONLESS in execute.rs (2, 2026-07-22) -
-    // closes the free-rearm grinding hole: a non-creator is rejected before
-    // the cap is reached (same reasons as only_creator_can_draw_winner), but
-    // let in immediately once reached, without waiting the full
-    // unclaimed_deadline_days (90 days by default).
+fn request_expire_closed_raffle_fails_before_max_reveal_age_seconds_elapses() {
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
     buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
     execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
 
-    let mut past_window_env = env.clone();
-    past_window_env.block.height += 15; // env.height + draw_delay_blocks(5) + draw_window_blocks(10)
+    let err = execute(deps.as_mut(), env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::RevealNotYetOverdue {}));
 
-    // 0 rearms so far - a random wallet still can't draw.
-    let err = execute(deps.as_mut(), past_window_env.clone(), mock_info("rando", &[]), ExecuteMsg::DrawWinner {}).unwrap_err();
-    assert!(matches!(err, ContractError::Unauthorized {}));
-
-    // Creator rearms twice - still the only one allowed to call, cap not
-    // reached yet.
-    let res = execute(deps.as_mut(), past_window_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    assert_eq!(res.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "1");
-
-    past_window_env.block.height += 15; // past the new window again
-    let res = execute(deps.as_mut(), past_window_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    assert_eq!(res.attributes.iter().find(|a| a.key == "rearm_count").unwrap().value, "2");
-
-    // Cap reached - a random wallet can now draw immediately, landing inside
-    // the fresh window, without waiting the full unclaimed_deadline_days.
-    let mut drawable_env = past_window_env;
-    drawable_env.block.height += 5;
-    let res = execute(deps.as_mut(), drawable_env, mock_info("rando", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
+    let mut almost_env = env.clone();
+    almost_env.block.time = almost_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS - 1);
+    let err = execute(deps.as_mut(), almost_env, mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::RevealNotYetOverdue {}));
 }
 
 #[test]
-fn draw_winner_forces_the_draw_instead_of_rearming_a_third_time_once_the_cap_is_spent() {
-    // Regression test for a real gap found by an Opus+Fable review
-    // (2026-07-22) of the first version of this fix: capping rearm_count
-    // only *authorized* a non-creator to draw once the cap was reached - it
-    // never actually stopped the creator from rearming a 3rd, 4th, ... time
-    // for free if nobody else happened to call DrawWinner in the meantime.
+fn full_3_phase_expiration_refunds_everyone_with_no_penalty() {
+    // v9 replaces the pre-v9 rearm-the-draw-window mechanism entirely - a
+    // Closed raffle that goes unrevealed too long (an operator outage, not a
+    // creator choice) goes through Request -> Finalize -> Claim instead of a
+    // free indefinite re-roll, and - unlike CancelRaffle - is never penalized
+    // (see claim_expired_raffle's own doc comment: the creator has no
+    // exclusivity window over the reveal under v9, so there's nothing they
+    // could be "choosing" to avoid by not revealing).
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    // cap = max(1, max_players/2) = 1 per wallet here, so min_players=2 needs
+    // 2 distinct buyers before the creator's early-close path (has_min) opens up.
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+    execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
+
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap();
+
+    let err = execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::FinalizeDelayNotElapsed {}));
+
+    let mut finalize_env = overdue_env.clone();
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRaffle {}).unwrap();
+    assert_eq!(raffle_status(&deps, &finalize_env).status, RaffleStatus::ExpiryPending);
+
+    let err = execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::ChallengeWindowOpen {}));
+
+    let mut claim_env = finalize_env.clone();
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS;
+    let err = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::ChallengeWindowOpen {}), "REVEAL_PRIORITY_MARGIN_BLOCKS hasn't elapsed yet");
+
+    claim_env.block.height += REVEAL_PRIORITY_MARGIN_BLOCKS;
+    let res = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap();
+    assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "claim_expired_raffle"));
+
+    // Full fee (no penalty) + full prize refund + player1's + player2's
+    // ticket refunds = 4. No ReturnCommit here (Ronda 10 audit fix, Opus,
+    // CYOL-1/critical) - claim_expired_raffle never recycles its commit, see
+    // that function's own doc comment for why.
+    assert_eq!(res.messages.len(), 4);
+    assert!(
+        res.messages
+            .iter()
+            .all(|m| !matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { .. }))),
+        "claim_expired_raffle must never dispatch ReturnCommit"
+    );
+    let sent_to = |addr: &str| -> Option<Vec<cosmwasm_std::Coin>> {
+        res.messages.iter().find_map(|m| match &m.msg {
+            CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) if to_address == addr => {
+                Some(amount.clone())
+            }
+            _ => None,
+        })
+    };
+    assert_eq!(sent_to("creator"), Some(coins(1000, PRIZE_DENOM)));
+    assert_eq!(sent_to("player1"), Some(coins(1_000_000, USDC_DENOM)));
+    assert_eq!(sent_to("player2"), Some(coins(1_000_000, USDC_DENOM)));
+
+    let status = raffle_status(&deps, &claim_env);
+    assert_eq!(status.status, RaffleStatus::Cancelled);
+}
+
+#[test]
+fn a_reveal_that_loses_the_race_against_claim_expired_raffle_fails_and_never_leaks_a_reusable_commit() {
+    // Ronda 10 audit fix regression test (Opus, CYOL-1/critical): once
+    // EXPIRE_CHALLENGE_BLOCKS has elapsed, ClaimExpiredRaffle and RevealDraw
+    // are BOTH valid on the same raffle - whichever transaction lands first
+    // wins. If ClaimExpiredRaffle wins (this test), the operator's RevealDraw
+    // (broadcast with the real preimage, possibly already visible in the
+    // mempool - how an attacker could have won the race in the first place)
+    // must fail cleanly, and the raffle's commit must never come back to the
+    // factory's queue for a future raffle to consume with a preimage that may
+    // already be public. See claim_expired_raffle's own doc comment.
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
     buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
     execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
 
-    let mut past_window_env = env.clone();
-    past_window_env.block.height += 15;
-    execute(deps.as_mut(), past_window_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap(); // rearm 1
-    past_window_env.block.height += 15;
-    execute(deps.as_mut(), past_window_env.clone(), mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap(); // rearm 2, cap now spent
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap();
+    let mut finalize_env = overdue_env.clone();
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRaffle {}).unwrap();
+    let mut claim_env = finalize_env.clone();
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS;
 
-    past_window_env.block.height += 15; // past the (would-be) window a 3rd time
-    let res = execute(deps.as_mut(), past_window_env, mock_info("creator", &[]), ExecuteMsg::DrawWinner {}).unwrap();
-    // Must draw for real here, not rearm again - the creator gets no more
-    // free re-rolls once the cap is spent, regardless of who calls.
-    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "draw_winner");
-    assert!(!res.messages.is_empty());
+    // The attacker's ClaimExpiredRaffle lands first in the block.
+    execute(deps.as_mut(), claim_env.clone(), mock_info("attacker", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap();
+    assert_eq!(raffle_status(&deps, &claim_env).status, RaffleStatus::Cancelled);
+
+    // The operator's RevealDraw, ordered second in the same block (or landing
+    // in a later one), must fail - not silently succeed or leave anything
+    // claimable.
+    let err = reveal(&mut deps, &claim_env).unwrap_err();
+    assert!(matches!(err, ContractError::RaffleNotRevealable {}));
+
+    // ClaimExpiredRaffle a second time can't fire either - already terminal.
+    let err = execute(deps.as_mut(), claim_env, mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::RaffleNotExpiryPending {}));
+}
+
+#[test]
+fn a_legitimate_reveal_still_rescues_a_raffle_already_in_expiry_pending() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+    execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
+
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap();
+    let mut finalize_env = overdue_env.clone();
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRaffle {}).unwrap();
+    assert_eq!(raffle_status(&deps, &finalize_env).status, RaffleStatus::ExpiryPending);
+
+    // Still inside the challenge window - the operator finally shows up with
+    // the real reveal, which must succeed and resolve the raffle for real.
+    let res = reveal(&mut deps, &finalize_env).unwrap();
+    assert_eq!(res.attributes.iter().find(|a| a.key == "action").unwrap().value, "reveal_draw");
+    assert_eq!(raffle_status(&deps, &finalize_env).status, RaffleStatus::Drawn);
+
+    // ClaimExpiredRaffle can no longer apply - the raffle already resolved.
+    let mut claim_env = finalize_env.clone();
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS;
+    let err = execute(deps.as_mut(), claim_env, mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::RaffleNotExpiryPending {}));
 }
 
 #[test]
@@ -707,9 +803,9 @@ fn podium_picks_three_distinct_winners_with_creator_chosen_50_30_20_split() {
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
-    // Selling out draws immediately, in the same transaction as this closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
+    // Selling out only closes for Podium under v9 - reveal() actually draws.
     buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+    reveal(&mut deps, &env).unwrap();
 
     let winners_bin = query(deps.as_ref(), env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -724,9 +820,9 @@ fn podium_supports_two_places_with_a_custom_split() {
     let (mut deps, env) = setup(RaffleType::Podium, 2, 2, 0, vec![6000, 4000]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
-    // Selling out draws immediately, in the same transaction as this closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
+    // Selling out only closes for Podium under v9 - reveal() actually draws.
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    reveal(&mut deps, &env).unwrap();
 
     let winners_bin = query(deps.as_ref(), env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -741,9 +837,9 @@ fn podium_supports_more_than_three_places_and_rounds_dust_to_first_place() {
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
     buy_ticket(&mut deps, &env, "player3", 0).unwrap();
-    // Selling out draws immediately, in the same transaction as this closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
+    // Selling out only closes for Podium under v9 - reveal() actually draws.
     buy_ticket(&mut deps, &env, "player4", 0).unwrap();
+    reveal(&mut deps, &env).unwrap();
 
     let winners_bin = query(deps.as_ref(), env, QueryMsg::GetWinners {}).unwrap();
     let winners: WinnersResponse = from_json(winners_bin).unwrap();
@@ -867,8 +963,9 @@ fn retry_prize_payout_resends_an_unpaid_single_winner_share_after_a_failed_trans
     let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 0, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
-    // Sellout draws immediately, in the same transaction as this ticket.
-    let draw_res = buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    // Sellout only closes under v9 - reveal() actually draws.
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    let draw_res = reveal(&mut deps, &env).unwrap();
 
     let winners: WinnersResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetWinners {}).unwrap()).unwrap();
     assert_eq!(winners.prize_paid, vec![false]);
@@ -916,7 +1013,7 @@ fn retry_prize_payout_failures_do_not_count_toward_the_auto_blacklist_threshold(
     )
     .unwrap();
     let hook = to_json_binary(&Cw20HookMsg::DepositPrize {}).unwrap();
-    execute(
+    let receive_res = execute(
         deps.as_mut(),
         env.clone(),
         mock_info("cw20token", &[]),
@@ -927,8 +1024,17 @@ fn retry_prize_payout_failures_do_not_count_toward_the_auto_blacklist_threshold(
         }),
     )
     .unwrap();
+    let consume_commit_id = receive_res
+        .messages
+        .iter()
+        .find(|m| m.reply_on == ReplyOn::Success)
+        .expect("SingleWinner should dispatch ConsumeCommit")
+        .id;
+    simulate_consume_commit_reply(&mut deps, &env, consume_commit_id, &commit_for(&preimage_for(1)));
+
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
-    let draw_res = buy_ticket(&mut deps, &env, "player2", 0).unwrap(); // sellout draws immediately
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap(); // sellout only closes under v9
+    let draw_res = reveal(&mut deps, &env).unwrap();
 
     let payout_id = draw_res
         .messages
@@ -1045,9 +1151,10 @@ fn native_prize_transfer_failures_never_count_toward_the_auto_blacklist_threshol
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
     buy_ticket(&mut deps, &env, "player2", 0).unwrap();
-    // Selling out draws immediately, dispatching all 3 native payouts at
-    // once - the same-transaction path this test is about.
-    let draw_res = buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+    // Selling out only closes under v9 - reveal() dispatches all 3 native
+    // payouts at once, the same-transaction path this test is about.
+    buy_ticket(&mut deps, &env, "player3", 0).unwrap();
+    let draw_res = reveal(&mut deps, &env).unwrap();
 
     let payout_ids: Vec<u64> = draw_res
         .messages
@@ -1200,8 +1307,6 @@ fn soft_close_deadline_is_clamped_to_the_60_day_hard_cap_even_when_min_players_i
         min_players: 2,
         max_players: 4,
         round_timeout_seconds: 2_678_400, // 31 days, the creator-chosen maximum
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1244,8 +1349,6 @@ fn soft_close_extension_never_pushes_the_deadline_past_the_hard_cap_or_backwards
         min_players: 2,
         max_players: 4,
         round_timeout_seconds: 2_678_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1409,17 +1512,19 @@ fn cancel_raffle_refunds_prize_fee_and_tickets() {
 
     let res = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap();
     // prize refund + partial fee refund + player1's ticket refund + founder
-    // cut + treasury cut of the forfeited penalty = 5
-    assert_eq!(res.messages.len(), 5);
+    // cut + treasury cut of the forfeited penalty + the factory ReturnCommit
+    // recycle (the preimage was never revealed) = 6
+    assert_eq!(res.messages.len(), 6);
 
     let bank_sends: Vec<(String, Vec<cosmwasm_std::Coin>)> = res
         .messages
         .iter()
-        .map(|m| match &m.msg {
+        .filter_map(|m| match &m.msg {
             CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
-                (to_address.clone(), amount.clone())
+                Some((to_address.clone(), amount.clone()))
             }
-            other => panic!("expected only BankMsg::Send, got {other:?}"),
+            CosmosMsg::Wasm(WasmMsg::Execute { .. }) => None, // the ReturnCommit recycle, checked separately below
+            other => panic!("expected only BankMsg::Send or the ReturnCommit WasmMsg::Execute, got {other:?}"),
         })
         .collect();
     let sent_amount = |addr: &str, denom: &str| -> Option<Uint128> {
@@ -1436,6 +1541,17 @@ fn cancel_raffle_refunds_prize_fee_and_tickets() {
     let config: ConfigResponse = from_json(query(deps.as_ref(), env.clone(), QueryMsg::GetConfig {}).unwrap()).unwrap();
     assert_eq!(sent_amount(config.founder_fee_address.as_str(), USDC_DENOM), Some(Uint128::new(100_000)));
     assert_eq!(sent_amount(config.treasury_address.as_str(), USDC_DENOM), Some(Uint128::new(100_000)));
+
+    // Closes the ~$0.60/commit DoS on the factory's commit queue found in
+    // Ronda 9 - since this raffle never revealed, its commit is recycled back
+    // to the factory instead of just sitting on this raffle forever, `reply_
+    // on_error` so a rejection there can never block the real refunds above.
+    let return_commit = res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) if contract_addr == FACTORY_ADDRESS))
+        .expect("cancelling a raffle that consumed a commit should recycle it via ReturnCommit");
+    assert_eq!(return_commit.reply_on, ReplyOn::Error);
 
     let status = raffle_status(&deps, &env);
     assert_eq!(status.status, RaffleStatus::Cancelled);
@@ -1490,8 +1606,6 @@ fn explicit_creator_field_overrides_info_sender() {
         min_players: 2,
         max_players: 2,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1522,8 +1636,6 @@ fn instantiate_with_prize(
         min_players: 2,
         max_players: 2,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
@@ -1572,7 +1684,7 @@ fn cw20_prize_needs_pay_service_fee_then_the_cw20_send_hook() {
     .unwrap();
 
     // Now the CW20 contract's Send-triggered Receive call actually deposits the prize.
-    execute(
+    let receive_res = execute(
         deps.as_mut(),
         env.clone(),
         mock_info("cw20token", &[]),
@@ -1583,15 +1695,22 @@ fn cw20_prize_needs_pay_service_fee_then_the_cw20_send_hook() {
         }),
     )
     .unwrap();
+    let consume_commit_id = receive_res
+        .messages
+        .iter()
+        .find(|m| m.reply_on == ReplyOn::Success)
+        .expect("SingleWinner should dispatch ConsumeCommit")
+        .id;
+    simulate_consume_commit_reply(&mut deps, &env, consume_commit_id, &commit_for(&preimage_for(1)));
 
     let status = raffle_status(&deps, &env);
     assert_eq!(status.status, RaffleStatus::Open);
     assert_eq!(status.prize_amount, Uint128::new(1000));
 
     buy_ticket(&mut deps, &env, "player1", 0).unwrap();
-    // Selling out draws immediately, in the same transaction as this closing
-    // ticket (2026-07-22) - no separate DrawWinner call needed or possible.
-    let draw_res = buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    // Selling out only closes under v9 - reveal() actually draws.
+    buy_ticket(&mut deps, &env, "player2", 0).unwrap();
+    let draw_res = reveal(&mut deps, &env).unwrap();
 
     let prize_msg = draw_res.messages.iter().find_map(|m| match &m.msg {
         CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, msg, .. }) if contract_addr == "cw20token" => {
@@ -1628,13 +1747,20 @@ fn native_prize_same_denom_as_usdc_fee_needs_pay_service_fee_first() {
     )
     .unwrap();
 
-    execute(
+    let deposit_res = execute(
         deps.as_mut(),
         env.clone(),
         mock_info("creator", &coins(1000, USDC_DENOM)),
         ExecuteMsg::DepositPrize {},
     )
     .unwrap();
+    let consume_commit_id = deposit_res
+        .messages
+        .iter()
+        .find(|m| m.reply_on == ReplyOn::Success)
+        .expect("SingleWinner should dispatch ConsumeCommit")
+        .id;
+    simulate_consume_commit_reply(&mut deps, &env, consume_commit_id, &commit_for(&preimage_for(1)));
 
     let status = raffle_status(&deps, &env);
     assert_eq!(status.status, RaffleStatus::Open);
@@ -1655,8 +1781,6 @@ fn instantiate_rejects_degenerate_player_bounds() {
         min_players,
         max_players,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1684,8 +1808,6 @@ fn instantiate_rejects_unclaimed_deadline_days_out_of_range() {
         min_players: 2,
         max_players: 5,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1717,8 +1839,6 @@ fn instantiate_rejects_round_timeout_seconds_out_of_range() {
         min_players: 2,
         max_players: 5,
         round_timeout_seconds,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: Some(PRIZE_DENOM.to_string()),
@@ -1746,72 +1866,6 @@ fn instantiate_rejects_round_timeout_seconds_out_of_range() {
     // this fix.
     let err = instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(3_600)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidRoundTimeoutSeconds { .. }));
-}
-
-#[test]
-fn instantiate_rejects_draw_delay_blocks_out_of_range() {
-    let mut deps = mock_deps_with_factory();
-    let env = mock_env();
-    let base_msg = |draw_delay_blocks: u64| InstantiateMsg {
-        creator: None,
-        raffle_type: RaffleType::SingleWinner,
-        ticket_price: Uint128::zero(),
-        ticket_denom: TICKET_DENOM.to_string(),
-        allowed_entrants: None,
-        min_players: 2,
-        max_players: 5,
-        round_timeout_seconds: 86_400,
-        draw_delay_blocks,
-        draw_window_blocks: 10,
-        unclaimed_deadline_days: 90,
-        factory_address: FACTORY_ADDRESS.to_string(),
-        prize_native_denom: Some(PRIZE_DENOM.to_string()),
-        prize_cw20_address: None,
-        podium_shares_bps: vec![],
-    };
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidDrawDelayBlocks { .. }));
-
-    // Boundaries are inclusive.
-    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(1)).unwrap();
-    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(1_000_000)).unwrap();
-}
-
-#[test]
-fn instantiate_rejects_draw_window_blocks_out_of_range() {
-    let mut deps = mock_deps_with_factory();
-    let env = mock_env();
-    let base_msg = |draw_window_blocks: u64| InstantiateMsg {
-        creator: None,
-        raffle_type: RaffleType::SingleWinner,
-        ticket_price: Uint128::zero(),
-        ticket_denom: TICKET_DENOM.to_string(),
-        allowed_entrants: None,
-        min_players: 2,
-        max_players: 5,
-        round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks,
-        unclaimed_deadline_days: 90,
-        factory_address: FACTORY_ADDRESS.to_string(),
-        prize_native_denom: Some(PRIZE_DENOM.to_string()),
-        prize_cw20_address: None,
-        podium_shares_bps: vec![],
-    };
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(0)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
-
-    let err = instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(u64::MAX)).unwrap_err();
-    assert!(matches!(err, ContractError::InvalidDrawWindowBlocks { .. }));
-
-    // Boundaries are inclusive.
-    instantiate(deps.as_mut(), env.clone(), mock_info("creator", &[]), base_msg(1)).unwrap();
-    instantiate(deps.as_mut(), env, mock_info("creator", &[]), base_msg(1_000_000)).unwrap();
 }
 
 #[test]
@@ -1860,8 +1914,6 @@ fn paid_raffle_prize_msg(prize_native_denom: Option<&str>, prize_cw20_address: O
         min_players: 2,
         max_players: 2,
         round_timeout_seconds: 86_400,
-        draw_delay_blocks: 5,
-        draw_window_blocks: 10,
         unclaimed_deadline_days: 90,
         factory_address: FACTORY_ADDRESS.to_string(),
         prize_native_denom: prize_native_denom.map(|s| s.to_string()),
@@ -1964,25 +2016,6 @@ fn close_round_rejects_unexpected_funds() {
 }
 
 #[test]
-fn draw_winner_rejects_unexpected_funds() {
-    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 1_000_000, vec![]);
-    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
-    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
-    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
-
-    let mut later_env = env.clone();
-    later_env.block.height += 5;
-    let err = execute(
-        deps.as_mut(),
-        later_env,
-        mock_info("creator", &coins(1, "some_other_denom")),
-        ExecuteMsg::DrawWinner {},
-    )
-    .unwrap_err();
-    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
-}
-
-#[test]
 fn claim_airdrop_share_rejects_unexpected_funds() {
     let (mut deps, env) = setup(RaffleType::Airdrop, 2, 2, 0, vec![]);
     deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
@@ -2033,6 +2066,93 @@ fn cancel_raffle_rejects_unexpected_funds() {
     )
     .unwrap_err();
     assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn reveal_draw_rejects_unexpected_funds() {
+    // Funds check runs before any state is loaded, so this fires regardless
+    // of raffle status or preimage validity - round-review fix (CodeRabbit,
+    // 2026-08-30): the 4 new v9 messages below never checked attached funds
+    // at all, unlike every other message in this contract.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RevealDraw { preimage: preimage_for(1) },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn request_expire_closed_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RequestExpireClosedRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn finalize_expire_closed_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::FinalizeExpireClosedRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn claim_expired_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::ClaimExpiredRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn cancel_raffle_rejects_awaiting_commit_and_expiry_pending() {
+    // v9's `execute_cancel_raffle` match on `raffle.status` used to be
+    // non-exhaustive once `AwaitingCommit`/`ExpiryPending` were added -
+    // regression test for the 2 new arms.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 2, 1_000_000, vec![]);
+    let mut funds = coins(1000, PRIZE_DENOM);
+    funds.push(cosmwasm_std::coin(FEE_AMOUNT_USDC, USDC_DENOM));
+    // Raw DepositPrize (not the `deposit_prize` helper) - deliberately leaves
+    // the raffle in AwaitingCommit, without simulating ConsumeCommit's reply.
+    execute(deps.as_mut(), env.clone(), mock_info("creator", &funds), ExecuteMsg::DepositPrize {}).unwrap();
+    assert_eq!(raffle_status(&deps, &env).status, RaffleStatus::AwaitingCommit);
+    let err = execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::CannotCancel {}));
+
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 10, 1_000_000, vec![]);
+    deposit_prize(&mut deps, &env, 1000, FEE_AMOUNT_USDC).unwrap();
+    buy_ticket(&mut deps, &env, "player1", 1_000_000).unwrap();
+    buy_ticket(&mut deps, &env, "player2", 1_000_000).unwrap();
+    execute(deps.as_mut(), env.clone(), mock_info("creator", &[]), ExecuteMsg::CloseRound {}).unwrap();
+    let mut overdue_env = env.clone();
+    overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
+    execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRaffle {}).unwrap();
+    let mut finalize_env = overdue_env;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
+    execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRaffle {}).unwrap();
+    assert_eq!(raffle_status(&deps, &finalize_env).status, RaffleStatus::ExpiryPending);
+    let err = execute(deps.as_mut(), finalize_env, mock_info("creator", &[]), ExecuteMsg::CancelRaffle {}).unwrap_err();
+    assert!(matches!(err, ContractError::CannotCancel {}));
 }
 
 #[test]
@@ -2329,8 +2449,9 @@ fn expire_raffle_refunds_everyone_once_stale_and_permissionless() {
     )
     .unwrap();
 
-    // prize + fee to creator, player1 (2 tickets) + player2 (1 ticket) refunded = 4 messages
-    assert_eq!(res.messages.len(), 4);
+    // prize + fee to creator, player1 (2 tickets) + player2 (1 ticket)
+    // refunded, plus the factory ReturnCommit recycle (never revealed) = 5
+    assert_eq!(res.messages.len(), 5);
     let sent_to = |addr: &str| -> Option<Vec<cosmwasm_std::Coin>> {
         res.messages.iter().find_map(|m| match &m.msg {
             CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) if to_address == addr => {

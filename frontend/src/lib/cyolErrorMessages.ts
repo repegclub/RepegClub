@@ -25,8 +25,6 @@ const RULES: { test: RegExp; friendly: string }[] = [
   { test: /can only offer lunc, usdc, ustc, or a cw20/i, friendly: "This prize isn't on the allowed list (LUNC, USDC, USTC, or a reviewed CW20) for a paid raffle." },
   { test: /unclaimed_deadline_days must be between/i, friendly: "The unclaimed-funds deadline is out of the allowed range." },
   { test: /round_timeout_seconds must be between/i, friendly: "The round timeout is out of the allowed range." },
-  { test: /draw_delay_blocks must be between/i, friendly: "The draw delay is out of the allowed range." },
-  { test: /draw_window_blocks must be between/i, friendly: "The draw window is out of the allowed range." },
 
   // Funding
   { test: /prize amount must be greater than zero/i, friendly: "Prize amount must be greater than zero." },
@@ -51,7 +49,13 @@ const RULES: { test: RegExp; friendly: string }[] = [
 
   // Close / draw
   { test: /cannot be closed yet/i, friendly: "This raffle can't be closed yet — it hasn't reached the max players or the timeout." },
-  { test: /raffle is not closed/i, friendly: "This raffle isn't closed yet." },
+  // Matches both RaffleNotClosed ("Raffle is not closed") and the rescue
+  // mechanism's RaffleNotClosedForExpiry ("Raffle is not Closed") - the
+  // wording is kept neutral rather than "isn't closed yet" because the
+  // rescue error can also fire on a raffle that's already Drawn/Cancelled
+  // (moved past Closed, not still waiting to reach it), where "not closed
+  // yet" would read backwards.
+  { test: /raffle is not closed/i, friendly: "This raffle isn't in the right state for that action anymore." },
   { test: /cannot be drawn yet/i, friendly: "It's too early to draw this raffle — try again shortly." },
   { test: /not enough players to draw/i, friendly: "Not enough players joined to draw a winner." },
 
@@ -74,6 +78,19 @@ const RULES: { test: RegExp; friendly: string }[] = [
   { test: /already been cancelled/i, friendly: "This raffle was already cancelled." },
   { test: /cannot be cancelled once it is closed or drawn/i, friendly: "This raffle can't be cancelled anymore — it's already closed or drawn." },
   { test: /cannot be expired yet/i, friendly: "This raffle can't be expired yet — either it already reached its minimum players, or the waiting period hasn't passed." },
+
+  // 3-phase outage rescue (Request/Finalize/Claim) - order matters here too:
+  // "is not Closed" is a substring of both RaffleNotClosedForExpiry and
+  // RaffleNotExpiryPending's own text, so the more specific rules above
+  // (raffle-not-open/not-closed) never apply here; these are matched after
+  // that whole earlier block on purpose.
+  { test: /reveal is not overdue yet/i, friendly: "This raffle hasn't been stuck long enough yet to rescue — check back later." },
+  { test: /expiration request is already pending/i, friendly: "A rescue request is already in progress for this raffle." },
+  { test: /no expiration request is pending/i, friendly: "Request the rescue first, before trying to finalize it." },
+  { test: /expiration request has expired/i, friendly: "The rescue request expired — request it again." },
+  { test: /expiration request has not cleared its finalize delay yet/i, friendly: "Not ready to finalize yet — try again in a few minutes." },
+  { test: /raffle is not exp(iry)?pending/i, friendly: "This raffle isn't ready to claim yet." },
+  { test: /challenge window is still open/i, friendly: "Not ready to claim yet — a legitimate reveal can still land, try again shortly." },
 
   // Generic / permissions
   { test: /^unauthorized$|: unauthorized:/i, friendly: "Only the raffle's creator can do that right now." },

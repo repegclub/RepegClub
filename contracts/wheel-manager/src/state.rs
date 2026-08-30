@@ -1,26 +1,25 @@
-use cosmwasm_std::{Addr, Timestamp, Uint128};
-use cw_storage_plus::{Item, Map};
+use cosmwasm_std::{Addr, Empty, HexBinary, Timestamp, Uint128};
+use cw_storage_plus::{Deque, Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Config {
     pub admin: Addr,
+    /// Separate role, gating only `PushCommits` - deliberately NOT `admin`
+    /// (which also gates `SweepUstc`). Kept apart so the always-on keeper
+    /// automation that needs to top up the commit queue never has to hold
+    /// the `admin` key: a compromise of this narrower wallet only lets an
+    /// attacker push already-deduped, capacity-bounded commits, not touch
+    /// anything else `admin` can do. Set once at instantiate, no rotation
+    /// (same as `admin` itself).
+    pub commit_pusher: Addr,
     pub ticket_price: Uint128,
     pub ticket_denom: String,
     pub redemption_denom: String,
     pub min_players: u32,
     pub max_players: u32,
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    /// Width, in blocks, of the window after `draw_after_height` during which
-    /// `DrawWinner` actually draws. Bounds how many blocks a caller can wait
-    /// through (each one a free off-chain simulation of the outcome) before
-    /// having to accept whatever comes up - without this, the window is
-    /// unbounded and a patient caller (or a colluding block proposer) can
-    /// grind indefinitely for a favorable block. See `rand.rs` for the full
-    /// randomness caveat and `execute_draw_winner` for the rearm behavior.
-    pub draw_window_blocks: u64,
     /// Days after a round is drawn before an unredeemed prize can be swept to
     /// the treasury by anyone via `SweepExpiredPrize` (no admin discretion
     /// involved - a fixed, automatic deadline).
@@ -34,6 +33,15 @@ pub struct Config {
     /// it caps how long that extension can go on before `CloseRound` is
     /// forced regardless.
     pub max_round_age_seconds: u64,
+    /// How long, in seconds since `closed_at`, a `Closed` round can wait for
+    /// a legitimate `RevealDraw` before `RequestExpireClosedRound` becomes
+    /// callable - the outage safety net described in `execute::EXPIRE_*`
+    /// docs. Bounded at `instantiate` (see `contract::MIN_MAX_REVEAL_AGE_SECONDS`)
+    /// for the same reason every other timing field here is: an unbounded or
+    /// zero value would either reopen the cheap version of the mempool
+    /// front-run risk (see the project's Obsidian notes on the grinding
+    /// finding) or make this contract's normal operation resemble an outage.
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
     pub weekly_round_address: Addr,
@@ -44,11 +52,19 @@ pub struct Config {
 pub enum RoundStatus {
     Open,
     Closed,
+    /// A `RequestExpireClosedRound` → `FinalizeExpireClosedRound` pair has
+    /// run for this round (only reachable once it's been `Closed` without a
+    /// reveal for `max_reveal_age_seconds`). A legitimate `RevealDraw` can
+    /// still rescue it from here; if nobody does within
+    /// `execute::EXPIRE_CHALLENGE_BLOCKS`, `ClaimExpiredRound` resolves it to
+    /// `Expired` instead.
+    ExpiryPending,
     Drawn,
-    /// Never reached `min_players` before `max_round_age_seconds` elapsed -
-    /// terminal, like `Drawn`, but resolved via `ReclaimTicket` instead of
-    /// `Redeem` since there's no winner, just buyers getting their own money
-    /// back.
+    /// Never reached `min_players` before `max_round_age_seconds` elapsed, OR
+    /// reached `Closed` but nobody ever revealed it in time (see
+    /// `ExpiryPending`) - terminal either way, resolved via `ReclaimTicket`
+    /// instead of `Redeem` since there's no winner, just buyers getting their
+    /// own money back.
     Expired,
 }
 
@@ -67,21 +83,48 @@ pub struct Round {
     /// passes with nobody having bought a ticket in the meantime.
     pub deadline: Option<Timestamp>,
     pub closed_at: Option<Timestamp>,
-    pub draw_after_height: Option<u64>,
+    /// Block height at the moment this round closed. Deliberately NOT used
+    /// as an input to the winner-picking hash (see `rand::pick_winner_index`);
+    /// only `commit_used`'s preimage is. Kept for the expiration clock and
+    /// for public verification, so anyone can independently confirm
+    /// `closed_at`/`closed_at_height` are consistent with the chain.
+    pub closed_at_height: Option<u64>,
+    /// The commit (`sha256(preimage)`) this round must be revealed against.
+    /// Assigned when the round opens, from `execute::COMMIT_QUEUE` (or left
+    /// `None` if the queue was empty at that moment - see
+    /// `execute::execute_assign_commit` for the permissionless backfill).
+    /// `BuyTicket` refuses to sell a single ticket while this is `None`
+    /// (`RoundNotSeeded`), so a round with any entrant always has a commit.
+    pub commit_used: Option<HexBinary>,
+    /// The preimage that satisfied `commit_used`, once revealed - exposed so
+    /// anyone can recompute `sha256(preimage) == commit_used` and
+    /// `pick_winner_index(...)` themselves (same public-verification story
+    /// this project already built for the block-hash mechanism it replaces).
+    pub revealed_preimage: Option<HexBinary>,
+    /// Set by `RequestExpireClosedRound`; cleared the moment a legitimate
+    /// `RevealDraw` rescues the round. See `execute::REQUEST_EXPIRE_TTL_BLOCKS`.
+    pub expire_requested_at_height: Option<u64>,
+    /// Set by `FinalizeExpireClosedRound`, when the round transitions to
+    /// `ExpiryPending`. See `execute::EXPIRE_CHALLENGE_BLOCKS`.
+    pub expiry_pending_since_height: Option<u64>,
     pub drawn_at: Option<Timestamp>,
-    /// Exact block height the winner-picking hash was computed at (see
-    /// `rand::pick_winner_index`) - `draw_after_height` is only the *minimum*
-    /// required height, not necessarily the one actually used, so this is
-    /// stored separately to let anyone verify the draw from the query alone.
-    pub draw_height: Option<u64>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
-    /// Set when the round transitions to `Expired` (see `max_round_age_seconds`).
+    /// Set when the round transitions to `Expired`, from either terminal
+    /// path (never reached `min_players`, or `Closed` and never revealed in
+    /// time). Required for `SweepExpiredPrize` to ever become callable on
+    /// this round - see that function's own `expired_at.ok_or(...)`.
     pub expired_at: Option<Timestamp>,
 }
 
 /// Global, non-round-scoped state: which round is currently active, and how
-/// much of the 5% "next round" cut has accumulated for it.
+/// much unrouted carry (the 5% "next round" cut, or a stale-round refund's
+/// leftover carry-in) is waiting for a currently-`Open` round to land in.
+/// See `execute::route_carry` - under normal operation this is drained to
+/// zero in the same transaction it's added to, since closing a round always
+/// opens its successor atomically (this field only persists across
+/// transactions in a state that shouldn't be reachable in practice; see that
+/// function's own doc comment for why it's kept as defense in depth anyway).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct GlobalState {
     pub current_round_id: u64,
@@ -91,6 +134,31 @@ pub struct GlobalState {
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const STATE: Item<GlobalState> = Item::new("state");
 pub const ROUNDS: Map<u64, Round> = Map::new("rounds");
+/// FIFO of `round_id`s waiting to be resolved (`RevealDraw` or the
+/// expire-then-`ClaimExpiredRound` path) - populated only on `Open → Closed`
+/// (never on `Open → Expired`, a different terminal path that never needed a
+/// commit reveal to begin with). Consumed strictly from the front: both
+/// `execute_reveal_draw` and `claim_expired_round` require the `round_id`
+/// they're called with to match `REVEAL_QUEUE.front()`, rejecting otherwise.
+/// Without that check, resolving a round out of order desyncs the queue and
+/// can permanently stall every round after it - the Ronda 9 audit finding
+/// (confirmed independently by two auditors) this guards against.
+pub const REVEAL_QUEUE: Deque<u64> = Deque::new("reveal_queue");
+/// Commits (`sha256(preimage)`, 32 bytes each) generated offline by the admin
+/// and pushed in batches via `PushCommits` - each one gets assigned to
+/// exactly one round when it opens (`execute::open_new_round`) or via the
+/// permissionless backfill (`AssignCommit`). Independent commits, not a hash
+/// chain - simpler to reason about and lets `PushCommits`/rotation happen
+/// without any risk of an exhausted-chain edge case.
+pub const COMMIT_QUEUE: Deque<HexBinary> = Deque::new("commit_queue");
+/// Every commit ever pushed via `PushCommits`, for two purposes: (1) reject
+/// a duplicate commit value in a later `PushCommits` batch (reusing a commit
+/// would mean the same secret has to satisfy two different rounds - revealing
+/// the first would leak the secret for the second, still-pending one); (2)
+/// prevent it being pushed a second time even after its round resolved.
+/// Monotonically growing, no pruning possible (see the project's Obsidian
+/// notes for the accepted, small, storage-growth tradeoff this implies).
+pub const USED_COMMITS: Map<&[u8], Empty> = Map::new("used_commits");
 /// wallet -> round_ids where that wallet is the winner and prize_remaining > 0.
 pub const WINNER_INDEX: Map<Addr, Vec<u64>> = Map::new("winner_index");
 /// wallet -> lifetime ticket spend across every round, net of any

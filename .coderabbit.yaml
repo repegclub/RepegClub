@@ -1,0 +1,5 @@
+reviews:
+  path_filters:
+    - "!scripts/testnet/deployment-*.json"
+    - "!**/*.wasm"
+    - "!**/Cargo.lock"

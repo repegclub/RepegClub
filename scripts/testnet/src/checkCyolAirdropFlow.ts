@@ -50,8 +50,6 @@ async function main() {
             min_players: 2,
             max_players: 3,
             round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
-            draw_delay_blocks: 2,
-            draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
             prize_native_denom: "uluna",
             prize_cw20_address: null,

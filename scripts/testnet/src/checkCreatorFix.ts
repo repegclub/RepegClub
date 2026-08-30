@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -37,8 +38,6 @@ async function main() {
             min_players: 2,
             max_players: 25,
             round_timeout_seconds: 86_400, // contract MIN as of the round-10 audit fix (raised from 1h)
-            draw_delay_blocks: 2,
-            draw_window_blocks: 60,
             unclaimed_deadline_days: 90,
             prize_native_denom: "uluna",
             prize_cw20_address: null,
@@ -67,6 +66,22 @@ async function main() {
     );
   }
   console.log("OK: config.creator matches the real human wallet, not the factory.");
+
+  // v9: funding triggers ConsumeCommit against the factory's queue - push one
+  // first or that call fails with NoCommitsAvailable.
+  const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
+  const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+  const pushRes = await commitPusher.broadcastTxSync({
+    msgs: [
+      new MsgExecuteContract({
+        sender: commitPusher.address,
+        contract: factoryAddress,
+        msg: { push_commits: { commits: [commit] } },
+        funds: [],
+      }),
+    ],
+  });
+  if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
 
   // Prize denom ("uluna") is the same as usdc_denom on this testnet
   // (2026-07-23) - the contract requires PayServiceFee first in that case,

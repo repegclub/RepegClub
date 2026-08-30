@@ -27,11 +27,13 @@ import {
   buyTickets,
   withdrawTicket,
   closeRound,
-  drawWinner,
   claimAirdropShare,
+  claimExpiredRaffle,
+  finalizeExpireClosedRaffle,
   reclaimUnclaimed,
   cancelRaffle,
   expireRaffle,
+  requestExpireClosedRaffle,
   retryPrizePayout,
 } from "../../lib/cyolActions";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
@@ -46,6 +48,11 @@ import { CyolRevealChest } from "./CyolRevealChest";
 // which is undefined now - ageReached below silently evaluated to false
 // forever, hiding the one permissionless rescue path for a stalled raffle).
 const MAX_RAFFLE_AGE_SECONDS = 5_184_000; // 60 days
+
+// Mirrors contract::MAX_REVEAL_AGE_SECONDS exactly (contracts/create-your-own-luck/
+// src/contract.rs) - fixed platform-wide, not creator-chosen or exposed via
+// GetConfig, same treatment as MAX_RAFFLE_AGE_SECONDS above.
+const MAX_REVEAL_AGE_SECONDS = 3_600; // 1 hour
 
 // Mirrors max_tickets_per_wallet exactly (contracts/create-your-own-luck/
 // src/execute.rs) - lets the UI cap a batch purchase client-side instead of
@@ -72,7 +79,19 @@ function formatDuration(totalSeconds: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-type ActionKey = "fund" | "buy" | "withdraw" | "close" | "draw" | "claim" | "reclaim" | "cancel" | "expire" | "retryPayout";
+type ActionKey =
+  | "fund"
+  | "buy"
+  | "withdraw"
+  | "close"
+  | "claim"
+  | "reclaim"
+  | "cancel"
+  | "expire"
+  | "retryPayout"
+  | "requestRescue"
+  | "finalizeRescue"
+  | "claimRescue";
 
 // Shared by both the buyer-side and creator-side value-mismatch warnings
 // below (security catalog's hallazgo #6, 2026-07-25/26): unlike the
@@ -324,6 +343,14 @@ export function RaffleDetailPage() {
   const reachedMax = raffleStatus.unique_player_count >= config.max_players;
   const timeoutElapsed = raffleStatus.seconds_remaining !== null && raffleStatus.seconds_remaining <= 0;
   const ageReached = raffleStatus.opened_at !== null && nowSec >= raffleStatus.opened_at + MAX_RAFFLE_AGE_SECONDS;
+  // Mirrors execute_request_expire_closed_raffle's own condition exactly
+  // (closed_at + MAX_REVEAL_AGE_SECONDS) - the 3-phase outage safety net for
+  // a Closed raffle the keeper hasn't revealed, same as wheel-manager/
+  // weekly-round's matching cards.
+  const stuckEligible =
+    raffleStatus.status === "closed" &&
+    raffleStatus.closed_at !== null &&
+    nowSec >= raffleStatus.closed_at + MAX_REVEAL_AGE_SECONDS;
 
   const canFund = isCreator && raffleStatus.status === "funding" && prizeDenom !== null;
   const canBuyTicket = raffleStatus.status === "open";
@@ -379,7 +406,6 @@ export function RaffleDetailPage() {
         : config.cancellation_penalty_base_bps;
   const cancelPenaltyBps = cancelPenaltyBpsForWaiver(cancellationPenaltyWaivedByPlatformRevocation);
   const cancelForfeitedUsdForBps = (bps: number) => (ulunaToDisplayNumber(config.fee_amount_usdc) * bps) / 10000;
-  const canDrawWinner = raffleStatus.status === "closed";
   const canClaimAirdrop =
     raffleStatus.status === "drawn" && isAirdrop && myAirdropShare !== null && !myAirdropShare.claimed && myAirdropShare.share !== "0";
   const canReclaimUnclaimed = isCreator && raffleStatus.status === "drawn" && isAirdrop;
@@ -515,10 +541,6 @@ export function RaffleDetailPage() {
     if (walletState.status !== "connected") return;
     run("close", () => closeRound(walletState.wallet, address));
   }
-  function handleDrawWinner() {
-    if (walletState.status !== "connected") return;
-    run("draw", () => drawWinner(walletState.wallet, address));
-  }
   function handleClaimAirdrop() {
     if (walletState.status !== "connected") return;
     run("claim", () => claimAirdropShare(walletState.wallet, address));
@@ -572,6 +594,23 @@ export function RaffleDetailPage() {
   function handleExpireRaffle() {
     if (walletState.status !== "connected") return;
     run("expire", () => expireRaffle(walletState.wallet, address));
+  }
+  // 3-phase outage safety net for a Closed raffle the keeper hasn't revealed
+  // - see lib/cyolActions.ts. Discreet by design: only stuckEligible gates
+  // Request/Finalize visibility, and the contract's own rejection (e.g.
+  // "finalize delay has not cleared yet") surfaces as-is via
+  // friendlyCyolError if a step is tried before it's actually ready.
+  function handleRequestExpireClosedRaffle() {
+    if (walletState.status !== "connected") return;
+    run("requestRescue", () => requestExpireClosedRaffle(walletState.wallet, address));
+  }
+  function handleFinalizeExpireClosedRaffle() {
+    if (walletState.status !== "connected") return;
+    run("finalizeRescue", () => finalizeExpireClosedRaffle(walletState.wallet, address));
+  }
+  function handleClaimExpiredRaffle() {
+    if (walletState.status !== "connected") return;
+    run("claimRescue", () => claimExpiredRaffle(walletState.wallet, address));
   }
   // Permissionless (round-10 audit fix) - visible to anyone, not just the
   // winner, since the underlying RetryPrizePayout is: an honest transfer
@@ -930,11 +969,23 @@ export function RaffleDetailPage() {
         </div>
       )}
 
-      {raffleStatus.status === "closed" && canDrawWinner && (
-        <button className="cyol-submit" onClick={handleDrawWinner} disabled={busy || !connected}>
-          {actionBusy === "draw"
-            ? t(isAirdrop ? "createYourOwnLuck.detail.executingAirdrop" : "createYourOwnLuck.detail.drawing")
-            : t(isAirdrop ? "createYourOwnLuck.detail.executeAirdrop" : "createYourOwnLuck.detail.drawWinner")}
+      {raffleStatus.status === "closed" && (
+        <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.closedWaitingReveal")}</p>
+      )}
+
+      {stuckEligible && connected && (
+        <div className="cyol-detail-actions">
+          <button className="cyol-submit cyol-submit-secondary" onClick={handleRequestExpireClosedRaffle} disabled={busy}>
+            {actionBusy === "requestRescue" ? t("createYourOwnLuck.detail.rescuing") : t("createYourOwnLuck.detail.rescueRequest")}
+          </button>
+          <button className="cyol-submit cyol-submit-secondary" onClick={handleFinalizeExpireClosedRaffle} disabled={busy}>
+            {actionBusy === "finalizeRescue" ? t("createYourOwnLuck.detail.rescuing") : t("createYourOwnLuck.detail.rescueFinalize")}
+          </button>
+        </div>
+      )}
+      {raffleStatus.status === "expiry_pending" && connected && (
+        <button className="cyol-submit" onClick={handleClaimExpiredRaffle} disabled={busy}>
+          {actionBusy === "claimRescue" ? t("createYourOwnLuck.detail.rescuing") : t("createYourOwnLuck.detail.rescueClaim")}
         </button>
       )}
 

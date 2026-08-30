@@ -3,7 +3,7 @@ import { RPC } from "./chainConfig";
 import { WHEEL_MANAGER_ADDRESS } from "./deployment";
 
 // Mirrors contracts/wheel-manager/src/msg.rs - keep in sync if that changes.
-export type WheelRoundStatus = "open" | "closed" | "drawn" | "expired";
+export type WheelRoundStatus = "open" | "closed" | "expiry_pending" | "drawn" | "expired";
 
 export type WheelRoundResponse = {
   round_id: number;
@@ -17,12 +17,16 @@ export type WheelRoundResponse = {
   // Not a fixed timer from opened_at.
   deadline: number | null;
   closed_at: number | null;
-  draw_after_height: number | null;
+  closed_at_height: number | null;
   drawn_at: number | null;
-  // Exact block height the winner-picking hash was computed at (not just
-  // the minimum draw_after_height) - lets anyone re-derive and verify the
-  // draw independently. See lib/verifyRound.ts.
-  draw_height: number | null;
+  // The hash this round must be revealed against (hex) - lets anyone confirm
+  // revealed_preimage (once set) actually satisfies it before trusting
+  // winner.
+  commit_used: string | null;
+  // The secret that unlocked commit_used (hex), once revealed - lets anyone
+  // independently recompute pick_winner_index and check it against winner.
+  // See lib/verifyRound.ts.
+  revealed_preimage: string | null;
   winner: string | null;
   prize_remaining: string;
   expired_at: number | null;
@@ -36,16 +40,19 @@ export type WheelConfigResponse = {
   min_players: number;
   max_players: number;
   round_timeout_seconds: number;
-  draw_delay_blocks: number;
-  draw_window_blocks: number;
   unclaimed_deadline_days: number;
   // Hard ceiling (seconds since opened_at) on how long a round stays Open -
   // caps the rolling deadline extension, and is also when ExpireRound
   // becomes callable if min_players was never reached.
   max_round_age_seconds: number;
+  // How long a Closed round can go unrevealed before the 3-phase outage
+  // expiration (RequestExpireClosedRound/etc, see lib/roundActions.ts)
+  // becomes callable.
+  max_reveal_age_seconds: number;
   treasury_address: string;
   admin_fee_address: string;
   weekly_round_address: string;
+  commit_pusher: string;
 };
 
 export function getCurrentRound(contractAddress: string = WHEEL_MANAGER_ADDRESS) {

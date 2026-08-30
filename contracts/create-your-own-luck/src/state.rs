@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Empty, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Empty, HexBinary, Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -17,8 +17,26 @@ pub enum RaffleStatus {
     /// Waiting for the creator to fund the raffle (native `DepositPrize`, or
     /// `PayServiceFee` + a CW20 `Send` for CW20 prizes); ticket sales not open yet.
     Funding,
+    /// SingleWinner/Podium only, transient: the fee/prize just got funded and
+    /// a `ConsumeCommit` call to the factory is in flight (`SubMsg::
+    /// reply_on_success`) to fetch this raffle's commit. Can't persist across
+    /// transactions - if the `SubMsg` or its own reply fails, the whole
+    /// funding transaction reverts and `status` never actually leaves
+    /// `Funding` in storage. Airdrop skips this entirely (see
+    /// `execute_deposit_prize`/`execute_receive` - it needs no commit) and
+    /// goes straight from `Funding` to `Open`.
+    AwaitingCommit,
     Open,
     Closed,
+    /// SingleWinner/Podium only: a `RequestExpireClosedRaffle` →
+    /// `FinalizeExpireClosedRaffle` pair has run (only reachable once
+    /// `Closed` without a reveal for `contract::MAX_REVEAL_AGE_SECONDS`). A
+    /// legitimate `RevealDraw` can still rescue it from here; if nobody does
+    /// within `contract::EXPIRE_CHALLENGE_BLOCKS`, `ClaimExpiredRaffle`
+    /// resolves it to `Cancelled` instead (reusing the same terminal status
+    /// `ExpireRaffle` already uses for a never-reached-min-players raffle -
+    /// see that message's own doc comment).
+    ExpiryPending,
     Drawn,
     Cancelled,
 }
@@ -59,11 +77,6 @@ pub struct Config {
     /// capped at `MAX_RAFFLE_AGE_SECONDS` from `opened_at` regardless of how
     /// many extensions accumulate.
     pub round_timeout_seconds: u64,
-    pub draw_delay_blocks: u64,
-    /// Width, in blocks, of the window after `draw_after_height` during which
-    /// `DrawWinner` actually draws. See wheel-manager's `Config` for the full
-    /// rationale.
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
     pub prize_asset: PrizeAsset,
     /// Fixed service fee, in USDC micros - charged directly in USDC (no
@@ -125,19 +138,29 @@ pub struct RaffleState {
     /// reset). See `Config::round_timeout_seconds`'s doc comment for the full
     /// mechanism.
     pub deadline: Option<Timestamp>,
-    pub draw_after_height: Option<u64>,
-    /// Counts `DrawWinner` calls that landed past `draw_window_blocks` and
-    /// silently rearmed instead of drawing. Bounds how many free re-rolls a
-    /// creator gets before drawing opens up to anyone - see
-    /// `MAX_REARMS_BEFORE_PERMISSIONLESS` in execute.rs for why an unbounded
-    /// count is a real grinding risk, not just a UX inconvenience.
-    pub rearm_count: u32,
+    /// Block height at the moment this raffle closed. Deliberately NOT used
+    /// as an input to the winner-picking hash (see `rand::pick_winner_index`);
+    /// only `commit_used`'s preimage is. Kept for the expiration clock and
+    /// for public verification. `None` for Airdrop (never goes through
+    /// `Closed` - see `execute_close_round`'s doc comment) and for a raffle
+    /// still `Funding`/`Open`.
+    pub closed_at_height: Option<u64>,
+    /// The commit (`sha256(preimage)`) this raffle must be revealed against -
+    /// SingleWinner/Podium only, assigned atomically when the fee/prize is
+    /// funded (`ConsumeCommit` against the factory). Always `None` for
+    /// Airdrop, which never needs one.
+    pub commit_used: Option<HexBinary>,
+    /// The preimage that satisfied `commit_used`, once revealed - exposed so
+    /// anyone can recompute `sha256(preimage) == commit_used` and
+    /// `pick_winner_index(...)` themselves.
+    pub revealed_preimage: Option<HexBinary>,
+    /// Set by `RequestExpireClosedRaffle`; cleared the moment a legitimate
+    /// `RevealDraw` rescues the raffle. See `contract::REQUEST_EXPIRE_TTL_BLOCKS`.
+    pub expire_requested_at_height: Option<u64>,
+    /// Set by `FinalizeExpireClosedRaffle`, when the raffle transitions to
+    /// `ExpiryPending`. See `contract::EXPIRE_CHALLENGE_BLOCKS`.
+    pub expiry_pending_since_height: Option<u64>,
     pub drawn_at: Option<Timestamp>,
-    /// The actual block height used in the winner-selection hash (as opposed
-    /// to `draw_after_height`, which is only the *minimum* allowed height) -
-    /// needed for the public "verify this raffle" recomputation, same reason
-    /// wheel-manager/weekly-round persist their own `draw_height`.
-    pub draw_height: Option<u64>,
     /// 1 entry for SingleWinner, `podium_shares_bps.len()` for Podium (in
     /// place order), empty for Airdrop (uses `airdrop_share` +
     /// `AIRDROP_CLAIMS` instead).

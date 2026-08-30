@@ -154,16 +154,13 @@ export function VerifyRoundPanel({ roundId, contractAddress }: VerifyRoundPanelP
                       >
                         <p>{state.result.matches ? t("verify.matchTrue") : t("verify.matchFalse")}</p>
                         <dl className="verify-details">
-                          <dt>{t("verify.drawHeight")}</dt>
-                          <dd>{state.result.drawHeight}</dd>
-                          <dt>{t("verify.blockTime")}</dt>
-                          <dd>{state.result.blockTimeIso}</dd>
+                          <dt>{t("verify.commitUsed")}</dt>
+                          <dd className="verify-mono-wrap">{state.result.commitUsedHex}</dd>
+                          <dt>{t("verify.revealedPreimage")}</dt>
+                          <dd className="verify-mono-wrap">{state.result.preimageHex}</dd>
                           <dt>{t("verify.entrantsCount")}</dt>
                           <dd>{state.result.entrants.length}</dd>
-                          <dt>{t("verify.drawGap")}</dt>
-                          <dd>{state.result.drawGap}</dd>
                         </dl>
-                        <p className="verify-raw-caption">{t("verify.drawGapCaption")}</p>
                       </div>
                     )}
 
@@ -191,16 +188,6 @@ export function VerifyRoundPanel({ roundId, contractAddress }: VerifyRoundPanelP
                             <dt>{t("verify.winnerIndex")}</dt>
                             <dd>{state.result.winnerIndex}</dd>
                           </dl>
-
-                          <a
-                            className="verify-raw-link"
-                            href={state.result.blockQueryUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {t("verify.rawBlockLink")}
-                          </a>
-                          <p className="verify-raw-caption">{t("verify.rawBlockCaption")}</p>
 
                           <a
                             className="verify-raw-link"

@@ -9,8 +9,17 @@ import type { WheelRoundState } from "../../hooks/useWheelRound";
 import { PRIZE_SHARE } from "../../lib/queryWheelManager";
 import { formatUluna } from "../../lib/format";
 import { useWallet } from "../../contexts/WalletContext";
-import { closeRound, drawWinner, expireRound, reclaimTicket, withdrawTicket } from "../../lib/roundActions";
+import {
+  claimExpiredRound,
+  closeRound,
+  expireRound,
+  finalizeExpireClosedRound,
+  reclaimTicket,
+  requestExpireClosedRound,
+  withdrawTicket,
+} from "../../lib/roundActions";
 import { markRevealed } from "../../lib/revealCache";
+import { friendlyRoundError } from "../../lib/roundErrorMessages";
 import { WHEEL_MANAGER_ADDRESS } from "../../lib/deployment";
 import { VerifyRoundPanel } from "./VerifyRoundPanel";
 import { RedeemBox } from "./RedeemBox";
@@ -58,17 +67,18 @@ export function WheelCard({
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
   const [actionBusy, setActionBusy] = useState<
-    "idle" | "closing" | "drawing" | "expiring" | "reclaiming" | "withdrawing"
+    | "idle"
+    | "closing"
+    | "expiring"
+    | "reclaiming"
+    | "withdrawing"
+    | "requestingRescue"
+    | "finalizingRescue"
+    | "claimingRescue"
   >("idle");
   const [actionError, setActionError] = useState<string | null>(null);
   const [justReclaimed, setJustReclaimed] = useState(false);
   const [justWithdrawn, setJustWithdrawn] = useState(false);
-  // Distinguishes "I'm the one who just closed/drew this round" from "I
-  // showed up after someone else already did" - both land on the same
-  // status === "drawn" state and still need an explicit Spin click to watch
-  // the reveal, so the only way to tell them apart is tracking whether this
-  // browser tab was the one that fired the DrawWinner tx.
-  const [triggeredDraw, setTriggeredDraw] = useState(false);
   // RedeemBox opens as a popup instead of inline - inline, its amount
   // input/balance/confirm stack made this card grow tall enough to
   // stretch (and visibly distort) the lab-screen image next to it.
@@ -134,31 +144,6 @@ export function WheelCard({
     }
   }
 
-  async function handleDrawWinner() {
-    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
-    const drawnRoundId = roundState.round.round_id;
-    setActionBusy("drawing");
-    setActionError(null);
-    try {
-      await drawWinner(walletState.wallet, contractAddress);
-      setTriggeredDraw(true);
-      onRoundFinished(drawnRoundId);
-    } catch (err) {
-      // Matches contracts/wheel-manager/src/error.rs's actual Display text
-      // for ContractError::DrawTooEarly, not the Rust variant name (which
-      // never appears in the raw_log).
-      setActionError(
-        err instanceof Error && err.message.includes("cannot be drawn yet")
-          ? t("wheel.drawTooEarly")
-          : err instanceof Error
-            ? err.message
-            : t("wheel.actionFailed")
-      );
-    } finally {
-      setActionBusy("idle");
-    }
-  }
-
   async function handleExpireRound() {
     if (walletState.status !== "connected" || roundState.status !== "loaded") return;
     const expiredRoundId = roundState.round.round_id;
@@ -169,6 +154,62 @@ export function WheelCard({
       onRoundFinished(expiredRoundId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  // 3-phase outage safety net for a Closed round that has gone unrevealed too
+  // long (the keeper is down) - see lib/roundActions.ts. Rare enough that
+  // this doesn't try to precompute exact block-height countdowns for the
+  // Finalize/Claim steps the way closeEligible does above, or hide Request
+  // vs. Finalize based on which is actually valid right now (the query
+  // doesn't expose expire_requested_at_height/expiry_pending_since_height,
+  // or whether this round is genuinely at the front of REVEAL_QUEUE) - the
+  // contract's own rejection surfaces as friendly text (friendlyRoundError)
+  // if a step is tried before it's ready, same pattern RaffleDetailPage.tsx
+  // already uses for CYOL.
+  async function handleRequestExpireClosed() {
+    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    setActionBusy("requestingRescue");
+    setActionError(null);
+    try {
+      await requestExpireClosedRound(walletState.wallet, roundState.round.round_id, contractAddress);
+      roundState.refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  async function handleFinalizeExpireClosed() {
+    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    setActionBusy("finalizingRescue");
+    setActionError(null);
+    try {
+      await finalizeExpireClosedRound(walletState.wallet, roundState.round.round_id, contractAddress);
+      roundState.refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+    } finally {
+      setActionBusy("idle");
+    }
+  }
+
+  // Marks the round Expired (like handleExpireRound above, this never moves
+  // funds itself) - the pre-existing Reclaim Ticket button, already shown for
+  // any Expired round below, is what each entrant then uses to actually get
+  // their ticket money back.
+  async function handleClaimExpiredClosed() {
+    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    setActionBusy("claimingRescue");
+    setActionError(null);
+    try {
+      await claimExpiredRound(walletState.wallet, roundState.round.round_id, contractAddress);
+      roundState.refetch();
+    } catch (err) {
+      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
@@ -211,7 +252,6 @@ export function WheelCard({
     reset();
     setJustReclaimed(false);
     setJustWithdrawn(false);
-    setTriggeredDraw(false);
     onContinue();
   }
 
@@ -263,6 +303,15 @@ export function WheelCard({
     loaded &&
     !hasMinPlayers &&
     nowSec >= roundState.round.opened_at + roundState.config.max_round_age_seconds + DEADLINE_SAFETY_BUFFER_SECONDS;
+
+  // Mirrors execute_request_expire_closed_round's own condition exactly
+  // (closed_at + max_reveal_age_seconds) - the outage safety net becomes
+  // relevant once a Closed round has sat unrevealed this long.
+  const stuckEligible =
+    loaded &&
+    roundState.round.status === "closed" &&
+    roundState.round.closed_at !== null &&
+    nowSec >= roundState.round.closed_at + roundState.config.max_reveal_age_seconds;
 
   // Whether the top full-width action slot is taken by Redeem. When it's
   // not (any revealed round where this wallet isn't sitting on an unclaimed
@@ -347,11 +396,11 @@ export function WheelCard({
     if (roundState.round.status === "closed") {
       return { type: "horizontal", message: t("wheel.closedWaitingDraw") };
     }
+    if (roundState.round.status === "expiry_pending") {
+      return { type: "horizontal", message: t("wheel.expiryPendingNote") };
+    }
     if (roundState.round.status === "expired" && justReclaimed) {
       return { type: "horizontal", message: t("wheel.reclaimedNote") };
-    }
-    if (roundState.round.status === "drawn" && result.kind !== "won" && triggeredDraw) {
-      return { type: "rectangulo", message: t("wheel.drawnByYou") };
     }
     return { type: "nube", message: HOST_HYPE_LINES[hypeIndex] };
   })();
@@ -494,13 +543,36 @@ export function WheelCard({
         </div>
       )}
 
-      {loaded && roundState.round.status === "closed" && (
+      {/* Outage safety net, discreet by design - only shows once a Closed
+          round has actually sat unrevealed for max_reveal_age_seconds
+          (stuckEligible), which never happens in the normal keeper-driven
+          flow. Request and Finalize render together rather than trying to
+          hide whichever isn't valid yet - see stuckEligible's own comment. */}
+      {stuckEligible && walletState.status === "connected" && (
+        <div className="wheel-actions-row">
+          <button
+            className="round-action-btn round-action-btn-secondary wheel-actions-row-btn"
+            onClick={handleRequestExpireClosed}
+            disabled={actionBusy !== "idle"}
+          >
+            {actionBusy === "requestingRescue" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
+          </button>
+          <button
+            className="round-action-btn round-action-btn-secondary wheel-actions-row-btn"
+            onClick={handleFinalizeExpireClosed}
+            disabled={actionBusy !== "idle"}
+          >
+            {actionBusy === "finalizingRescue" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
+          </button>
+        </div>
+      )}
+      {loaded && roundState.round.status === "expiry_pending" && walletState.status === "connected" && (
         <button
           className="round-action-btn"
-          onClick={handleDrawWinner}
-          disabled={actionBusy !== "idle" || walletState.status !== "connected"}
+          onClick={handleClaimExpiredClosed}
+          disabled={actionBusy !== "idle"}
         >
-          {actionBusy === "drawing" ? t("wheel.drawing") : t("wheel.drawWinner")}
+          {actionBusy === "claimingRescue" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
         </button>
       )}
 
@@ -626,16 +698,20 @@ export function WheelCard({
           (see hostBubble above). */}
 
       {/* reclaimedNote is skipped here too, same pattern - the Host already
-          says it (see hostBubble above). expiredNote stays, it's long. */}
+          says it (see hostBubble above). expiredNote stays, it's long.
+          RoundStatus::Expired is reached 2 different ways (see the
+          contract's own doc comment on that variant) - never reached
+          min_players, or reached Closed and then rescued via the 3-phase
+          outage safety net after going unrevealed too long. hasMinPlayers
+          tells them apart: only the never-reached-minimum path can ever
+          have it false once terminal. */}
       {loaded && roundState.round.status === "expired" && (
-        <p className="round-status-note">{t("wheel.expiredNote")}</p>
+        <p className="round-status-note">
+          {hasMinPlayers ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
+        </p>
       )}
 
-      {/* drawnByYou is skipped here too, same reason - the Host already
-          says it (see hostBubble above). drawnByOther is long enough
-          (and a different audience: the player who DIDN'T trigger the
-          draw) that it stays as plain card text. */}
-      {loaded && roundState.round.status === "drawn" && result.kind !== "won" && !triggeredDraw && (
+      {loaded && roundState.round.status === "drawn" && result.kind !== "won" && (
         <p className="round-status-note">{t("wheel.drawnByOther")}</p>
       )}
 

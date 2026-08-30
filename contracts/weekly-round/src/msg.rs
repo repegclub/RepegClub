@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, HexBinary, Uint128};
 
 use crate::state::RoundStatus;
 
@@ -12,11 +12,14 @@ pub struct InstantiateMsg {
     pub min_players: u32,
     pub max_players: u32,
     pub round_duration_days: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
+    /// See `Config::max_reveal_age_seconds`'s own doc comment. Bounded at
+    /// instantiate - see `contract::MIN_MAX_REVEAL_AGE_SECONDS`.
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: String,
     pub admin_fee_address: String,
+    /// See wheel-manager's matching `InstantiateMsg::commit_pusher`.
+    pub commit_pusher: String,
 }
 
 #[cw_serde]
@@ -24,11 +27,16 @@ pub enum ExecuteMsg {
     /// Called by Wheel Manager instances (or anyone) to add funds to this
     /// week's pool; open to any caller by design (worst case is a harmless
     /// bonus to the prize) rather than maintaining an admin-managed allowlist
-    /// of valid Wheel Manager addresses.
+    /// of valid Wheel Manager addresses. Infallible by week status - see
+    /// `execute::execute_contribute_to_pool`'s doc comment for why that
+    /// matters under v9.
     ContributeToPool { source_wheel: String, source_round_id: u64 },
     BuyWeeklyTicket {},
     CloseWeek {},
-    DrawWeeklyWinner {},
+    /// Reveals the winner for the week at the front of the reveal queue -
+    /// see wheel-manager's matching `RevealDraw` for the full rationale.
+    /// Replaces the old block-hash-based `DrawWeeklyWinner`.
+    RevealDraw { week_id: u64, preimage: HexBinary },
     Redeem { week_id: u64 },
     SweepUstc {},
     /// Anyone can call this once `unclaimed_deadline_days` have passed since a
@@ -52,6 +60,28 @@ pub enum ExecuteMsg {
     /// removes it from the week - deliberately no minimum wait before a
     /// second player shows up.
     WithdrawTicket { week_id: u64 },
+    /// Restricted to `Config::commit_pusher` - see wheel-manager's matching
+    /// `PushCommits` doc comment (this comment previously said "Admin-only",
+    /// stale since that role split off `admin`; round-review fix,
+    /// CodeRabbit 2026-08-30).
+    PushCommits { commits: Vec<HexBinary> },
+    /// Permissionless backfill - see wheel-manager's matching `AssignCommit`.
+    AssignCommit {},
+    /// Permissionless. First step of the 3-phase expiration - see
+    /// wheel-manager's matching `RequestExpireClosedRound`.
+    RequestExpireClosedWeek { week_id: u64 },
+    /// Permissionless. Second step - see wheel-manager's matching
+    /// `FinalizeExpireClosedRound`.
+    FinalizeExpireClosedWeek { week_id: u64 },
+    /// Permissionless. Final step - see wheel-manager's matching
+    /// `ClaimExpiredRound`.
+    ClaimExpiredWeek { week_id: u64 },
+    /// Admin-only. See wheel-manager's matching `DiscardQueuedCommits` doc
+    /// comment.
+    DiscardQueuedCommits {},
+    /// Admin-only. See wheel-manager's matching `SetCommitPusher` doc
+    /// comment.
+    SetCommitPusher { commit_pusher: String },
 }
 
 #[cw_serde]
@@ -98,9 +128,12 @@ pub struct WeekResponse {
     pub opened_at: u64,
     pub closed_at: Option<u64>,
     pub seconds_remaining: u64,
-    pub draw_after_height: Option<u64>,
+    pub closed_at_height: Option<u64>,
     pub drawn_at: Option<u64>,
-    pub draw_height: Option<u64>,
+    /// The hash this week must be revealed against.
+    pub commit_used: Option<HexBinary>,
+    /// The secret that unlocked `commit_used`, once revealed.
+    pub revealed_preimage: Option<HexBinary>,
     pub winner: Option<Addr>,
     pub prize_remaining: Uint128,
     pub expired_at: Option<u64>,
@@ -139,9 +172,9 @@ pub struct ConfigResponse {
     pub min_players: u32,
     pub max_players: u32,
     pub round_duration_days: u64,
-    pub draw_delay_blocks: u64,
-    pub draw_window_blocks: u64,
     pub unclaimed_deadline_days: u64,
+    pub max_reveal_age_seconds: u64,
     pub treasury_address: Addr,
     pub admin_fee_address: Addr,
+    pub commit_pusher: Addr,
 }

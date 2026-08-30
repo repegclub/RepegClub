@@ -1,26 +1,20 @@
 use cosmwasm_std::Addr;
 use sha2::{Digest, Sha256};
 
-/// Deterministically picks a winner index into `entrants`, weighted by how many
-/// times an address appears (one entry per ticket bought). The source of
-/// randomness is the block height + time at the moment `DrawWeeklyWinner`
-/// executes (checked by the caller to be `draw_delay_blocks` after the week
-/// closed), hashed together with the ordered list of entrants for that week.
-///
-/// KNOWN LIMITATION: same block-based-randomness caveat as wheel-manager's
-/// `rand.rs` - see that file for the full writeup (residual validator-grinding
-/// risk within `draw_window_blocks`, and why commit-reveal / Nois were
-/// evaluated and deferred rather than built now).
+/// See wheel-manager's matching `pick_winner_index` for the full rationale -
+/// same commit-reveal mechanism, replacing the block-height/block-time hash
+/// this contract used before v9.
 pub fn pick_winner_index(
+    contract_addr: &Addr,
     week_id: u64,
-    block_height: u64,
-    block_time_nanos: u64,
+    preimage: &[u8],
     entrants: &[Addr],
 ) -> usize {
     let mut hasher = Sha256::new();
+    hasher.update(contract_addr.as_bytes());
+    hasher.update([0u8]);
     hasher.update(week_id.to_be_bytes());
-    hasher.update(block_height.to_be_bytes());
-    hasher.update(block_time_nanos.to_be_bytes());
+    hasher.update(preimage);
     for entrant in entrants {
         hasher.update(entrant.as_bytes());
         hasher.update([0u8]);
