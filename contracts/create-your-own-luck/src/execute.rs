@@ -1301,7 +1301,13 @@ pub fn execute_close_round(deps: DepsMut, env: Env, info: MessageInfo) -> Result
 /// mechanism was replaced. No id parameter: unlike wheel-manager/weekly-round
 /// this contract only ever has one raffle per instance, so there's no reveal
 /// queue to front-check.
-pub fn execute_reveal_draw(deps: DepsMut, env: Env, preimage: HexBinary) -> Result<Response, ContractError> {
+pub fn execute_reveal_draw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    preimage: HexBinary,
+) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
 
@@ -1331,7 +1337,8 @@ pub fn execute_reveal_draw(deps: DepsMut, env: Env, preimage: HexBinary) -> Resu
 /// Permissionless. First step of the 3-phase expiration for a `Closed`
 /// raffle that has gone unrevealed too long - the outage safety net. See
 /// `ExecuteMsg::RequestExpireClosedRaffle`'s doc comment.
-pub fn execute_request_expire_closed_raffle(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+pub fn execute_request_expire_closed_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let mut raffle = RAFFLE.load(deps.storage)?;
     if raffle.status != RaffleStatus::Closed {
         return Err(ContractError::RaffleNotClosedForExpiry {});
@@ -1355,7 +1362,8 @@ pub fn execute_request_expire_closed_raffle(deps: DepsMut, env: Env) -> Result<R
 /// Permissionless. Second step of the 3-phase expiration - see
 /// `ExecuteMsg::FinalizeExpireClosedRaffle`'s doc comment. Still rescuable by
 /// a legitimate `RevealDraw` after this.
-pub fn execute_finalize_expire_closed_raffle(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+pub fn execute_finalize_expire_closed_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let mut raffle = RAFFLE.load(deps.storage)?;
     if raffle.status != RaffleStatus::Closed {
         return Err(ContractError::RaffleNotClosedForExpiry {});
@@ -1388,7 +1396,8 @@ pub fn execute_finalize_expire_closed_raffle(deps: DepsMut, env: Env) -> Result<
 /// recycling a commit from this specific call site can hand a raffle whose
 /// preimage may already be public to a future, healthy raffle. The commit
 /// this raffle held is simply never returned to the factory's queue.
-pub fn claim_expired_raffle(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+pub fn claim_expired_raffle(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let config = CONFIG.load(deps.storage)?;
     let mut raffle = RAFFLE.load(deps.storage)?;
     if raffle.status != RaffleStatus::ExpiryPending {

@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 
 import { RPC, loadWallet } from "./config";
+import { addSecrets } from "./keeperSecrets";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +16,13 @@ async function pushAndAssignCommitIfNeeded(contractAddress: string, commitUsed: 
   if (commitUsed) return;
   const admin = loadWallet("ADMIN_MNEMONIC");
   const commitPusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
-  const commit = createHash("sha256").update(randomBytes(32)).digest("hex");
+  // Preimage kept and persisted (round-review fix, CodeRabbit 2026-08-30):
+  // this script never reveals anything itself, but discarding it here would
+  // leave an un-revealable commit in the shared COMMIT_QUEUE - any round
+  // that later consumes it could never be revealed without the 3-phase
+  // outage safety net.
+  const preimage = randomBytes(32);
+  const commit = createHash("sha256").update(preimage).digest("hex");
   const pushRes = await commitPusher.broadcastTxSync({
     msgs: [
       new MsgExecuteContract({
@@ -27,6 +34,7 @@ async function pushAndAssignCommitIfNeeded(contractAddress: string, commitUsed: 
     ],
   });
   if (pushRes.txResponse.code !== 0) throw new Error(`push_commits failed: ${pushRes.txResponse.rawLog}`);
+  addSecrets([{ commit, preimage: preimage.toString("hex") }]);
   const assignRes = await admin.broadcastTxSync({
     msgs: [
       new MsgExecuteContract({ sender: admin.address, contract: contractAddress, msg: { assign_commit: {} }, funds: [] }),

@@ -2069,6 +2069,62 @@ fn cancel_raffle_rejects_unexpected_funds() {
 }
 
 #[test]
+fn reveal_draw_rejects_unexpected_funds() {
+    // Funds check runs before any state is loaded, so this fires regardless
+    // of raffle status or preimage validity - round-review fix (CodeRabbit,
+    // 2026-08-30): the 4 new v9 messages below never checked attached funds
+    // at all, unlike every other message in this contract.
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RevealDraw { preimage: preimage_for(1) },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn request_expire_closed_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RequestExpireClosedRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn finalize_expire_closed_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::FinalizeExpireClosedRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn claim_expired_raffle_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(RaffleType::SingleWinner, 2, 3, 1_000_000, vec![]);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::ClaimExpiredRaffle {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
 fn cancel_raffle_rejects_awaiting_commit_and_expiry_pending() {
     // v9's `execute_cancel_raffle` match on `raffle.status` used to be
     // non-exhaustive once `AwaitingCommit`/`ExpiryPending` were added -

@@ -82,7 +82,7 @@ pub fn execute(
         ExecuteMsg::BuyTicket {} => execute_buy_ticket(deps, env, info),
         ExecuteMsg::CloseRound {} => execute_close_round(deps, env),
         ExecuteMsg::RevealDraw { round_id, preimage } => {
-            execute_reveal_draw(deps, env, round_id, preimage)
+            execute_reveal_draw(deps, env, info, round_id, preimage)
         }
         ExecuteMsg::Redeem { round_id } => execute_redeem(deps, info, round_id),
         ExecuteMsg::SweepUstc {} => execute_sweep_ustc(deps, env, info),
@@ -95,12 +95,12 @@ pub fn execute(
         ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
         ExecuteMsg::AssignCommit {} => execute_assign_commit(deps),
         ExecuteMsg::RequestExpireClosedRound { round_id } => {
-            execute_request_expire_closed_round(deps, env, round_id)
+            execute_request_expire_closed_round(deps, env, info, round_id)
         }
         ExecuteMsg::FinalizeExpireClosedRound { round_id } => {
-            execute_finalize_expire_closed_round(deps, env, round_id)
+            execute_finalize_expire_closed_round(deps, env, info, round_id)
         }
-        ExecuteMsg::ClaimExpiredRound { round_id } => claim_expired_round(deps, env, round_id),
+        ExecuteMsg::ClaimExpiredRound { round_id } => claim_expired_round(deps, env, info, round_id),
     }
 }
 

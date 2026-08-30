@@ -27,7 +27,7 @@ const [
 ] = process.argv;
 if (!label || !maxPlayersArg || !minPlayersArg) {
   console.error(
-    "Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays]"
+    "Usage: tsx src/deployWheelManager.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPriceUluna] [maxRevealAgeSeconds] [unclaimedDeadlineDays] [weeklyRoundDeploymentFile]"
   );
   process.exit(1);
 }
@@ -58,8 +58,10 @@ const maxRevealAgeSeconds = maxRevealAgeArg ? Number(maxRevealAgeArg) : 3600;
 const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
 // Defaults to the isolated weekly-round-stub (contribution sink only) - pass
-// a real weekly-round deployment file (e.g. deployment-weekly-round-<label>.json)
-// to wire this Wheel Manager to a real Weekly Round instance for full
+// a real weekly-round deployment file (e.g. deployment-weekly-round.json,
+// the fixed filename deployWeeklyRound.ts always writes to - weekly-round is
+// a platform singleton, unlike this contract's own per-label deploys) to
+// wire this Wheel Manager to a real Weekly Round instance for full
 // cross-contract integration testing instead.
 const weeklyStubDeploymentPath = path.resolve(
   __dirname,

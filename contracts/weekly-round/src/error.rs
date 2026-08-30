@@ -18,6 +18,9 @@ pub enum ContractError {
     #[error("Week has not been drawn yet")]
     WeekNotDrawn {},
 
+    #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd sit unspent in the contract with no dedicated way to recover them")]
+    UnexpectedFundsAttached { denom: String },
+
     #[error("Week cannot be closed yet: max players not reached and the round duration has not elapsed")]
     CannotCloseWeek {},
 

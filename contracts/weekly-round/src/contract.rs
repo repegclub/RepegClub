@@ -73,7 +73,7 @@ pub fn execute(
         } => execute_contribute_to_pool(deps, info, source_wheel, source_round_id),
         ExecuteMsg::BuyWeeklyTicket {} => execute_buy_weekly_ticket(deps, env, info),
         ExecuteMsg::CloseWeek {} => execute_close_week(deps, env),
-        ExecuteMsg::RevealDraw { week_id, preimage } => execute_reveal_draw(deps, env, week_id, preimage),
+        ExecuteMsg::RevealDraw { week_id, preimage } => execute_reveal_draw(deps, env, info, week_id, preimage),
         ExecuteMsg::Redeem { week_id } => execute_redeem(deps, info, week_id),
         ExecuteMsg::SweepUstc {} => execute_sweep_ustc(deps, env, info),
         ExecuteMsg::SweepExpiredPrize { week_id } => execute_sweep_expired_prize(deps, env, week_id),
@@ -83,12 +83,12 @@ pub fn execute(
         ExecuteMsg::PushCommits { commits } => execute_push_commits(deps, info, commits),
         ExecuteMsg::AssignCommit {} => execute_assign_commit(deps),
         ExecuteMsg::RequestExpireClosedWeek { week_id } => {
-            execute_request_expire_closed_week(deps, env, week_id)
+            execute_request_expire_closed_week(deps, env, info, week_id)
         }
         ExecuteMsg::FinalizeExpireClosedWeek { week_id } => {
-            execute_finalize_expire_closed_week(deps, env, week_id)
+            execute_finalize_expire_closed_week(deps, env, info, week_id)
         }
-        ExecuteMsg::ClaimExpiredWeek { week_id } => claim_expired_week(deps, env, week_id),
+        ExecuteMsg::ClaimExpiredWeek { week_id } => claim_expired_week(deps, env, info, week_id),
     }
 }
 

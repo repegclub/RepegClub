@@ -24,6 +24,21 @@ import { discoverTargets } from "./keeperTargets";
 import { addSecrets } from "./keeperSecrets";
 
 const DEFAULT_COUNT = 20;
+// Matches every contract's own PUSH_COMMITS_MAX_BATCH - a batch bigger than
+// this gets rejected outright by PushCommits, wasting the whole tx's gas.
+const MAX_BATCH = 50;
+
+// Round-review fix (CodeRabbit, 2026-08-30): an unparseable, negative, or
+// oversized count used to pass straight through to generateCommits/PushCommits
+// with no validation.
+function parseCount(arg: string | undefined): number {
+  if (arg === undefined) return DEFAULT_COUNT;
+  const n = Number(arg);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`count must be a positive integer, got: ${arg}`);
+  }
+  return Math.min(n, MAX_BATCH);
+}
 
 function generateCommits(count: number): { commit: string; preimage: string }[] {
   const pairs = [];
@@ -36,7 +51,7 @@ function generateCommits(count: number): { commit: string; preimage: string }[] 
 }
 
 async function main() {
-  const count = process.argv[2] ? Number(process.argv[2]) : DEFAULT_COUNT;
+  const count = parseCount(process.argv[2]);
   const pusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
   console.log("commit_pusher address:", pusher.address);
 

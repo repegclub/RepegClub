@@ -60,7 +60,10 @@ pub enum ExecuteMsg {
     /// removes it from the week - deliberately no minimum wait before a
     /// second player shows up.
     WithdrawTicket { week_id: u64 },
-    /// Admin-only. See wheel-manager's matching `PushCommits` doc comment.
+    /// Restricted to `Config::commit_pusher` - see wheel-manager's matching
+    /// `PushCommits` doc comment (this comment previously said "Admin-only",
+    /// stale since that role split off `admin`; round-review fix,
+    /// CodeRabbit 2026-08-30).
     PushCommits { commits: Vec<HexBinary> },
     /// Permissionless backfill - see wheel-manager's matching `AssignCommit`.
     AssignCommit {},

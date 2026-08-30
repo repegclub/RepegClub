@@ -51,11 +51,23 @@ export async function verifyRound(
     getRoundHistory(roundId, contractAddress),
     getRoundEntrants(roundId, contractAddress),
   ]);
-  if (round.status !== "drawn" || !round.revealed_preimage || !round.winner) {
+  if (round.status !== "drawn" || !round.revealed_preimage || !round.commit_used || !round.winner) {
     throw new Error("This round has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;
   if (entrants.length === 0) throw new Error("No entrants recorded for this round.");
+
+  // Binds the reveal to its commitment, independently of the contract's own
+  // check (round-review fix, CodeRabbit 2026-08-30): without this, a
+  // self-consistent but never-actually-committed preimage - from a buggy
+  // contract or a compromised RPC response - would still make this function
+  // recompute *a* winner and report a false "verified" if it happened to
+  // match. sha256(revealed_preimage) must equal commit_used before the
+  // winner-selection hash below means anything.
+  const preimageDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", hexToBytes(round.revealed_preimage)));
+  const commitBytes = hexToBytes(round.commit_used);
+  const commitmentValid =
+    preimageDigest.length === commitBytes.length && preimageDigest.every((b, i) => b === commitBytes[i]);
 
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [
@@ -91,7 +103,7 @@ export async function verifyRound(
     winnerIndex,
     computedWinner,
     onChainWinner: round.winner,
-    matches: computedWinner === round.winner,
+    matches: commitmentValid && computedWinner === round.winner,
     entrantsQueryUrl: entrantsQueryUrl(roundId, contractAddress),
   };
 }

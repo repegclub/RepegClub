@@ -35,7 +35,14 @@ pub enum FactoryExecuteMsg {
     /// a raffle that consumed one via `ConsumeCommit` but never used it in
     /// any hash (i.e. never reached `Drawn`). See the factory's own
     /// `ExecuteMsg::ReturnCommit` doc comment for why this exists (closes a
-    /// cheap DoS on the commit queue) and why it's safe to recycle (the
-    /// preimage was never revealed, so reusing the commit leaks nothing).
+    /// cheap DoS on the commit queue). Only dispatched from
+    /// `execute_cancel_raffle`/`execute_expire_raffle` (both `Funding`/`Open`
+    /// only, where no `RevealDraw` could ever have been broadcast) - NEVER
+    /// from `claim_expired_raffle` (round-review fix, CodeRabbit 2026-08-30:
+    /// this comment previously claimed recycling was always safe because
+    /// "the preimage was never revealed" - wrong for a raffle that reached
+    /// `Closed`, which may have had its preimage published by a losing
+    /// `RevealDraw` transaction; see `claim_expired_raffle`'s own doc
+    /// comment, Ronda 10 audit fix).
     ReturnCommit {},
 }

@@ -79,8 +79,10 @@ pub enum ExecuteMsg {
         base_bps: u64,
         late_additional_bps: u64,
     },
-    /// Admin-only. Adds commits (`sha256(preimage)`) to the queue SingleWinner/
-    /// Podium raffles draw from via `ConsumeCommit` - see `COMMIT_QUEUE`'s own
+    /// Restricted to the factory's own `COMMIT_PUSHER` (round-review fix,
+    /// CodeRabbit 2026-08-30 - this comment previously said "Admin-only").
+    /// Adds commits (`sha256(preimage)`) to the queue SingleWinner/Podium
+    /// raffles draw from via `ConsumeCommit` - see `COMMIT_QUEUE`'s own
     /// doc comment. Batch size and total queue length are bounded (see
     /// `execute::PUSH_COMMITS_MAX_BATCH`/`MAX_COMMIT_QUEUE_LEN`), and every
     /// commit must be new (never pushed before) and exactly 32 bytes.

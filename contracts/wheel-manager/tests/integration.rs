@@ -3,7 +3,9 @@ use cosmwasm_std::{coin, coins, from_json, CosmosMsg, HexBinary, Uint128, WasmMs
 use sha2::{Digest, Sha256};
 
 use wheel_manager::contract::{execute, instantiate, query};
-use wheel_manager::execute::open_new_round;
+use wheel_manager::execute::{
+    open_new_round, EXPIRE_CHALLENGE_BLOCKS, EXPIRE_FINALIZE_DELAY_BLOCKS, REVEAL_PRIORITY_MARGIN_BLOCKS,
+};
 use wheel_manager::msg::{
     ConfigResponse, EntrantsResponse, ExecuteMsg, InstantiateMsg, MyWinningsResponse, QueryMsg,
     RoundResponse, WalletStatsResponse,
@@ -107,6 +109,62 @@ fn reveal(deps: &mut Deps, env: &cosmwasm_std::Env, round_id: u64, n: u8) -> Res
         mock_info("anyone", &[]),
         ExecuteMsg::RevealDraw { round_id, preimage: preimage_for(n) },
     )
+}
+
+// Funds check runs before any state is loaded (REVEAL_QUEUE, round status),
+// so these fire on a freshly-opened round regardless - round-review fix
+// (CodeRabbit, 2026-08-30): RevealDraw and the 3-phase rescue actions never
+// checked attached funds at all, unlike every other message in this contract.
+#[test]
+fn reveal_draw_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RevealDraw { round_id: 1, preimage: preimage_for(1) },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn request_expire_closed_round_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RequestExpireClosedRound { round_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn finalize_expire_closed_round_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::FinalizeExpireClosedRound { round_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn claim_expired_round_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::ClaimExpiredRound { round_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
 }
 
 #[test]
@@ -882,7 +940,7 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_round() {
     assert!(matches!(err, ContractError::FinalizeDelayNotElapsed { .. }));
 
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100; // EXPIRE_FINALIZE_DELAY_BLOCKS
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 1 }).unwrap();
     assert_eq!(round_history(&deps, &finalize_env, 1).status, RoundStatus::ExpiryPending);
 
@@ -891,11 +949,11 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_round() {
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
 
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100; // EXPIRE_CHALLENGE_BLOCKS
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS;
     let err = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 1 }).unwrap_err();
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }), "REVEAL_PRIORITY_MARGIN_BLOCKS hasn't elapsed yet");
 
-    claim_env.block.height += 20; // REVEAL_PRIORITY_MARGIN_BLOCKS
+    claim_env.block.height += REVEAL_PRIORITY_MARGIN_BLOCKS;
     let res = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 1 }).unwrap();
     assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "claim_expired_round"));
 
@@ -965,7 +1023,7 @@ fn request_and_finalize_expire_reject_a_round_that_is_not_the_queue_front() {
     // start, and gets its own full window from here - not zero.
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRound { round_id: 2 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100; // EXPIRE_FINALIZE_DELAY_BLOCKS
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 2 }).unwrap();
     assert_eq!(round_history(&deps, &finalize_env, 2).status, RoundStatus::ExpiryPending);
 
@@ -974,7 +1032,7 @@ fn request_and_finalize_expire_reject_a_round_that_is_not_the_queue_front() {
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
 
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS;
     execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 2 }).unwrap();
     assert_eq!(round_history(&deps, &claim_env, 2).status, RoundStatus::Expired);
 }
@@ -1005,10 +1063,10 @@ fn claim_expired_round_correctly_routes_a_nonzero_carried_in_amount_to_the_next_
     overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRound { round_id: 2 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 2 }).unwrap();
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS;
     let res = execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 2 }).unwrap();
 
     // carry_forward = pool (2_100_000) - tickets_value (2_000_000) = 100_000
@@ -1036,7 +1094,7 @@ fn a_legitimate_reveal_still_rescues_a_round_already_in_expiry_pending() {
     overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedRound { round_id: 1 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedRound { round_id: 1 }).unwrap();
     assert_eq!(round_history(&deps, &finalize_env, 1).status, RoundStatus::ExpiryPending);
 
@@ -1050,7 +1108,7 @@ fn a_legitimate_reveal_still_rescues_a_round_already_in_expiry_pending() {
 
     // ClaimExpiredRound can no longer apply - the round already resolved.
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100;
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS;
     let err = execute(deps.as_mut(), claim_env, mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredRound { round_id: 1 }).unwrap_err();
     assert!(matches!(err, ContractError::NothingToReveal {}));
 }

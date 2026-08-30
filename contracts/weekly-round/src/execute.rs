@@ -192,6 +192,19 @@ pub fn execute_buy_weekly_ticket(deps: DepsMut, env: Env, info: MessageInfo) -> 
         .add_attribute("auto_closed", auto_closed.to_string()))
 }
 
+/// See wheel-manager's matching `reject_unexpected_funds` doc comment - same
+/// pattern, duplicated rather than shared across the 3 independent
+/// contracts. Round-review fix (CodeRabbit, 2026-08-30): `RevealDraw` and the
+/// 3-phase rescue actions never checked this at all.
+fn reject_unexpected_funds(funds: &[Coin], allowed: &[&str]) -> Result<(), ContractError> {
+    for coin in funds {
+        if !allowed.contains(&coin.denom.as_str()) {
+            return Err(ContractError::UnexpectedFundsAttached { denom: coin.denom.clone() });
+        }
+    }
+    Ok(())
+}
+
 /// See wheel-manager's matching `close_round_and_advance` doc comment - same
 /// mechanism: closes, enqueues for reveal, and opens the successor
 /// atomically, without ever drawing a winner itself.
@@ -386,9 +399,11 @@ pub fn execute_withdraw_ticket(
 pub fn execute_reveal_draw(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     week_id: u64,
     preimage: HexBinary,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != week_id {
         return Err(ContractError::QueueMismatch { front, week_id });
@@ -532,8 +547,10 @@ pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
 pub fn execute_request_expire_closed_week(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     week_id: u64,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != week_id {
         return Err(ContractError::QueueMismatch { front, week_id });
@@ -569,8 +586,10 @@ pub fn execute_request_expire_closed_week(
 pub fn execute_finalize_expire_closed_week(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     week_id: u64,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != week_id {
         return Err(ContractError::QueueMismatch { front, week_id });
@@ -602,7 +621,8 @@ pub fn execute_finalize_expire_closed_week(
 /// Permissionless. Final step - see wheel-manager's matching
 /// `claim_expired_round`. Never touches `state.current_week_id` or opens
 /// anything - the successor week already opened when this one closed.
-pub fn claim_expired_week(deps: DepsMut, env: Env, week_id: u64) -> Result<Response, ContractError> {
+pub fn claim_expired_week(deps: DepsMut, env: Env, info: MessageInfo, week_id: u64) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != week_id {
         return Err(ContractError::QueueMismatch { front, week_id });

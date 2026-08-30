@@ -346,6 +346,22 @@ fn split_pool_for_expiry(config: &crate::state::Config, round: &Round) -> (Uint1
     (tickets_value, carry_forward)
 }
 
+/// A stray coin attached to a call that expects none (wrong wallet UI,
+/// fat-fingered denom) would otherwise be silently absorbed by the contract.
+/// Same pattern as create-your-own-luck's own `reject_unexpected_funds`
+/// (duplicated rather than shared, matching this project's convention of no
+/// shared crate between the 3 independent contracts). Round-review fix
+/// (CodeRabbit, 2026-08-30): `RevealDraw` and the 3-phase rescue actions
+/// never checked this at all.
+fn reject_unexpected_funds(funds: &[Coin], allowed: &[&str]) -> Result<(), ContractError> {
+    for coin in funds {
+        if !allowed.contains(&coin.denom.as_str()) {
+            return Err(ContractError::UnexpectedFundsAttached { denom: coin.denom.clone() });
+        }
+    }
+    Ok(())
+}
+
 /// Callable by any wallet that bought at least one ticket in an `Expired`
 /// round - refunds exactly what that wallet paid and removes its entries
 /// from the round, so it can't be reclaimed twice.
@@ -448,9 +464,11 @@ pub fn execute_withdraw_ticket(
 pub fn execute_reveal_draw(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     round_id: u64,
     preimage: HexBinary,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != round_id {
         return Err(ContractError::QueueMismatch { front, round_id });
@@ -646,8 +664,10 @@ pub fn execute_assign_commit(deps: DepsMut) -> Result<Response, ContractError> {
 pub fn execute_request_expire_closed_round(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     round_id: u64,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != round_id {
         return Err(ContractError::QueueMismatch { front, round_id });
@@ -689,8 +709,10 @@ pub fn execute_request_expire_closed_round(
 pub fn execute_finalize_expire_closed_round(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     round_id: u64,
 ) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != round_id {
         return Err(ContractError::QueueMismatch { front, round_id });
@@ -725,7 +747,8 @@ pub fn execute_finalize_expire_closed_round(
 /// successor open (it opened one atomically when it closed - see
 /// `close_round_and_advance`), so this never touches `state.current_round_id`
 /// or opens anything - only `route_carry`s the leftover carry-in.
-pub fn claim_expired_round(deps: DepsMut, env: Env, round_id: u64) -> Result<Response, ContractError> {
+pub fn claim_expired_round(deps: DepsMut, env: Env, info: MessageInfo, round_id: u64) -> Result<Response, ContractError> {
+    reject_unexpected_funds(&info.funds, &[])?;
     let front = REVEAL_QUEUE.front(deps.storage)?.ok_or(ContractError::NothingToReveal {})?;
     if front != round_id {
         return Err(ContractError::QueueMismatch { front, round_id });

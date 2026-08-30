@@ -18,6 +18,9 @@ pub enum ContractError {
     #[error("Round has not been drawn yet")]
     RoundNotDrawn {},
 
+    #[error("Unexpected denom attached: {denom} - only send the denom(s) this call expects, or they'd sit unspent in the contract with no dedicated way to recover them")]
+    UnexpectedFundsAttached { denom: String },
+
     #[error("Round cannot be closed yet: max players not reached and timeout has not elapsed")]
     CannotCloseRound {},
 

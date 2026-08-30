@@ -40,11 +40,18 @@ function entrantsQueryUrl(contractAddress: string): string {
 
 export async function verifyCyolRaffle(contractAddress: string, onChainWinner: string): Promise<VerifyCyolRaffleResult> {
   const [status, entrantsRes] = await Promise.all([getRaffleStatus(contractAddress), getEntrants(contractAddress)]);
-  if (status.status !== "drawn" || !status.revealed_preimage) {
+  if (status.status !== "drawn" || !status.revealed_preimage || !status.commit_used) {
     throw new Error("This raffle has not been drawn yet.");
   }
   const entrants = entrantsRes.entrants;
   if (entrants.length === 0) throw new Error("No entrants recorded for this raffle.");
+
+  // Binds the reveal to its commitment - see lib/verifyRound.ts's own
+  // comment on this exact check for the full reasoning.
+  const preimageDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", hexToBytes(status.revealed_preimage)));
+  const commitBytes = hexToBytes(status.commit_used);
+  const commitmentValid =
+    preimageDigest.length === commitBytes.length && preimageDigest.every((b, i) => b === commitBytes[i]);
 
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [
@@ -79,7 +86,7 @@ export async function verifyCyolRaffle(contractAddress: string, onChainWinner: s
     winnerIndex,
     computedWinner,
     onChainWinner,
-    matches: computedWinner === onChainWinner,
+    matches: commitmentValid && computedWinner === onChainWinner,
     entrantsQueryUrl: entrantsQueryUrl(contractAddress),
   };
 }

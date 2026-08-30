@@ -3,7 +3,9 @@ use cosmwasm_std::{coins, from_json, CosmosMsg, HexBinary, Uint128};
 use sha2::{Digest, Sha256};
 
 use weekly_round::contract::{execute, instantiate, query};
-use weekly_round::execute::open_new_week;
+use weekly_round::execute::{
+    open_new_week, EXPIRE_CHALLENGE_BLOCKS, EXPIRE_FINALIZE_DELAY_BLOCKS, REVEAL_PRIORITY_MARGIN_BLOCKS,
+};
 use weekly_round::msg::{
     ConfigResponse, EntrantsResponse, ExecuteMsg, InstantiateMsg, MyWinningsResponse, QueryMsg,
     TodayPriceResponse, WalletStatsResponse, WeekResponse,
@@ -87,6 +89,62 @@ fn reveal(deps: &mut Deps, env: &cosmwasm_std::Env, week_id: u64, n: u8) -> Resu
 fn wallet_stats(deps: &Deps, env: &cosmwasm_std::Env, wallet: &str) -> WalletStatsResponse {
     let bin = query(deps.as_ref(), env.clone(), QueryMsg::GetWalletStats { wallet: wallet.to_string() }).unwrap();
     from_json(bin).unwrap()
+}
+
+// Funds check runs before any state is loaded (REVEAL_QUEUE, week status),
+// so these fire on a freshly-opened week regardless - round-review fix
+// (CodeRabbit, 2026-08-30): RevealDraw and the 3-phase rescue actions never
+// checked attached funds at all, unlike every other message in this contract.
+#[test]
+fn reveal_draw_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2, 7);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RevealDraw { week_id: 1, preimage: preimage_for(1) },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn request_expire_closed_week_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2, 7);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::RequestExpireClosedWeek { week_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn finalize_expire_closed_week_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2, 7);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::FinalizeExpireClosedWeek { week_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
+}
+
+#[test]
+fn claim_expired_week_rejects_unexpected_funds() {
+    let (mut deps, env) = setup(3, 2, 7);
+    let err = execute(
+        deps.as_mut(),
+        env,
+        mock_info("anyone", &coins(1, "some_other_denom")),
+        ExecuteMsg::ClaimExpiredWeek { week_id: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(err, ContractError::UnexpectedFundsAttached { .. }));
 }
 
 #[test]
@@ -656,7 +714,7 @@ fn contribute_to_pool_succeeds_regardless_of_week_status() {
     overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 1 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 1 }).unwrap();
     assert_eq!(week_history(&deps, &finalize_env, 1).status, RoundStatus::ExpiryPending);
 
@@ -683,7 +741,7 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_week() {
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 1 }).unwrap();
 
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 1 }).unwrap();
     assert_eq!(week_history(&deps, &finalize_env, 1).status, RoundStatus::ExpiryPending);
 
@@ -691,7 +749,7 @@ fn full_3_phase_expiration_refunds_entrants_without_opening_a_new_week() {
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
 
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS;
     execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredWeek { week_id: 1 }).unwrap();
 
     let week1 = week_history(&deps, &claim_env, 1);
@@ -744,7 +802,7 @@ fn request_and_finalize_expire_reject_a_week_that_is_not_the_queue_front() {
     // window from here, not zero.
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 2 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 2 }).unwrap();
     assert_eq!(week_history(&deps, &finalize_env, 2).status, RoundStatus::ExpiryPending);
 
@@ -752,7 +810,7 @@ fn request_and_finalize_expire_reject_a_week_that_is_not_the_queue_front() {
     assert!(matches!(err, ContractError::ChallengeWindowOpen { .. }));
 
     let mut claim_env = finalize_env.clone();
-    claim_env.block.height += 100 + 20; // EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+    claim_env.block.height += EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS;
     execute(deps.as_mut(), claim_env.clone(), mock_info("anyone", &[]), ExecuteMsg::ClaimExpiredWeek { week_id: 2 }).unwrap();
     assert_eq!(week_history(&deps, &claim_env, 2).status, RoundStatus::Expired);
 }
@@ -767,7 +825,7 @@ fn a_legitimate_reveal_still_rescues_a_week_already_in_expiry_pending() {
     overdue_env.block.time = overdue_env.block.time.plus_seconds(MAX_REVEAL_AGE_SECONDS);
     execute(deps.as_mut(), overdue_env.clone(), mock_info("anyone", &[]), ExecuteMsg::RequestExpireClosedWeek { week_id: 1 }).unwrap();
     let mut finalize_env = overdue_env.clone();
-    finalize_env.block.height += 100;
+    finalize_env.block.height += EXPIRE_FINALIZE_DELAY_BLOCKS;
     execute(deps.as_mut(), finalize_env.clone(), mock_info("anyone", &[]), ExecuteMsg::FinalizeExpireClosedWeek { week_id: 1 }).unwrap();
 
     let res = reveal(&mut deps, &finalize_env, 1, 1).unwrap();

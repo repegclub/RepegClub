@@ -66,9 +66,12 @@ pub enum ExecuteMsg {
     /// exactly what that wallet paid and removes it from the round -
     /// deliberately no minimum wait before a second player shows up.
     WithdrawTicket { round_id: u64 },
-    /// Admin-only. Adds pre-generated commits (`sha256(preimage)`, 32 bytes
-    /// each, generated offline) to `COMMIT_QUEUE` - see that constant's doc
-    /// comment for the dedup/reuse rules.
+    /// Restricted to `Config::commit_pusher` (round-review fix, CodeRabbit
+    /// 2026-08-30 - this comment previously said "Admin-only", stale since
+    /// that role split off `admin`). Adds pre-generated commits
+    /// (`sha256(preimage)`, 32 bytes each, generated offline) to
+    /// `COMMIT_QUEUE` - see that constant's doc comment for the dedup/reuse
+    /// rules.
     PushCommits { commits: Vec<HexBinary> },
     /// Permissionless backfill: assigns the next queued commit to the current
     /// round if it doesn't have one yet (only possible while it's `Open` with

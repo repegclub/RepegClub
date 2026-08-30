@@ -66,6 +66,22 @@ async function main() {
     ],
   });
   if (assignRes.txResponse.code !== 0) throw new Error(`assign_commit failed: ${assignRes.txResponse.rawLog}`);
+  // Confirms round 1 actually got THIS commit, not some other one already
+  // sitting ahead of it in COMMIT_QUEUE from an earlier run (round-review
+  // fix, CodeRabbit 2026-08-30) - assign_commit only assigns the front of
+  // the queue, and only if the round doesn't already have one, so this can
+  // silently assign someone else's commit instead of the one just pushed.
+  // Reveal below would otherwise fail with BadPreimage far later, with no
+  // clue why.
+  const assignedRound = await queryContract<{ commit_used: string | null }>(RPC, {
+    address: contractAddress,
+    query: { get_current_round: {} },
+  });
+  if (assignedRound.commit_used !== commit) {
+    throw new Error(
+      `Round 1 was assigned commit ${assignedRound.commit_used}, not the one this script just pushed (${commit}) - COMMIT_QUEUE already had an earlier commit ahead of it.`
+    );
+  }
   console.log("  committed and assigned to round 1");
 
   const [treasuryBefore, adminFeeBefore, weeklyBefore] = await Promise.all([

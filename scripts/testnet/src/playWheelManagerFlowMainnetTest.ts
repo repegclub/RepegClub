@@ -159,7 +159,7 @@ async function main() {
   reportTax("redeem (USTC in as funds, USDC out via BankMsg::Send)", redeemRes.txResponse.events);
 
   console.log("\n=== DONE ===");
-  console.log("Review the [tax event] lines above for buy_ticket, draw_winner, and redeem.");
+  console.log("Review the [tax event] lines above for buy_ticket, reveal_draw, and redeem.");
   console.log("Theory (docs/terra-classic-chain-notes.md): none of them should show a tax event -");
   console.log("funds attached to MsgExecuteContract are tax-free, and USDC/USTC aren't taxable denoms.");
 }
