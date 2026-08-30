@@ -1,18 +1,19 @@
 // Dedicated Wheel Manager testnet deployment for frontend development.
-// Redeployed 2026-07-19 (v7): fixed execute_reclaim_ticket never calling
-// subtract_invested, so a wallet's lifetime total_invested stat stayed
-// inflated forever after reclaiming an expired round's ticket (money was
-// refunded, the stat wasn't updated to match) - same bug, same fix pattern
-// already used by withdraw_ticket. Confirmed live on-chain against this
-// wasm (buy -> expire -> reclaim -> GetWalletStats back to 0), not just in
-// unit tests. Config unchanged from the 2026-07-15 (v6) redeploy. Contracts
+// Redeployed 2026-08-29 (v9, commit-reveal): the block-hash draw mechanism
+// this address used to run (v7) has no way to reach a winner anymore - the
+// frontend's manual reveal button was removed this same session (v9 reveals
+// via the keeper's preimage, not a player transaction), so a v7 round left
+// this constant pointing at would sit closed forever with no path forward.
+// This is the "v9test" address already validated end-to-end against a real
+// keeper (see scripts/testnet/deployment-wheelmanager-v9test.json) - min/max
+// players 2/2 for fast local iteration, same 1 "USDC" ticket price. Contracts
 // are immutable/no-migrate by design, so any code change needs a fresh
 // address here too. Swap for the real mainnet address once the product
 // actually launches. Kept as the default fallback contractAddress
 // throughout lib/queryWheelManager.ts and lib/roundActions.ts for any call
 // site that hasn't been made tier-aware yet.
 export const WHEEL_MANAGER_ADDRESS =
-  "terra1u40ennkhqnu9rk74kta40cwcuz3svjzrhj8fv44wwllteca3tzns9xc994";
+  "terra1sqw6xtfnj46v8y3mjy4gs68uzdd8vn65kcpj2mdf2qa2w3z4n3ls9y88y2";
 
 // Every ACTIVE tier (one Wheel Manager instance per ticket price), for the
 // tab strip / multi-wheel UI and for lifetime-stats aggregation. Deliberately
@@ -33,13 +34,11 @@ export const WHEEL_MANAGER_ADDRESSES = [
 ];
 
 // Weekly Round is platform-wide (a single instance, not one per tier).
-// Redeployed 2026-07-19: same execute_reclaim_ticket/subtract_invested fix
-// as Wheel Manager above (see that comment) - weekly-round had the
-// identical gap. Confirmed by an independent Opus+Fable review before this
-// redeploy, same pattern as the 2026-07-16 draw_height fix. Config
-// unchanged from the 2026-07-16 redeploy (see git history for that entry).
+// Redeployed 2026-08-29 (v9, commit-reveal) - same reason as Wheel Manager
+// above (see scripts/testnet/deployment-weekly-round.json, the fixed
+// filename keeperTargets.ts expects for this platform singleton).
 export const WEEKLY_ROUND_ADDRESS =
-  "terra1v8fp028mtyehfltg98uy7l3t83a7jz8rf74ncejdfwkd342y2hes2vml8h";
+  "terra18h530f48fucsh4xnnznyzy4ljujw5s3yeaes7zhcj6d8dp9x5d5ste7vwx";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
 // Weekly Round above). Redeployed 2026-08-23 (raffle code ID 2421, factory
@@ -76,5 +75,7 @@ export const WEEKLY_ROUND_ADDRESS =
 // Any change to either contract needs a fresh factory deploy too, since the
 // raffle code ID is fixed at the factory's own instantiate time
 // (contracts/create-your-own-luck-factory/src/state.rs, RAFFLE_CODE_ID).
+// Redeployed again 2026-08-29 (v9, commit-reveal) - same reason as Wheel
+// Manager above (see scripts/testnet/deployment-cyol-factory-v9test.json).
 export const CREATE_YOUR_OWN_LUCK_FACTORY_ADDRESS =
-  "terra12acajzasnhrkldea0yfqtsh64wwzvg29g0wwtfzd95x9qx9yus5q60wja4";
+  "terra1p2ddvemz6e9w9ghyr78fu0lzjvn4tex6p9c3szslxezs3yq980tssf2tly";
