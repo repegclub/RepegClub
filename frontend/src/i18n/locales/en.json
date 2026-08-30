@@ -172,7 +172,7 @@
     "right": "Feeling lucky?"
   },
   "brandPresents": "Repeg Club presents",
-  "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (draw block height/time + ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
+  "disclaimer": "The winner is already determined on-chain before the wheel starts spinning (a secret locked in before the round opened + the ticket list, hashed together). The animation only reveals that result — it isn't the source of the draw.",
   "faq": {
     "feedbackPrompt": "Any feedback? We hear you!",
     "title": "F.A.Q. - How does it work?",
@@ -202,11 +202,11 @@
       },
       {
         "q": "How is the winner obtained and verified on-chain?",
-        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this round\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the round, the block, and the ticket list together) that points to a single ticket. \"Verify this round\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
+        "a": "In two separately-checkable steps. (1) Before the round even opens, a secret is locked in and published on-chain as a hash — nobody, including the platform, can change it afterward. When the round draws, that secret gets revealed, and anyone can check its hash still matches what was published when the round opened (a link inside \"Verify this round\" shows both, straight from the network, no app required). (2) The full list of everyone who bought a ticket is also public on-chain data, with its own direct link in the same panel. The revealed secret and the ticket list both get fed into one fixed formula (a hash of the round, the secret, and the ticket list together) that points to a single ticket. \"Verify this round\" runs both steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
       },
       {
         "q": "How do I know the app isn't just simulating the draw?",
-        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
+        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the committed hash, the revealed secret, and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",
@@ -648,11 +648,11 @@
       },
       {
         "q": "How is the winner obtained and verified on-chain?",
-        "a": "In three separately-checkable steps. (1) The exact block where the draw happened has to be real — its height and its precise time. Anyone can open the raw block data (a link inside \"Verify this week\") and read it straight from the network, no app required. (2) The full list of everyone who bought a ticket that week has to be real too — it's also public on-chain data, with its own direct link in the same panel. (3) Both get fed into one fixed formula (a hash of the week, the block, and the ticket list together) that points to a single ticket. \"Verify this week\" runs all three steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
+        "a": "In two separately-checkable steps. (1) Before the week even opens, a secret is locked in and published on-chain as a hash — nobody, including the platform, can change it afterward. When the week draws, that secret gets revealed, and anyone can check its hash still matches what was published when the week opened (a link inside \"Verify this week\" shows both, straight from the network, no app required). (2) The full list of everyone who bought a ticket that week is also public on-chain data, with its own direct link in the same panel. The revealed secret and the ticket list both get fed into one fixed formula (a hash of the week, the secret, and the ticket list together) that points to a single ticket. \"Verify this week\" runs both steps live and shows every input it used, plus the resulting hash and both source links, in its \"Show everything used in this calculation\" section — you can hand that to anyone technical, or paste it to an AI, and ask them to redo the math themselves from scratch."
       },
       {
         "q": "How do I know the app isn't just simulating the draw?",
-        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the block and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
+        "a": "Because the check doesn't happen on our servers — it happens right in your own browser, which reaches out directly to Terra Classic's public network (not to Repeg Club) to fetch the committed hash, the revealed secret, and the ticket list, then does the math itself. You can confirm this yourself: open your browser's developer tools while clicking \"Verify on-chain\" and you'll see the requests go out to the public network's own address, never to ours."
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",

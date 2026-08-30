@@ -3183,12 +3183,13 @@
     font-weight: 400;
     font-size: 0.851rem;
     color: var(--text);
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.15rem 0.6rem;
   }
-  .verify-details dt { color: var(--text-dim); }
-  .verify-details dd { margin: 0; overflow-wrap: anywhere; }
+  .verify-details dt {
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+  }
+  .verify-details dt:first-child { margin-top: 0; }
+  .verify-details dd { margin: 0.1rem 0 0; overflow-wrap: anywhere; }
   .verify-explanation {
     margin: 0 0 0.9rem;
     color: var(--text-dim);
