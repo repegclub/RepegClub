@@ -446,7 +446,9 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
               value={closingWindowDays}
               onChange={(e) => setClosingWindowDays(e.target.value)}
             />
-            <span className="cyol-hint">{t("createYourOwnLuck.form.closingWindowHint")}</span>
+            <span className="cyol-hint">
+              {t(raffleType === "airdrop" ? "createYourOwnLuck.form.closingWindowHintAirdrop" : "createYourOwnLuck.form.closingWindowHint")}
+            </span>
           </label>
 
           <label className="cyol-field">

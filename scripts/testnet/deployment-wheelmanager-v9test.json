@@ -1,7 +1,7 @@
 {
-  "codeId": "2433",
-  "contractAddress": "terra1sqw6xtfnj46v8y3mjy4gs68uzdd8vn65kcpj2mdf2qa2w3z4n3ls9y88y2",
-  "maxPlayers": 2,
+  "codeId": "2437",
+  "contractAddress": "terra1sypz6dhamfwcjjhd449y2x08agzjtynsepj03wlsx527r8ccjqvs883k80",
+  "maxPlayers": 10,
   "minPlayers": 2,
   "ticketPrice": "1000000"
 }

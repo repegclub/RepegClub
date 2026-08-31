@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
 import { GameNav } from "../Shared/GameNav";
@@ -75,8 +76,26 @@ export function CreateYourOwnLuckPage() {
     raffles.status === "loaded" ? raffles.raffles.raffles : NO_RECORDS
   );
   const [filter, setFilter] = useState<StatusFilter>("all");
-  const [rafflesOpen, setRafflesOpen] = useState(true);
+  // GameNav's "Airdrops" entry links here with ?view=airdrops so it lands
+  // with that section open and Raffles collapsed instead of today's default
+  // (both open).
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get("view");
+  const [rafflesOpen, setRafflesOpen] = useState(view !== "airdrops");
   const [airdropsOpen, setAirdropsOpen] = useState(true);
+
+  // Both links here are client-side <Link> navigations to the same route
+  // (only the query string changes), so react-router never remounts this
+  // component - the useState initializer above only ran once, at first
+  // mount, and never saw a later click from Raffles to Airdrops or back
+  // (CodeRabbit finding, 2026-08-31). Keyed on `view` specifically (not the
+  // whole `searchParams` object, a fresh reference every render) so this
+  // only re-fires when that value actually changes, not on every render -
+  // still lets the toggle buttons below freely open/close either section
+  // in between.
+  useEffect(() => {
+    setRafflesOpen(view !== "airdrops");
+  }, [view]);
 
   // "Created by me" only means anything with a wallet connected - if it
   // disconnects mid-filter, every entry would compare against null (never

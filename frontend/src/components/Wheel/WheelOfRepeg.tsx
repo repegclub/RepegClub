@@ -20,6 +20,7 @@ import { AdminSweepButton } from "../Wallet/AdminSweepButton";
 import { ExpiredPrizesButton } from "../Wallet/ExpiredPrizesButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useWheelRound } from "../../hooks/useWheelRound";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { useRoundEntrants } from "../../hooks/useRoundEntrants";
 import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
@@ -64,6 +65,7 @@ export function WheelOfRepeg() {
   // to keep looking at.
   const [viewRoundId, setViewRoundId] = useState<number | undefined>(undefined);
   const roundState = useWheelRound(viewRoundId, selectedTier ?? undefined);
+  usePollWhileClosed(roundState.status === "loaded" && roundState.round.status === "closed", roundState.refetch);
   const roundId = roundState.status === "loaded" ? roundState.round.round_id : null;
   const entrantsState = useRoundEntrants(roundId, selectedTier ?? undefined);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];

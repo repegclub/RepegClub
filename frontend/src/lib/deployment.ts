@@ -1,19 +1,15 @@
 // Dedicated Wheel Manager testnet deployment for frontend development.
-// Redeployed 2026-08-29 (v9, commit-reveal): the block-hash draw mechanism
-// this address used to run (v7) has no way to reach a winner anymore - the
-// frontend's manual reveal button was removed this same session (v9 reveals
-// via the keeper's preimage, not a player transaction), so a v7 round left
-// this constant pointing at would sit closed forever with no path forward.
-// This is the "v9test" address already validated end-to-end against a real
-// keeper (see scripts/testnet/deployment-wheelmanager-v9test.json) - min/max
-// players 2/2 for fast local iteration, same 1 "USDC" ticket price. Contracts
-// are immutable/no-migrate by design, so any code change needs a fresh
-// address here too. Swap for the real mainnet address once the product
-// actually launches. Kept as the default fallback contractAddress
-// throughout lib/queryWheelManager.ts and lib/roundActions.ts for any call
-// site that hasn't been made tier-aware yet.
+// Redeployed 2026-08-30 (still v9test label, fresh address): min/max
+// players raised from 2/2 to 2/10 - live testing needed room for more than
+// one ticket per wallet (max_tickets_per_wallet is max_players/2) and more
+// than 2 participating wallets, without giving up the fast min_players=2
+// auto-close. Contracts are immutable/no-migrate by design, so any code or
+// config change needs a fresh address here too. Swap for the real mainnet
+// address once the product actually launches. Kept as the default fallback
+// contractAddress throughout lib/queryWheelManager.ts and lib/roundActions.ts
+// for any call site that hasn't been made tier-aware yet.
 export const WHEEL_MANAGER_ADDRESS =
-  "terra1sqw6xtfnj46v8y3mjy4gs68uzdd8vn65kcpj2mdf2qa2w3z4n3ls9y88y2";
+  "terra1sypz6dhamfwcjjhd449y2x08agzjtynsepj03wlsx527r8ccjqvs883k80";
 
 // Every ACTIVE tier (one Wheel Manager instance per ticket price), for the
 // tab strip / multi-wheel UI and for lifetime-stats aggregation. Deliberately
@@ -34,11 +30,11 @@ export const WHEEL_MANAGER_ADDRESSES = [
 ];
 
 // Weekly Round is platform-wide (a single instance, not one per tier).
-// Redeployed 2026-08-29 (v9, commit-reveal) - same reason as Wheel Manager
-// above (see scripts/testnet/deployment-weekly-round.json, the fixed
-// filename keeperTargets.ts expects for this platform singleton).
+// Redeployed 2026-08-30 - same reason as Wheel Manager above (min/max
+// players 2/2 -> 2/10). See scripts/testnet/deployment-weekly-round.json,
+// the fixed filename keeperTargets.ts expects for this platform singleton.
 export const WEEKLY_ROUND_ADDRESS =
-  "terra18h530f48fucsh4xnnznyzy4ljujw5s3yeaes7zhcj6d8dp9x5d5ste7vwx";
+  "terra1pts29azfuq020u4jtmnx73jk2uryx80mtydm9vs6jqv63sknnm5sxncgnk";
 
 // Create Your Own Luck factory - platform-wide (a single instance, same as
 // Weekly Round above). Redeployed 2026-08-23 (raffle code ID 2421, factory

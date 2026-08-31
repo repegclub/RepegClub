@@ -442,6 +442,37 @@
   font-family: var(--mono);
 }
 
+/* An inline icon this size would stretch the button's own line box taller
+   (tried first, 2026-08-31) - absolutely positioned instead, so it can reach
+   close to the button's top/bottom padding edges without affecting its
+   height at all. */
+.cyol-verify-open-btn {
+  position: relative;
+  padding-left: 3.2rem;
+  /* Clear gap from the payout tx hash + Copy button right above it - both
+     sat right on top of this button otherwise (found live-testing,
+     2026-08-31). */
+  margin-top: 0.8rem;
+}
+/* scientist.png is a full-body pose, nearly square itself - shrunk to fit
+   a normal small icon box, the face read as an unrecognizable smudge
+   (2026-08-31). object-fit:cover on an <img> couldn't fix this (the box and
+   the source are close enough in aspect ratio that "cover" barely crops
+   anything), so this is a background-image instead - background-size can
+   zoom PAST 100%, cropping the legs/feet off so the face reads clearly. */
+.cyol-verify-btn-icon {
+  position: absolute;
+  left: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  background-image: url("/characters/scientist.png");
+  background-size: 165% auto;
+  background-position: top center;
+  background-repeat: no-repeat;
+}
+
 .cyol-inline-copy-btn {
   background: none;
   border: 1px solid var(--border-bright);
@@ -450,17 +481,6 @@
   font-size: 0.7rem;
   padding: 0.1rem 0.5rem;
   margin-left: 0.4rem;
-  cursor: pointer;
-}
-
-.cyol-verify-open-btn {
-  background: none;
-  border: 1px solid var(--gold-dim);
-  border-radius: 999px;
-  color: var(--gold);
-  font-size: 0.75rem;
-  padding: 0.2rem 0.7rem;
-  margin-top: 0.35rem;
   cursor: pointer;
 }
 

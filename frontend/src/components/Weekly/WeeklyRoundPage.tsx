@@ -19,6 +19,7 @@ import { HistoryButton } from "../Wheel/HistoryButton";
 import { AdminSweepButton } from "../Wallet/AdminSweepButton";
 import { useWallet } from "../../contexts/WalletContext";
 import { useWeeklyRound } from "../../hooks/useWeeklyRound";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { useWeeklyEntrants } from "../../hooks/useWeeklyEntrants";
 import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
@@ -35,6 +36,7 @@ export function WeeklyRoundPage() {
 
   const [viewWeekId, setViewWeekId] = useState<number | undefined>(undefined);
   const weekState = useWeeklyRound(viewWeekId);
+  usePollWhileClosed(weekState.status === "loaded" && weekState.week.status === "closed", weekState.refetch);
   const weekId = weekState.status === "loaded" ? weekState.week.week_id : null;
   const entrantsState = useWeeklyEntrants(weekId);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];

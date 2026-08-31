@@ -67,9 +67,11 @@ export function buyTicket(
   ticketDenom: string,
   ticketPriceAmount: string
 ) {
-  return execute(wallet, contractAddress, { buy_ticket: {} }, [
-    { denom: ticketDenom, amount: ticketPriceAmount },
-  ]);
+  // A free Airdrop (ticket_price "0") must attach no funds at all - the bank
+  // module rejects a Coin with a zero amount outright ("amount is not
+  // positive"), before the tx ever reaches the contract.
+  const funds = ticketPriceAmount === "0" ? [] : [{ denom: ticketDenom, amount: ticketPriceAmount }];
+  return execute(wallet, contractAddress, { buy_ticket: {} }, funds);
 }
 
 // Buys `quantity` tickets in a single signature: the contract's BuyTicket
@@ -89,6 +91,9 @@ export function buyTickets(
   ticketPriceAmount: string,
   quantity: number
 ) {
+  // See buyTicket's own comment - a zero-amount Coin is rejected by the
+  // bank module before the tx reaches the contract.
+  const funds = ticketPriceAmount === "0" ? [] : [{ denom: ticketDenom, amount: ticketPriceAmount }];
   const msgs = Array.from(
     { length: quantity },
     () =>
@@ -96,7 +101,7 @@ export function buyTickets(
         sender: wallet.address,
         contract: contractAddress,
         msg: { buy_ticket: {} },
-        funds: [{ denom: ticketDenom, amount: ticketPriceAmount }],
+        funds,
       })
   );
   return broadcast(wallet, msgs);
