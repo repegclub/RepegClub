@@ -28,7 +28,7 @@ import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 
 import { RPC, loadWallet } from "./config";
 import { discoverTargets } from "./keeperTargets";
-import { addSecrets } from "./keeperSecrets";
+import { addSecrets, findPreimage } from "./keeperSecrets";
 
 const DEFAULT_COUNT = 20;
 // Matches every contract's own PUSH_COMMITS_MAX_BATCH - a batch bigger than
@@ -128,6 +128,30 @@ async function main() {
         continue;
       }
       console.log(`[${target.label}] assigned a commit to the current round/week, tx: ${assignRes.txResponse.txhash}`);
+      // The FIFO queue could have handed out a commit pushed earlier by a
+      // different machine/session than this one (round-review fix,
+      // CodeRabbit, 2026-08-30) - if this box's own keeper-secrets.json
+      // never got that preimage, the round is now stuck until the 3-phase
+      // outage safety net kicks in. Re-querying confirms exactly which
+      // commit got assigned and warns loudly right away instead of only
+      // finding out at reveal time.
+      const after =
+        target.type === "wheel-manager"
+          ? await queryContract<{ commit_used: string | null }>(RPC, {
+              address: target.address,
+              query: { get_current_round: {} },
+            })
+          : await queryContract<{ commit_used: string | null }>(RPC, {
+              address: target.address,
+              query: { get_current_week: {} },
+            });
+      if (after.commit_used && !findPreimage(after.commit_used)) {
+        console.error(
+          `[${target.label}] WARNING: assigned commit ${after.commit_used} has no locally stored preimage - ` +
+            "it was pushed by a different machine/session. This round/week cannot be revealed from here; " +
+            "copy that machine's keeper-secrets.json over, or it'll sit until the 3-phase outage safety net."
+        );
+      }
     } catch (err) {
       console.error(`[${target.label}] assign_commit error: ${(err as Error).message}`);
     }
