@@ -18,6 +18,14 @@ const GAMES: { path: string; labelKey: string; icon?: string }[] = [
   { path: "/", labelKey: "gameSwitcher.wheelOfRepeg", icon: "/wheel-pixel/wheel-emoji.png" },
   { path: "/weekly-round", labelKey: "gameSwitcher.weeklyRound", icon: "/wheel-pixel/crown-emoji.png" },
   { path: "/create-your-own-luck", labelKey: "gameSwitcher.raffles", icon: "/wheel-pixel/clover-emoji.png" },
+  // Same page as Raffles above, not a separate one - the `view=airdrops`
+  // query param just tells CreateYourOwnLuckPage to land with the Airdrops
+  // section open and Raffles collapsed, instead of the default (both open).
+  {
+    path: "/create-your-own-luck?view=airdrops",
+    labelKey: "gameSwitcher.airdrops",
+    icon: "/wheel-pixel/airdrop-emoji.png",
+  },
 ];
 
 export function GameNav({ current }: { current: string }) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
 import { GameNav } from "../Shared/GameNav";
@@ -75,7 +76,15 @@ export function CreateYourOwnLuckPage() {
     raffles.status === "loaded" ? raffles.raffles.raffles : NO_RECORDS
   );
   const [filter, setFilter] = useState<StatusFilter>("all");
-  const [rafflesOpen, setRafflesOpen] = useState(true);
+  // GameNav's "Airdrops" entry links here with ?view=airdrops so it lands
+  // with that section open and Raffles collapsed instead of today's default
+  // (both open) - read once at mount, not kept in sync with the URL after
+  // that (the toggle buttons below are what commonly changes these from
+  // here on, and re-deriving from `useSearchParams` on every render would
+  // fight a user's own manual toggle).
+  const [searchParams] = useSearchParams();
+  const initialView = searchParams.get("view");
+  const [rafflesOpen, setRafflesOpen] = useState(initialView !== "airdrops");
   const [airdropsOpen, setAirdropsOpen] = useState(true);
 
   // "Created by me" only means anything with a wallet connected - if it

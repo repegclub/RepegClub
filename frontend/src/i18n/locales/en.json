@@ -256,7 +256,12 @@
     "explanation": "This app doesn't ask our own servers who won. Before the round opens, a secret is committed on-chain as a hash — nobody, including the platform, can change it afterward. When you click \"Verify on-chain\", your browser fetches that commitment, the secret revealed at draw time, and every ticket bought, then recomputes the winner itself using the exact formula the smart contract runs. Nobody chooses the outcome — the formula does, from a secret that was locked in before the round even opened. If Repeg Club ever showed a different winner than what that formula actually produces, this check would fail instead of passing."
   },
   "verifyCyol": {
-    "title": "Verify this raffle",
+    "labBubble": [
+      "We take this shxt serious here in the lab",
+      "Your trust is our most precious asset",
+      "We only trust in blockchain data",
+      "Centralized Casinos? Huh... Humans..."
+    ],
     "explanation": "This app doesn't ask our own servers who won. Before the raffle opens, a secret is committed on-chain as a hash — nobody, including the platform, can change it afterward. When you click \"Verify on-chain\", your browser fetches that commitment, the secret revealed at draw time, and every ticket bought, then recomputes the winner itself using the exact formula the smart contract runs. Nobody chooses the outcome — the formula does, from a secret that was locked in before the raffle even opened. If this raffle's creator (or this site) ever claimed a different winner than what that formula actually produces, this check would fail instead of passing.",
     "copyJsonCaption": "Everything above in one file: the raffle's contract address, the committed hash and revealed secret, the full ticket list, the formula, the resulting hash, and the source link. Paste it anywhere — including to an AI — and ask it to redo the math."
   },
@@ -317,6 +322,7 @@
     "wheelOfRepeg": "Wheel of Repeg",
     "weeklyRound": "Weekly Round",
     "raffles": "Galactic Raffles",
+    "airdrops": "Airdrops",
     "gamesToggle": "Games",
     "creators": "Create",
     "onramp": "Onramp"
@@ -381,7 +387,7 @@
     "status": {
       "funding": "Funding",
       "open": "Open",
-      "closed": "Closed",
+      "closed": "Awaiting reveal",
       "drawn": "Drawn",
       "executed": "Executed",
       "cancelled": "Cancelled"
@@ -397,6 +403,7 @@
       "airdropFeeNote": "Service fee for this raffle: {{fee}} USDC (paid later, when you fund it)",
       "closingWindowLabel": "Closing window, in days ({{min}}–{{max}})",
       "closingWindowHint": "Once the minimum is reached, this raffle closes after this much time passes with no new tickets sold. A purchase right before the deadline can push it a little further (up to 1 extra hour) — it won't restart the full window. Think about your marketing plan when choosing this: the minimum (1 day) leaves you little time to spread the word, while several days (or more) gives you real room to bring people in. Pair a longer window with an appealing prize and an accessible ticket price — finding the sweet spot takes practice and knowing your community.",
+      "closingWindowHintAirdrop": "Once the minimum is reached, this airdrop closes after this much time passes with no new tickets sold. A purchase right before the deadline can push it a little further (up to 1 extra hour) — it won't restart the full window. Think about your marketing plan when choosing this: the minimum (1 day) leaves you little time to spread the word, while several days (or more) gives you real room to bring people in. Pair a longer window with an appealing prize and an accessible ticket price — finding the sweet spot takes practice and knowing your community.",
       "errorClosingWindow": "Closing window must be a whole number of days, between {{min}} and {{max}}.",
       "podiumSharesLabel": "Podium split (1st / 2nd / 3rd, must add up to 100%)",
       "allowedEntrantsLabel": "Whitelist (optional)",
@@ -503,7 +510,7 @@
       "payoutTxLabel": "Prize payout tx:",
       "payoutTxLoading": "looking it up…",
       "payoutTxNotFound": "not found yet (try again shortly)",
-      "verifyButton": "🔍 Verify",
+      "verifyButton": "Verify raffle",
       "winnerTitle": "🏆 Winner",
       "winnersTitle": "🏆 Winners",
       "winnerLine": "{{winner}} — {{prize}}",

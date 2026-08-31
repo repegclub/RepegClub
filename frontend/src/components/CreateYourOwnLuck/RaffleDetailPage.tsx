@@ -38,6 +38,7 @@ import {
 } from "../../lib/cyolActions";
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { CyolRevealWheel } from "./CyolRevealWheel";
 import { CyolRevealChest } from "./CyolRevealChest";
 
@@ -213,6 +214,13 @@ export function RaffleDetailPage() {
     // exhaustive-deps suppression in WeeklyWheelCard.tsx's countdown effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raffleOpenStatus, detail.refetch]);
+
+  // Nothing else refetches once Closed (found live-testing, 2026-08-31) - a
+  // wallet sitting on this page after buying the ticket that filled the
+  // raffle saw "waiting for the winner to be revealed" forever, since the
+  // effect above only polls while "open". The keeper usually reveals within
+  // one of its own ~15s cycles - this just needs to notice when it does.
+  usePollWhileClosed(raffleOpenStatus === "closed", detail.refetch);
 
   // isAirdropParam (not a closure over the component's own `isAirdrop`,
   // which - see below - isn't computed until after `config` loads):
