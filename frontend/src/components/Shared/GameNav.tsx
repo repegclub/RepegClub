@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 // Lives in the sticky wallet-bar now (not its own row below the hero) so
 // it's always reachable while scrolling, same as Connect Keplr/History/My
@@ -32,6 +32,13 @@ export function GameNav({ current }: { current: string }) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Matched against the full path+query (not the `current` prop, a plain
+  // pathname each page passes in) - Raffles and Airdrops share the same
+  // pathname, distinguished only by `?view=airdrops`, so comparing against
+  // `current` alone left Raffles always "active" and Airdrops never so
+  // (CodeRabbit finding, 2026-08-31).
+  const location = useLocation();
+  const fullPath = location.pathname + location.search;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -69,7 +76,7 @@ export function GameNav({ current }: { current: string }) {
               <Link
                 key={game.path}
                 to={game.path}
-                className={`game-nav-item${game.path === current ? " active" : ""}`}
+                className={`game-nav-item${game.path === fullPath ? " active" : ""}`}
                 onClick={() => setIsOpen(false)}
               >
                 {game.icon && <img src={game.icon} alt="" className="game-nav-item-icon" />}

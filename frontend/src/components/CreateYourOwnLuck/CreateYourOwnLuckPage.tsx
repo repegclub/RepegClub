@@ -78,14 +78,24 @@ export function CreateYourOwnLuckPage() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   // GameNav's "Airdrops" entry links here with ?view=airdrops so it lands
   // with that section open and Raffles collapsed instead of today's default
-  // (both open) - read once at mount, not kept in sync with the URL after
-  // that (the toggle buttons below are what commonly changes these from
-  // here on, and re-deriving from `useSearchParams` on every render would
-  // fight a user's own manual toggle).
+  // (both open).
   const [searchParams] = useSearchParams();
-  const initialView = searchParams.get("view");
-  const [rafflesOpen, setRafflesOpen] = useState(initialView !== "airdrops");
+  const view = searchParams.get("view");
+  const [rafflesOpen, setRafflesOpen] = useState(view !== "airdrops");
   const [airdropsOpen, setAirdropsOpen] = useState(true);
+
+  // Both links here are client-side <Link> navigations to the same route
+  // (only the query string changes), so react-router never remounts this
+  // component - the useState initializer above only ran once, at first
+  // mount, and never saw a later click from Raffles to Airdrops or back
+  // (CodeRabbit finding, 2026-08-31). Keyed on `view` specifically (not the
+  // whole `searchParams` object, a fresh reference every render) so this
+  // only re-fires when that value actually changes, not on every render -
+  // still lets the toggle buttons below freely open/close either section
+  // in between.
+  useEffect(() => {
+    setRafflesOpen(view !== "airdrops");
+  }, [view]);
 
   // "Created by me" only means anything with a wallet connected - if it
   // disconnects mid-filter, every entry would compare against null (never
