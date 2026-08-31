@@ -1,14 +1,21 @@
 // Low-frequency operator tool: generates fresh preimages offline, pushes
 // their commits (sha256(preimage)) to every discovered wheel-manager/
-// weekly-round/cyol-factory queue via PushCommits, and stores the
-// (commit -> preimage) pairs locally for keeper.ts to reveal with later.
+// weekly-round/cyol-factory queue via PushCommits, stores the
+// (commit -> preimage) pairs locally for keeper.ts to reveal with later, and
+// (wheel-manager/weekly-round only) assigns one to the current round/week if
+// it doesn't have one yet - BuyTicket/BuyWeeklyTicket refuse to sell before
+// that happens, so without this a fresh round with an empty queue would sit
+// unbuyable until someone manually calls AssignCommit.
 //
 // Deliberately separate from keeper.ts (which runs 24/7 on an exposed VM):
-// this is meant to be run by hand, occasionally, using COMMIT_PUSHER_MNEMONIC
-// - a wallet that can ONLY call PushCommits (see the 3 contracts' new
-// `commit_pusher` role) and holds none of admin's other privileges. See the
-// project's Obsidian notes ("Grinding vía SubMsg+reply") for why this is a
-// separate wallet and a separate script from the always-on keeper process.
+// this is meant to be run periodically (a systemd timer on that same VM, see
+// repeg-keeper-seed.timer) using COMMIT_PUSHER_MNEMONIC - a wallet that can
+// ONLY call PushCommits (see the 3 contracts' new `commit_pusher` role) and
+// holds none of admin's other privileges. See the project's Obsidian notes
+// ("Grinding vía SubMsg+reply") for why this is a separate wallet and a
+// separate script from the always-on keeper process. AssignCommit itself is
+// permissionless, so this reuses the same low-privilege pusher wallet for it
+// too - no reason to also put an admin key on the always-on box for this.
 //
 // Usage: npm run generate-and-push-commits -- [count]
 // (count defaults to 20 per target, capped at each contract's own
@@ -17,9 +24,9 @@
 
 import { randomBytes, createHash } from "crypto";
 
-import { MsgExecuteContract } from "@goblinhunt/cosmes/client";
+import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 
-import { loadWallet } from "./config";
+import { RPC, loadWallet } from "./config";
 import { discoverTargets } from "./keeperTargets";
 import { addSecrets } from "./keeperSecrets";
 
@@ -94,6 +101,35 @@ async function main() {
       console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
     } catch (err) {
       console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);
+      continue;
+    }
+
+    if (target.type !== "wheel-manager" && target.type !== "weekly-round") continue;
+    try {
+      const current =
+        target.type === "wheel-manager"
+          ? await queryContract<{ commit_used: string | null }>(RPC, {
+              address: target.address,
+              query: { get_current_round: {} },
+            })
+          : await queryContract<{ commit_used: string | null }>(RPC, {
+              address: target.address,
+              query: { get_current_week: {} },
+            });
+      if (current.commit_used) continue;
+      const assignRes = await pusher.broadcastTxSync({
+        msgs: [
+          new MsgExecuteContract({ sender: pusher.address, contract: target.address, msg: { assign_commit: {} }, funds: [] }),
+        ],
+        memo: "REPEG CLUB",
+      });
+      if (assignRes.txResponse.code !== 0) {
+        console.error(`[${target.label}] assign_commit failed: ${assignRes.txResponse.rawLog}`);
+        continue;
+      }
+      console.log(`[${target.label}] assigned a commit to the current round/week, tx: ${assignRes.txResponse.txhash}`);
+    } catch (err) {
+      console.error(`[${target.label}] assign_commit error: ${(err as Error).message}`);
     }
   }
 }
