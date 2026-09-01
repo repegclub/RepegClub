@@ -117,8 +117,13 @@ async function main() {
   console.log(`Found ${targets.length} target(s):`, targets.map((t) => `${t.type}:${t.label}`).join(", "));
 
   for (const target of targets) {
-    let pushFailed = false;
-    const currentLen = await commitQueueLen(target.address);
+    let currentLen: number;
+    try {
+      currentLen = await commitQueueLen(target.address);
+    } catch (err) {
+      console.error(`[${target.label}] queue length read error: ${(err as Error).message}`);
+      continue;
+    }
     if (currentLen >= LOW_WATER_MARK) {
       console.log(`[${target.label}] queue already has ${currentLen} commits queued (>= ${LOW_WATER_MARK}) - skipping push.`);
     } else {
@@ -152,17 +157,19 @@ async function main() {
         });
         if (res.txResponse.code !== 0) {
           console.error(`[${target.label}] push_commits failed: ${res.txResponse.rawLog}`);
-          pushFailed = true;
         } else {
           console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
         }
       } catch (err) {
         console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);
-        pushFailed = true;
       }
     }
-    if (pushFailed) continue;
 
+    // Attempted regardless of whether the push above succeeded (round-review
+    // fix, CodeRabbit, 2026-09-01): a failed push this run doesn't mean the
+    // queue is empty - an earlier successful push may have left commits
+    // sitting there unassigned, and there's no reason to wait another
+    // LOW_WATER_MARK-and-a-cron-cycle to hand one to the round/week.
     if (target.type !== "wheel-manager" && target.type !== "weekly-round") continue;
     try {
       const current =
