@@ -7,35 +7,70 @@ import { isCyolRevealed, markCyolRevealed } from "../../lib/revealCache";
 
 type AirdropShare = { share: string; claimed: boolean };
 
-type Props = {
+function truncateAddress(addr: string): string {
+  return `${addr.slice(0, 10)}...${addr.slice(-4)}`;
+}
+
+type CommonProps = {
   // Keys the "already watched this reveal" check (see lib/revealCache) -
-  // together with walletAddress, since this chest (unlike CyolRevealWheel)
-  // is wallet-gated: one wallet opening it must never mark it "revealed"
-  // for a different wallet visiting the same raffle.
+  // together with walletAddress, since this chest is wallet-gated: one
+  // wallet opening it must never mark it "revealed" for a different wallet
+  // visiting the same raffle.
   contractAddress: string;
   // null when no wallet is connected. Also doubles as the "is connected"
   // check (connected === walletAddress !== null) - no separate boolean, so
   // the two can never disagree.
   walletAddress: string | null;
+  prizeCurrency: string;
+  // Rendered once opened - the caller's existing personal claim/reclaim (or,
+  // in winner mode, the full per-place winner breakdown) markup, now gated
+  // behind the open-the-chest moment instead of appearing the instant the
+  // raffle is drawn/revealed.
+  children: ReactNode;
+};
+
+type AirdropProps = CommonProps & {
+  mode: "airdrop";
   // null when no wallet is connected yet, or when connected but this wallet
   // never bought a ticket here (share stays "0") - both cases block opening,
   // see isParticipant below.
   myAirdropShare: AirdropShare | null;
-  prizeCurrency: string;
-  // Rendered once opened - the caller's existing personal claim/reclaim
-  // markup, now gated behind the open-the-chest moment instead of
-  // appearing the instant the raffle is drawn.
-  children: ReactNode;
 };
 
-// Airdrop has no winner to spin a wheel for (the prize splits equally among
-// everyone who bought a ticket) - its reveal moment is a chest opening to
-// the connected wallet's own split instead, per the 2026-07-20 design note.
-// Unlike SingleWinner's wheel (a public spectacle anyone can watch), the
-// number behind this chest is personal - only a wallet that actually took
-// part gets to open it (2026-07-25, user's call): a spectator without a
-// stake has nothing of their own to reveal here.
-export function CyolRevealChest({ contractAddress, walletAddress, myAirdropShare, prizeCurrency, children }: Props) {
+type WinnerProps = CommonProps & {
+  mode: "winner";
+  // Whether the connected wallet bought at least one ticket here - the
+  // winner-mode equivalent of an airdrop share, since there's no % to gate
+  // opening on for Single Winner/Podium.
+  hasTicket: boolean;
+  // The raffle's top (first-place) winner and their prize - always shown in
+  // the chest once opened, regardless of who's watching. The full per-place
+  // breakdown for Podium lives in `children`, unaffected by this.
+  winnerAddress: string;
+  winnerPrize: string;
+  // Whether the connected wallet itself is among the winners (any place),
+  // not just the top one - drives the "You won!"/"You didn't win this time"
+  // line independent of which place is shown above.
+  isWinner: boolean;
+};
+
+type Props = AirdropProps | WinnerProps;
+
+// Single Winner/Podium's reveal moment used to be a spinning wheel
+// (CyolRevealWheel, retired 2026-09-01) built on the pre-pixel-art
+// WheelCanvas prototype - it visually clashed with the rest of the site.
+// Reusing this chest instead (decided 2026-08-31: "the chest is genial and
+// works visually") also fits the scene better - CYOL's puesto artwork
+// already draws a chest, no wheel exists anywhere in that art. Airdrop has
+// no winner to reveal either way (the prize splits equally among everyone
+// who bought a ticket) - its reveal shows the connected wallet's own split
+// instead, per the 2026-07-20 design note. Both modes share the same
+// gating pattern: only a wallet with a real stake in the outcome (a ticket)
+// gets to open it (2026-07-25 for Airdrop, extended to winner mode
+// 2026-08-31) - a spectator without a stake has nothing of their own to
+// reveal here.
+export function CyolRevealChest(props: Props) {
+  const { contractAddress, walletAddress, prizeCurrency, children } = props;
   const { t } = useTranslation();
   const connected = walletAddress !== null;
   const [opened, setOpened] = useState(() => isCyolRevealed(contractAddress, walletAddress));
@@ -53,7 +88,7 @@ export function CyolRevealChest({ contractAddress, walletAddress, myAirdropShare
     };
   }, []);
 
-  const isParticipant = myAirdropShare !== null && myAirdropShare.share !== "0";
+  const isParticipant = props.mode === "airdrop" ? props.myAirdropShare !== null && props.myAirdropShare.share !== "0" : props.hasTicket;
   const canOpen = connected && isParticipant;
 
   function handleOpen() {
@@ -94,17 +129,36 @@ export function CyolRevealChest({ contractAddress, walletAddress, myAirdropShare
             of the chest looking "open" before the actual result appears. */}
         <img src="/wheel-pixel/cyol-chest-closed.png" alt="" className="cyol-chest-img cyol-chest-img-closed" />
         <img src="/wheel-pixel/cyol-chest-open.png" alt="" className="cyol-chest-img cyol-chest-img-open" />
-        {opened && myAirdropShare && (
+        {opened && props.mode === "airdrop" && props.myAirdropShare && (
           <div className="cyol-chest-sign">
-            <span className="cyol-chest-sign-amount">{formatAmount(myAirdropShare.share, prizeCurrency)}</span>
+            <span className="cyol-chest-sign-amount">{formatAmount(props.myAirdropShare.share, prizeCurrency)}</span>
             <span className="cyol-chest-sign-label">{t("createYourOwnLuck.detail.perWalletLabel")}</span>
+          </div>
+        )}
+        {opened && props.mode === "winner" && (
+          <div className="cyol-chest-sign">
+            <span className="cyol-chest-sign-amount">
+              {t("createYourOwnLuck.detail.winnerLine", {
+                winner: truncateAddress(props.winnerAddress),
+                prize: formatAmount(props.winnerPrize, prizeCurrency),
+              })}
+            </span>
+            <span className="cyol-chest-sign-label">
+              {t(props.isWinner ? "createYourOwnLuck.detail.chestYouWon" : "createYourOwnLuck.detail.chestDidntWin")}
+            </span>
           </div>
         )}
       </div>
 
-      {!connected && <p className="cyol-detail-hint">{t("createYourOwnLuck.detail.connectToCheckAirdrop")}</p>}
+      {!connected && (
+        <p className="cyol-detail-hint">
+          {t(props.mode === "airdrop" ? "createYourOwnLuck.detail.connectToCheckAirdrop" : "createYourOwnLuck.detail.connectToCheckWinner")}
+        </p>
+      )}
       {connected && !isParticipant && (
-        <p className="cyol-form-error">{t("createYourOwnLuck.detail.notAnAirdropParticipant")}</p>
+        <p className="cyol-form-error">
+          {t(props.mode === "airdrop" ? "createYourOwnLuck.detail.notAnAirdropParticipant" : "createYourOwnLuck.detail.notATicketHolder")}
+        </p>
       )}
       {canOpen && !opened && (
         <button type="button" className="spin-btn" onClick={handleOpen} disabled={opening}>

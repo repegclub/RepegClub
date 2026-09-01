@@ -19,12 +19,14 @@
 //
 // Usage: npm run generate-and-push-commits -- [count]
 // (count defaults to 20 per target, capped at each contract's own
-// PUSH_COMMITS_MAX_BATCH=50; safe to re-run anytime - a target whose queue is
-// already full via MAX_COMMIT_QUEUE_LEN just logs and is skipped.)
+// PUSH_COMMITS_MAX_BATCH=50; safe to re-run anytime - a target whose queue
+// already has LOW_WATER_MARK or more commits queued is skipped without
+// spending any gas, see commitQueueLen below.)
 
 import { randomBytes, createHash } from "crypto";
 
-import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
+import { MsgExecuteContract, queryContract, RpcClient } from "@goblinhunt/cosmes/client";
+import { CosmwasmWasmV1QueryRawContractStateService as RawContractStateService } from "@goblinhunt/cosmes/protobufs";
 
 import { RPC, loadWallet } from "./config";
 import { discoverTargets } from "./keeperTargets";
@@ -34,6 +36,22 @@ const DEFAULT_COUNT = 20;
 // Matches every contract's own PUSH_COMMITS_MAX_BATCH - a batch bigger than
 // this gets rejected outright by PushCommits, wasting the whole tx's gas.
 const MAX_BATCH = 50;
+
+// Real incident, 2026-09-01: this used to push a fresh batch to every target
+// on every run, with no check for whether the queue actually needed it -
+// each successful push costs ~10 LUNC in fees (this chain's gas price is
+// unusually high), and the systemd timer runs this every 10 minutes. That
+// silently burned through commit_pusher's balance for over a day before
+// anyone noticed (it just failed with "insufficient funds" from then on -
+// see the Obsidian retrospective note). Below this many commits already
+// queued, skip the push entirely rather than relying on the contract's own
+// MAX_COMMIT_QUEUE_LEN rejection - a rejected push_commits still gets
+// broadcast and still costs the fee, since CommitQueueFull is a normal
+// contract-level error, not a fee-payer check like insufficient funds (which
+// is why those specific failures cost nothing - they never left this
+// machine). AssignCommit is unaffected by this - it already checks
+// commit_used before spending gas, so it's left as-is below.
+const LOW_WATER_MARK = 20;
 
 // Round-review fix (CodeRabbit, 2026-08-30): an unparseable, negative, or
 // oversized count used to pass straight through to generateCommits/PushCommits
@@ -57,6 +75,39 @@ function generateCommits(count: number): { commit: string; preimage: string }[] 
   return pairs;
 }
 
+// COMMIT_QUEUE (see contracts/*/src/state.rs, identical namespace on all 3
+// contracts) is a cw-storage-plus 1.2.0 Deque<HexBinary>, which stores its
+// length as two big-endian u32 "meta keys" - head/tail - under a
+// length-prefixed "commit_queue" namespace (see that crate's deque.rs:
+// namespaces_with_key/encode_length/read_meta_key). Reading them directly
+// via RawContractState lets this script check queue depth before spending
+// gas to push more, without needing a dedicated contract query (which would
+// mean a Rust change and a redeploy of contracts this project already has
+// live rounds/rifas on).
+function dequeMetaKey(metaByte: "h" | "t"): Uint8Array {
+  const namespace = new TextEncoder().encode("commit_queue");
+  const key = new TextEncoder().encode(metaByte);
+  const out = new Uint8Array(2 + namespace.length + key.length);
+  out[0] = (namespace.length >> 8) & 0xff;
+  out[1] = namespace.length & 0xff;
+  out.set(namespace, 2);
+  out.set(key, 2 + namespace.length);
+  return out;
+}
+
+async function readDequeMeta(address: string, metaByte: "h" | "t"): Promise<number> {
+  const res = await RpcClient.query(RPC, RawContractStateService, { address, queryData: dequeMetaKey(metaByte) });
+  // Absent key means the Deque has never been touched (defaults to 0 - see
+  // cw-storage-plus's read_meta_key, which does the same on a missing key).
+  if (res.data.length === 0) return 0;
+  return new DataView(res.data.buffer, res.data.byteOffset, res.data.byteLength).getUint32(0, false);
+}
+
+async function commitQueueLen(address: string): Promise<number> {
+  const [head, tail] = await Promise.all([readDequeMeta(address, "h"), readDequeMeta(address, "t")]);
+  return tail - head;
+}
+
 async function main() {
   const count = parseCount(process.argv[2]);
   const pusher = loadWallet("COMMIT_PUSHER_MNEMONIC");
@@ -66,44 +117,59 @@ async function main() {
   console.log(`Found ${targets.length} target(s):`, targets.map((t) => `${t.type}:${t.label}`).join(", "));
 
   for (const target of targets) {
-    const pairs = generateCommits(count);
-    // cosmwasm_std::HexBinary (de)serializes as a plain hex string, not
-    // base64 (see cosmwasm-std's hex_binary.rs Serialize impl) - unlike
-    // cosmwasm_std::Binary, which does use base64.
-    const commits = pairs.map((p) => p.commit);
-    // Saved before broadcasting, not after checking success (round-review
-    // fix, Opus, commit_pusher audit round, 2026-08-30): if broadcastTxSync's
-    // own pollTx times out (or the process dies) after the tx already landed
-    // on-chain but before this function returns, the old order would lose
-    // the preimage for a commit that's already live in COMMIT_QUEUE - that
-    // round/week/raffle becomes permanently unrevealable once it's assigned,
-    // and blocks REVEAL_QUEUE for everything behind it until the 3-phase
-    // expiration cascade completes. Saving a preimage for a commit that
-    // never actually lands on-chain is harmless - it just sits as dead
-    // weight in the already-gitignored keeper-secrets.json.
-    addSecrets(pairs);
+    let currentLen: number;
     try {
-      const res = await pusher.broadcastTxSync({
-        msgs: [
-          new MsgExecuteContract({
-            sender: pusher.address,
-            contract: target.address,
-            msg: { push_commits: { commits } },
-            funds: [],
-          }),
-        ],
-        memo: "REPEG CLUB",
-      });
-      if (res.txResponse.code !== 0) {
-        console.error(`[${target.label}] push_commits failed: ${res.txResponse.rawLog}`);
-        continue;
-      }
-      console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
+      currentLen = await commitQueueLen(target.address);
     } catch (err) {
-      console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);
+      console.error(`[${target.label}] queue length read error: ${(err as Error).message}`);
       continue;
     }
+    if (currentLen >= LOW_WATER_MARK) {
+      console.log(`[${target.label}] queue already has ${currentLen} commits queued (>= ${LOW_WATER_MARK}) - skipping push.`);
+    } else {
+      const pairs = generateCommits(count);
+      // cosmwasm_std::HexBinary (de)serializes as a plain hex string, not
+      // base64 (see cosmwasm-std's hex_binary.rs Serialize impl) - unlike
+      // cosmwasm_std::Binary, which does use base64.
+      const commits = pairs.map((p) => p.commit);
+      // Saved before broadcasting, not after checking success (round-review
+      // fix, Opus, commit_pusher audit round, 2026-08-30): if broadcastTxSync's
+      // own pollTx times out (or the process dies) after the tx already landed
+      // on-chain but before this function returns, the old order would lose
+      // the preimage for a commit that's already live in COMMIT_QUEUE - that
+      // round/week/raffle becomes permanently unrevealable once it's assigned,
+      // and blocks REVEAL_QUEUE for everything behind it until the 3-phase
+      // expiration cascade completes. Saving a preimage for a commit that
+      // never actually lands on-chain is harmless - it just sits as dead
+      // weight in the already-gitignored keeper-secrets.json.
+      addSecrets(pairs);
+      try {
+        const res = await pusher.broadcastTxSync({
+          msgs: [
+            new MsgExecuteContract({
+              sender: pusher.address,
+              contract: target.address,
+              msg: { push_commits: { commits } },
+              funds: [],
+            }),
+          ],
+          memo: "REPEG CLUB",
+        });
+        if (res.txResponse.code !== 0) {
+          console.error(`[${target.label}] push_commits failed: ${res.txResponse.rawLog}`);
+        } else {
+          console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
+        }
+      } catch (err) {
+        console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);
+      }
+    }
 
+    // Attempted regardless of whether the push above succeeded (round-review
+    // fix, CodeRabbit, 2026-09-01): a failed push this run doesn't mean the
+    // queue is empty - an earlier successful push may have left commits
+    // sitting there unassigned, and there's no reason to wait another
+    // LOW_WATER_MARK-and-a-cron-cycle to hand one to the round/week.
     if (target.type !== "wheel-manager" && target.type !== "weekly-round") continue;
     try {
       const current =

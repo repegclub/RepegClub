@@ -504,15 +504,6 @@
   cursor: not-allowed;
 }
 
-.cyol-reveal-wheel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  margin: 0.5rem 0;
-}
-
 .cyol-reveal-chest {
   display: flex;
   flex-direction: column;
@@ -522,7 +513,7 @@
   margin: 0.5rem 0;
 }
 
-/* ---------- Wooden treasure chest (Airdrop reveal) ---------- */
+/* ---------- Wooden treasure chest (Airdrop/Winner reveal) ---------- */
 .cyol-chest-scene {
   position: relative;
   width: 200px;

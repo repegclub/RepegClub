@@ -25,20 +25,19 @@ export function markRevealed(contractAddress: string, roundId: number, wallet: s
   }
 }
 
-// Create Your Own Luck has no rounds (one raffle per contract address). The
-// SingleWinner wheel (CyolRevealWheel) is a genuinely public spectacle -
-// anyone can watch it, wallet connected or not - so it's tracked per
-// contract address only: a revisit shouldn't re-offer "Reveal winner" for
-// something already seen, regardless of which wallet (if any) is looking.
+// Create Your Own Luck has no rounds (one raffle per contract address), so
+// this is tracked per contract address, further scoped by wallet.
 //
-// The Airdrop chest (CyolRevealChest) started the same way, but became
-// wallet-gated later the same session (2026-07-25) - only a participating
-// wallet can open it at all, revealing that wallet's own share. Without a
-// wallet in the key, one wallet opening the chest would incorrectly mark it
-// "already revealed" for every other wallet that ever visits this raffle
+// The Airdrop chest (CyolRevealChest) became wallet-gated on 2026-07-25 -
+// only a participating wallet can open it at all, revealing that wallet's
+// own share - and winner mode (Single Winner/Podium, 2026-09-01, replacing
+// the old public-spectacle CyolRevealWheel) followed the same rule. Without
+// a wallet in the key, one wallet opening the chest would incorrectly mark
+// it "already revealed" for every other wallet that ever visits this raffle
 // too, skipping their own reveal moment entirely (the exact spoiler this
-// whole cache exists to prevent). `wallet` is optional so CyolRevealWheel's
-// calls (no wallet) keep behaving exactly as before.
+// whole cache exists to prevent). `wallet` stays optional/nullable so a
+// lookup before a wallet connects (nothing to key on yet) still resolves to
+// a real string instead of throwing.
 function cyolKey(contractAddress: string, wallet?: string | null): string {
   return wallet
     ? `repegclub:cyol-revealed:${contractAddress}:${wallet}`
