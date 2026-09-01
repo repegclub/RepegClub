@@ -39,7 +39,6 @@ import {
 import { friendlyCyolError } from "../../lib/cyolErrorMessages";
 import { CyolVerifyPanel } from "./CyolVerifyPanel";
 import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
-import { CyolRevealWheel } from "./CyolRevealWheel";
 import { CyolRevealChest } from "./CyolRevealChest";
 
 // Mirrors MAX_RAFFLE_AGE_SECONDS exactly (contracts/create-your-own-luck/
@@ -147,11 +146,9 @@ function ValueMismatchWarningModal({
 // own validation is the source of truth for the fine-grained eligibility
 // (draw window height, unclaimed deadline, rearm cap) - its rejection
 // message surfaces as-is instead of this page trying to precompute exact
-// countdowns for all of them. SingleWinner's result is revealed via the same
-// wheel/physics Wheel of Repeg uses (see CyolRevealWheel) - Airdrop has no
-// winner to reveal, so it gets its own reveal moment instead, a chest that
-// only a participating wallet can open, revealing its own per-wallet split
-// (see CyolRevealChest).
+// countdowns for all of them. SingleWinner/Podium's result and Airdrop's
+// per-wallet split are both revealed via the same pixel-art chest, gated to
+// wallets that actually bought a ticket (see CyolRevealChest).
 export function RaffleDetailPage() {
   const { t } = useTranslation();
   const { address = "" } = useParams<{ address: string }>();
@@ -999,21 +996,25 @@ export function RaffleDetailPage() {
 
       {raffleStatus.status === "drawn" && (
         <div className="cyol-detail-actions">
-          {winnerDetail &&
-            (winners && entrants.length > 0 ? (
-              <CyolRevealWheel key={address} contractAddress={address} entrants={entrants} winnerAddress={winners.winners[0]}>
-                {winnerDetail}
-              </CyolRevealWheel>
-            ) : (
-              // Raffles from before GetEntrants existed (see
-              // useCyolRaffleDetail) have no ticket list to build wheel
-              // segments from - fall back to the plain-text reveal rather
-              // than showing a wheel that can never spin.
-              winnerDetail
-            ))}
+          {winnerDetail && winners && (
+            <CyolRevealChest
+              key={`${address}:${walletAddress ?? ""}`}
+              mode="winner"
+              contractAddress={address}
+              walletAddress={walletAddress}
+              prizeCurrency={prizeCurrency}
+              hasTicket={myTicketCount !== null && myTicketCount > 0}
+              winnerAddress={winners.winners[0]}
+              winnerPrize={winners.prize_shares[0] ?? "0"}
+              isWinner={walletAddress !== null && winners.winners.includes(walletAddress)}
+            >
+              {winnerDetail}
+            </CyolRevealChest>
+          )}
           {isAirdrop && (
             <CyolRevealChest
               key={`${address}:${walletAddress ?? ""}`}
+              mode="airdrop"
               contractAddress={address}
               walletAddress={walletAddress}
               myAirdropShare={myAirdropShare}
