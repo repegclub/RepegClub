@@ -109,6 +109,7 @@ export function WeeklyVerifyRoundPanel({ weekId, contractAddress }: WeeklyVerify
                   </button>
                   <div className="verify-modal-header-wrap">
                     <img src="/characters/verify-lab-panel.png" alt="" className="verify-modal-header" />
+                  <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo wheel-booth-logo-left" />
                     <div className="verify-lab-bubble-wrap">
                       <div className="host-guide-bubble-outline-rectangulo">
                         <div className="host-guide-bubble host-guide-bubble-rectangulo">

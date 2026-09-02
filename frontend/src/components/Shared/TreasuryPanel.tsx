@@ -191,6 +191,7 @@ export function TreasuryPanel() {
                     </button>
                     <div className="verify-modal-header-wrap">
                       <img src="/characters/treasury-bank.jpg" alt="" className="verify-modal-header" />
+                      <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo wheel-booth-logo-left" />
                       {/* Estimated total, printed on the big empty RPC screen
                           in the image itself (same technique as .onramp-
                           banner-screen-text) instead of taking up modal-body

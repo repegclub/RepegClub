@@ -149,6 +149,7 @@ export function CreateYourOwnLuckPage() {
       <div className="cyol-page-banner-border panel-border pixel-stepped-corners">
         <div className="panel-highlight pixel-stepped-corners">
           <img src="/characters/galactic-raffle-banner.jpg" alt="" className="cyol-page-banner pixel-stepped-corners" />
+          <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo" />
         </div>
       </div>
 

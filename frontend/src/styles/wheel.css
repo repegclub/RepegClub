@@ -819,6 +819,14 @@
     image-rendering: pixelated;
     pointer-events: none;
   }
+  /* Top-left instead of the default top-right - used on the 4 modal header
+     banners (Verify x3 + Treasury), where top-right is already occupied by
+     the modal's own close button (see .verify-modal-close) and would
+     otherwise overlap it. */
+  .wheel-booth-logo-left {
+    right: auto;
+    left: 3%;
+  }
   .wheel-booth-wheel {
     position: absolute;
     /* % of wheel-booth-wrap's own box, not fixed px - stays aligned with
@@ -2619,6 +2627,13 @@
     padding: 2px;
     background: #fff;
   }
+  /* Anchors .wheel-booth-logo's absolute positioning for the Galactic
+     Raffle/Creators Lab banners - scoped here rather than on the shared
+     .panel-highlight (reused elsewhere for plain, non-relative cards) to
+     avoid an unrelated side effect on those. */
+  .cyol-page-banner-border .panel-highlight {
+    position: relative;
+  }
   .panel {
     position: relative;
     background: var(--bg-raised);
@@ -4092,6 +4107,21 @@
   .wallet-chip-testnet .wallet-dot {
     background: var(--gold);
     box-shadow: 0 0 6px 1.5px rgba(255,209,102,0.65);
+  }
+  /* Color alone isn't a safe signal here - nothing says gold specifically
+     means testnet rather than just "a gold-themed button" (direct
+     feedback, 2026-09-02). Small uppercase label, same word the
+     standalone badge used, keeps it unambiguous. */
+  .wallet-chip-network {
+    font-family: var(--body);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #3ddc84;
+  }
+  .wallet-chip-testnet .wallet-chip-network {
+    color: var(--gold);
   }
   .wallet-address-full,
   .wallet-address-short {

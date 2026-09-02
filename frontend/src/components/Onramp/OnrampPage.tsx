@@ -51,6 +51,7 @@ export function OnrampPage() {
         <div className="panel-highlight pixel-stepped-corners">
           <div className="onramp-banner-wrap">
             <img src="/characters/onramp-counter.jpg" alt="" className="onramp-banner pixel-stepped-corners" />
+            <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo" />
             <p className="onramp-banner-screen-text">
               Onramp
               <br />

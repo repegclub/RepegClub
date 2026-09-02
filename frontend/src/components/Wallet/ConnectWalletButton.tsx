@@ -24,6 +24,7 @@ export function ConnectWalletButton() {
   if (state.status === "connected") {
     return (
       <div className={`wallet-chip${IS_MAINNET ? "" : " wallet-chip-testnet"}`}>
+        <span className="wallet-chip-network">{IS_MAINNET ? t("wallet.mainnet") : t("wallet.testnet")}</span>
         <span className="wallet-dot" />
         <span className="wallet-address-full">{truncate(state.address)}</span>
         <span className="wallet-address-short">{truncateShort(state.address)}</span>
