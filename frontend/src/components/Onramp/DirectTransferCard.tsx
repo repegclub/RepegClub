@@ -735,6 +735,23 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
 
           {!hasUlunaForFee && <p className="onramp-error-text">{t("onramp.outbound.gasNeeded")}</p>}
 
+          {/* Wallets don't auto-detect a brand-new token by themselves (an
+              EVM wallet needs the contract address pasted in manually;
+              Solana wallets are more likely to pick it up on their own,
+              but not guaranteed) - found live, 2026-09-02: the user sent a
+              real transfer and couldn't find the balance until told the
+              exact contract address to add. Shown before sending (so it
+              can be copied ahead of time) and repeated in the success
+              message below, since that's the moment it's actually needed. */}
+          <p className="onramp-dest-warning">
+            {destination.kind === "evm"
+              ? t("onramp.outbound.tokenHintEvm", {
+                  symbol: assetSymbol,
+                  address: destination.tokenAddress[assetSymbol],
+                })
+              : t("onramp.outbound.tokenHintSolana", { address: destination.tokenAddress[assetSymbol] })}
+          </p>
+
           {amountValid && (
             <p className="onramp-breakdown">
               {t("onramp.outbound.breakdown", {
@@ -770,7 +787,18 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
               </button>
             </div>
           )}
-          {txHash && <p className="onramp-success-text">{t("onramp.direct.sent", { hash: txHash })}</p>}
+          {txHash && (
+            <p className="onramp-success-text">
+              {t("onramp.direct.sent", { hash: txHash })}
+              <br />
+              {destination.kind === "evm"
+                ? t("onramp.outbound.tokenHintEvm", {
+                    symbol: assetSymbol,
+                    address: destination.tokenAddress[assetSymbol],
+                  })
+                : t("onramp.outbound.tokenHintSolana", { address: destination.tokenAddress[assetSymbol] })}
+            </p>
+          )}
         </>
       )}
     </div>

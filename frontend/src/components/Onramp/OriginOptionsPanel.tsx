@@ -115,6 +115,10 @@ export function OriginOptionsPanel() {
                       Or choose the chain where you already have your funds — USDC, OSMO, or ATOM —
                       and just bring them in below.
                     </p>
+                    <p className="origin-option-note">
+                      Going the other way? Switch to "Send LUNC/USTC out" above to bridge straight
+                      to BSC, Ethereum, or Solana via Hyperlane.
+                    </p>
                   </div>
                 </div>
               </div>
