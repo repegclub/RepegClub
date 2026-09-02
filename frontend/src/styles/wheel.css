@@ -2748,6 +2748,17 @@
       inset -3px -3px 0 rgba(199,204,214,0.5);
     transform: translateY(4px);
   }
+  /* Real phones only (pointer:coarse - see the .ticket-booth block above for
+     why: a resized desktop browser window has more slack than an actual
+     ~375-430px phone). Verify+Current Round still wrapped to 2 lines there
+     even after .verify-continue-row's gap was tightened - reported live.
+     Tighter horizontal padding shrinks both buttons enough to fit side by
+     side without touching the wider desktop/narrow-window sizing. */
+  @media (max-width: 480px) and (pointer: coarse) {
+    .verify-open-btn {
+      padding: clamp(0.3rem, 3cqw, 0.5rem) clamp(0.4rem, 5cqw, 0.9rem);
+    }
+  }
   /* Continue reuses .verify-open-btn's exact size/shape (same clamp height,
      same 3-line-capable column layout) so the two buttons match, just in
      the game's usual blue instead of Verify's violet. */
