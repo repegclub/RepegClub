@@ -170,3 +170,12 @@ pub const TOTAL_INVESTED: Map<Addr, Uint128> = Map::new("total_invested");
 /// real payout, not any overpayment that got refunded back). Not derivable
 /// from `WINNER_INDEX` alone, since a fully-redeemed entry is removed from it.
 pub const TOTAL_REDEEMED: Map<Addr, Uint128> = Map::new("total_redeemed");
+/// Weekly-round contribution amount in flight between `execute_reveal_draw`
+/// dispatching its `SubMsg::reply_on_error` and the reply resolving - see
+/// `execute::handle_weekly_contribution_reply`. A single `Item`, not a `Map`
+/// keyed by round_id, is safe here because at most one such `SubMsg` can ever
+/// be pending: it's dispatched and resolved within the same transaction
+/// (`RevealDraw` never re-enters before its own reply comes back), unlike
+/// create-your-own-luck's `PENDING_AIRDROP_CLAIMS`, which really can have
+/// several claims in flight across different transactions at once.
+pub const PENDING_WEEKLY_CONTRIBUTION: Item<Uint128> = Item::new("pending_weekly_contribution");

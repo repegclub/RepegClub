@@ -1,4 +1,6 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{
+    entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult,
+};
 
 use crate::error::ContractError;
 use crate::execute::{
@@ -7,6 +9,7 @@ use crate::execute::{
     execute_push_commits, execute_reclaim_ticket, execute_redeem,
     execute_request_expire_closed_round, execute_reveal_draw, execute_set_commit_pusher,
     execute_sweep_expired_prize, execute_sweep_ustc, execute_withdraw_ticket, open_new_round,
+    reply as reply_impl,
 };
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::query::query as query_impl;
@@ -113,6 +116,11 @@ pub fn execute(
             execute_set_commit_pusher(deps, info, commit_pusher)
         }
     }
+}
+
+#[entry_point]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    reply_impl(deps, msg)
 }
 
 #[entry_point]

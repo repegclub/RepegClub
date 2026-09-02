@@ -368,6 +368,106 @@ fn reveal_draw_succeeds_and_splits_correctly() {
     assert_eq!(round2.pool, Uint128::new(100_000));
 }
 
+/// Fix #3 (project's Obsidian notes): the weekly-round contribution used to
+/// be a plain `add_message` - if `ContributeToPool` failed for any reason on
+/// Weekly Round's side, the entire `RevealDraw` reverted, including the
+/// winner selection and every other payout already computed in the same
+/// execution. Confirms the round still resolves to `Drawn` (with its other
+/// 2 payouts dispatched) even though the weekly `SubMsg` hasn't resolved yet;
+/// `reply` only runs after the whole `execute` call returns, in a real chain.
+#[test]
+fn reveal_draw_dispatches_weekly_contribution_as_a_submsg_not_a_plain_message() {
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap();
+
+    let res = reveal(&mut deps, &env, 1, 1).unwrap();
+
+    let weekly_submsg = res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) if contract_addr == "weeklyround"))
+        .expect("weekly contribution message present");
+    assert_ne!(weekly_submsg.reply_on, cosmwasm_std::ReplyOn::Never);
+
+    let round1 = round_history(&deps, &env, 1);
+    assert_eq!(round1.status, RoundStatus::Drawn);
+}
+
+/// The other half of Fix #3: when the weekly `SubMsg` from the test above
+/// actually fails on-chain, its `reply` must not let the 20% weekly cut
+/// vanish or sit stranded in this contract's own balance - product decision
+/// (2026-09-02, see the Onramp/Obsidian notes) redirects it to the treasury,
+/// which can always send it back into Weekly Round's pool later by calling
+/// `ContributeToPool` itself (that entrypoint has no caller restriction).
+#[test]
+fn weekly_contribution_failure_redirects_the_cut_to_treasury() {
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap();
+    let reveal_res = reveal(&mut deps, &env, 1, 1).unwrap();
+    let weekly_submsg = reveal_res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) if contract_addr == "weeklyround"))
+        .unwrap();
+
+    let reply_res = wheel_manager::contract::reply(
+        deps.as_mut(),
+        env.clone(),
+        cosmwasm_std::Reply {
+            id: weekly_submsg.id,
+            result: cosmwasm_std::SubMsgResult::Err("simulated weekly-round failure".to_string()),
+        },
+    )
+    .unwrap();
+
+    // pool = 2_000_000 -> 20% weekly cut = 400_000, redirected whole to treasury
+    assert_eq!(reply_res.messages.len(), 1);
+    let treasury_msg = &reply_res.messages[0].msg;
+    match treasury_msg {
+        CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+            assert_eq!(to_address, "treasury");
+            assert_eq!(amount, &coins(400_000, TICKET_DENOM));
+        }
+        other => panic!("expected a BankMsg::Send to treasury, got {other:?}"),
+    }
+    let failed_attr = reply_res.attributes.iter().find(|a| a.key == "weekly_contribution_failed").unwrap();
+    assert_eq!(failed_attr.value, "true");
+}
+
+/// The success side of the same reply: nothing extra happens, the pending
+/// amount is just cleared - the contribution already landed on Weekly
+/// Round's side via the `SubMsg` itself.
+#[test]
+fn weekly_contribution_success_reply_is_a_no_op() {
+    let (mut deps, env) = setup_and_seed(2, 2, 3);
+    buy_ticket(&mut deps, &env, "player1").unwrap();
+    buy_ticket(&mut deps, &env, "player2").unwrap();
+    let reveal_res = reveal(&mut deps, &env, 1, 1).unwrap();
+    let weekly_submsg = reveal_res
+        .messages
+        .iter()
+        .find(|m| matches!(&m.msg, CosmosMsg::Wasm(WasmMsg::Execute { contract_addr, .. }) if contract_addr == "weeklyround"))
+        .unwrap();
+
+    let reply_res = wheel_manager::contract::reply(
+        deps.as_mut(),
+        env.clone(),
+        cosmwasm_std::Reply {
+            id: weekly_submsg.id,
+            result: cosmwasm_std::SubMsgResult::Ok(cosmwasm_std::SubMsgResponse {
+                events: vec![],
+                data: None,
+            }),
+        },
+    )
+    .unwrap();
+
+    assert!(reply_res.messages.is_empty());
+    assert!(reply_res.attributes.is_empty());
+}
+
 #[test]
 fn only_the_winner_can_redeem_and_overpay_is_refunded() {
     let (mut deps, env) = setup_and_seed(2, 2, 3);
