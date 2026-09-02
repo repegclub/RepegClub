@@ -1,7 +1,9 @@
+import bs58 from "bs58";
 import { MsgExecuteContract, MsgIbcTransfer, MsgSend, type Adapter } from "@goblinhunt/cosmes/client";
 import { bech32, resolveBech32Address } from "@goblinhunt/cosmes/codec";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import {
+  HYPERLANE_TERRA_CLASSIC_WARP,
   KNOWN_SLIP44_118_CHAIN_IDS,
   KNOWN_SLIP44_118_CHAIN_PREFIXES,
   NOBLE_CHAIN_ID,
@@ -13,6 +15,8 @@ import {
   getDirectFeeSplit,
   type DirectOriginAsset,
   type DirectOriginChain,
+  type HyperlaneAsset,
+  type HyperlaneDestination,
 } from "./onrampConfig";
 
 // Same memo convention as every other tx this project broadcasts
@@ -701,6 +705,152 @@ export async function sendDirectToTerraClassic(
         fromAddress: wallet.address,
         toAddress: feeKeeperAddress,
         amount: [{ denom: asset.denom, amount: feeKeeperAmount.toString() }],
+      })
+    );
+  }
+
+  const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });
+  if (res.txResponse.code !== 0) {
+    throw new Error(res.txResponse.rawLog || "Transaction failed.");
+  }
+  return { res, transferAmount, treasuryAmount, feeKeeperAmount };
+}
+
+// ---------- Hyperlane outbound leg: LUNC/USTC leaving Terra Classic (2026-09-02) ----------
+// "Salida" only - see onrampConfig.ts's HYPERLANE_* comments for the return
+// leg's status (not built, needs its own EVM/Solana wallet integration).
+
+// Structurally valid EVM address only - same "responsible for pasting the
+// right one" trust model as isValidTerraClassicAddress above, no real
+// checksum-casing verification.
+export function isValidEvmAddress(address: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(address);
+}
+
+// A Solana address is a base58-encoded 32-byte Ed25519 pubkey - the
+// encoding itself carries no checksum (unlike bech32's), so this can only
+// confirm the string decodes to exactly 32 bytes, not that it's a real
+// account.
+export function isValidSolanaAddress(address: string): boolean {
+  try {
+    return bs58.decode(address).length === 32;
+  } catch {
+    return false;
+  }
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Hyperlane addresses every chain as a 32-byte value regardless of that
+// chain's own native address width. Confirmed live 2026-09-02 by querying
+// the real LUNC warp contract's own list_routes: its BSC route comes back
+// as "000000000000000000000000481095…9e6e2" - 12 zero bytes + the 20-byte
+// EVM address, lowercase hex, no "0x" prefix (HexBinary's own
+// serialization) - not assumed from EVM conventions alone.
+function evmAddressToHyperlaneRecipient(address: string): string {
+  return "00".repeat(12) + address.slice(2).toLowerCase();
+}
+
+// Solana addresses are already a 32-byte pubkey - no padding needed, just
+// re-encoded from base58 to the plain hex HexBinary expects.
+function solanaAddressToHyperlaneRecipient(address: string): string {
+  return bytesToHex(bs58.decode(address));
+}
+
+// Sends `amount` (in the selected asset's own denom, uluna or uusd) from
+// the connected Terra Classic wallet out to `destinationAddress` on
+// `destination`, via that asset's Hyperlane warp route - one signature
+// carrying the transfer_remote call plus the 2 MsgSend fee payouts, same
+// bundling reasoning as sendDirectToTerraClassic above (no separate step
+// where the fee could be skipped). The interchain gas payment (IGP, always
+// uluna) rides in the SAME MsgExecuteContract's funds - the warp contract
+// itself splits transferAmount off from those funds and forwards the
+// remainder as the gas payment (confirmed reading the real contract
+// source, many-things/cw-hyperlane's warp/native/src/contract.rs,
+// 2026-09-02 - nothing extra to construct here). No fee-skip enforcement
+// attempted on the return leg by design (product decision, 2026-09-02) -
+// doesn't apply here, this leg's fee is already bundled in the one signed
+// tx same as every other direct-transfer origin in this file.
+export async function sendOutViaHyperlane(
+  wallet: ConnectedWallet,
+  asset: HyperlaneAsset,
+  destination: HyperlaneDestination,
+  amount: bigint,
+  destinationAddress: string
+) {
+  const recipientValid =
+    destination.kind === "evm" ? isValidEvmAddress(destinationAddress) : isValidSolanaAddress(destinationAddress);
+  if (!recipientValid) {
+    throw new Error(`Not a valid ${destination.kind === "evm" ? "EVM" : "Solana"} address.`);
+  }
+  if (amount <= 0n) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  const { treasuryAddress, treasuryAmount, feeKeeperAddress, feeKeeperAmount, transferAmount } = getDirectFeeSplit(
+    TERRA_CLASSIC_CHAIN_ID,
+    amount
+  );
+
+  const warp = HYPERLANE_TERRA_CLASSIC_WARP[asset];
+  const recipient =
+    destination.kind === "evm"
+      ? evmAddressToHyperlaneRecipient(destinationAddress)
+      : solanaAddressToHyperlaneRecipient(destinationAddress);
+
+  // One coin (transferAmount + gas together) when the asset being bridged
+  // IS uluna (LUNC) - exactly the shape confirmed against the warp
+  // contract's own test suite. Two coins when it isn't (USTC/uusd) - the
+  // gas payment always needs its own separate uluna entry regardless of
+  // which asset is being bridged. The warp contract subtracts
+  // transferAmount from the matching-denom coin before forwarding the
+  // rest to the mailbox - for USTC that leaves a zero-amount uusd entry,
+  // which the Cosmos SDK's own coin normalization drops before it ever
+  // reaches the mailbox contract (verified reading mailbox/execute.rs's
+  // use of cosmwasm_std::Coins, not assumed) - not something this project
+  // needs to special-case here.
+  const funds =
+    warp.denom === "uluna"
+      ? [{ denom: "uluna", amount: (transferAmount + destination.igpFeeUluna).toString() }]
+      : [
+          { denom: warp.denom, amount: transferAmount.toString() },
+          { denom: "uluna", amount: destination.igpFeeUluna.toString() },
+        ];
+
+  const msgs: Adapter[] = [
+    new MsgExecuteContract({
+      sender: wallet.address,
+      contract: warp.contract,
+      msg: {
+        transfer_remote: {
+          dest_domain: destination.domain,
+          recipient,
+          amount: transferAmount.toString(),
+          hook: null,
+          metadata: null,
+        },
+      },
+      funds,
+    }),
+  ];
+
+  if (treasuryAmount > 0n) {
+    msgs.push(
+      new MsgSend({
+        fromAddress: wallet.address,
+        toAddress: treasuryAddress,
+        amount: [{ denom: warp.denom, amount: treasuryAmount.toString() }],
+      })
+    );
+  }
+  if (feeKeeperAmount > 0n) {
+    msgs.push(
+      new MsgSend({
+        fromAddress: wallet.address,
+        toAddress: feeKeeperAddress,
+        amount: [{ denom: warp.denom, amount: feeKeeperAmount.toString() }],
       })
     );
   }

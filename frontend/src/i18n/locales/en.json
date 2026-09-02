@@ -693,6 +693,8 @@
     ],
     "title": "Get USDC on Terra Classic",
     "subtitle": "Pick where your USDC (or OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
+    "modeBring": "Bring USDC in",
+    "modeSend": "Send LUNC/USTC out",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
       "destAddressPlaceholder": "terra1... (paste your wallet)",
@@ -712,6 +714,19 @@
       "outcomeUnknown": "We couldn't confirm whether this went through — check your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
       "outcomeUnknownAck": "I checked — let me try again",
       "sent": "Sent! Tx hash: {{hash}}"
+    },
+    "outbound": {
+      "desc": "Connect your Terra Classic wallet, then send LUNC or USTC out to {{chain}} via Hyperlane.",
+      "connectButton": "Connect Terra Classic wallet",
+      "evmAddressLabel": "{{chain}} address to receive",
+      "solanaAddressLabel": "Solana address to receive",
+      "solanaAddressPlaceholder": "Paste your Solana wallet address",
+      "evmAddressInvalid": "That doesn't look like a valid address for this chain.",
+      "solanaAddressInvalid": "That doesn't look like a valid Solana address.",
+      "gasNeeded": "You need a little LUNC in this wallet to pay the interchain gas fee for this transfer.",
+      "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) + ~{{gas}} LUNC network gas — {{send}} {{symbol}} will be sent to {{chain}}.",
+      "sendButton": "Send to {{chain}}",
+      "sendFailed": "Transaction failed."
     }
   },
   "onrampFaq": {

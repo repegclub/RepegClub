@@ -264,6 +264,50 @@
   font-family: var(--body);
 }
 
+/* Direction switch (2026-09-02) - picked over folding this into the tab
+   row below because a user testing the widget couldn't tell "bring in"
+   from "send out" from tab labels alone (Noble/BSC read the same at a
+   glance) - this makes the choice its own explicit step, one level above
+   which chain. Gold, not one of the tab row's green/blue/crimson accents -
+   those are reserved for "which chain", this is a different kind of
+   choice ("which direction"), so it needs to read as a different kind of
+   control, not a 4th color in the same family. */
+.onramp-mode-switch {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+.onramp-mode-btn {
+  flex: 1 1 auto;
+  border: none;
+  border-radius: 0;
+  background: #6b7280;
+  color: #fff;
+  font-family: var(--body);
+  font-size: 1.02rem;
+  font-weight: 700;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+  box-shadow:
+    inset 2px 2px 0 rgba(199,204,214,0.9),
+    inset -2px -2px 0 rgba(38,42,52,0.9),
+    0 3px 0 #3f434e;
+}
+.onramp-mode-btn:active {
+  box-shadow:
+    inset 2px 2px 0 rgba(38,42,52,0.9),
+    inset -2px -2px 0 rgba(199,204,214,0.5);
+  transform: translateY(3px);
+}
+.onramp-mode-btn-active {
+  background: var(--gold);
+  color: #241a04;
+  box-shadow:
+    inset 2px 2px 0 rgba(255,232,166,0.9),
+    inset -2px -2px 0 rgba(148,101,10,0.9),
+    0 3px 0 var(--gold-dim);
+}
+
 .onramp-tabs {
   display: flex;
   flex-wrap: wrap;
