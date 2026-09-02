@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWallet } from "../../contexts/WalletContext";
+import { IS_MAINNET } from "../../lib/chainConfig";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import { WalletProviderOptions } from "./WalletProviderOptions";
 
@@ -22,7 +23,7 @@ export function ConnectWalletButton() {
 
   if (state.status === "connected") {
     return (
-      <div className="wallet-chip">
+      <div className={`wallet-chip${IS_MAINNET ? "" : " wallet-chip-testnet"}`}>
         <span className="wallet-dot" />
         <span className="wallet-address-full">{truncate(state.address)}</span>
         <span className="wallet-address-short">{truncateShort(state.address)}</span>

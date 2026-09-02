@@ -4074,6 +4074,25 @@
     box-shadow: 0 0 6px 1.5px rgba(61,220,132,0.65);
     flex-shrink: 0;
   }
+  /* Testnet's gold instead of the default green bevel above - NetworkBadge
+     hides itself once connected (see NetworkBadge.tsx) so this chip is the
+     only place testnet/mainnet still shows once connected; same gold used
+     for that badge (var(--gold)/var(--gold-dim)) so the color means the
+     same thing whether you're looking at the chip or the pre-connect
+     badge. Saves the badge's own boxed padding + LED, folded into a color
+     this element already had a reason to carry (2026-09-02, real-phone
+     wallet-bar wrapping to 3 rows). */
+  .wallet-chip-testnet {
+    box-shadow:
+      inset 3px 3px 0 rgba(255,225,150,0.9),
+      inset -3px 0 0 var(--gold-dim),
+      inset 0 -3px 0 var(--black),
+      0 4px 0 var(--gold-dim);
+  }
+  .wallet-chip-testnet .wallet-dot {
+    background: var(--gold);
+    box-shadow: 0 0 6px 1.5px rgba(255,209,102,0.65);
+  }
   .wallet-address-full,
   .wallet-address-short {
     font-family: var(--body);
