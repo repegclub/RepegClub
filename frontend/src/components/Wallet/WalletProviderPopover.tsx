@@ -18,10 +18,14 @@ export function WalletProviderPopover({
   anchorRef,
   onClose,
   onSelect,
+  allowMobile = true,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   onSelect: (providerId: WalletProviderId, type: WalletType) => void;
+  // See WalletProviderOptions.tsx's own comment - only false for the
+  // Hyperlane outbound form.
+  allowMobile?: boolean;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<{ top: number; left: number } | null>(null);
@@ -106,7 +110,7 @@ export function WalletProviderPopover({
       // position.
       style={style ?? { visibility: "hidden", top: 0, left: 0 }}
     >
-      <WalletProviderOptions onSelect={onSelect} />
+      <WalletProviderOptions onSelect={onSelect} allowMobile={allowMobile} />
     </div>,
     document.body
   );

@@ -652,6 +652,12 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
           >
             {walletState.status === "connecting" ? t("wallet.connecting") : t("onramp.outbound.connectButton")}
           </button>
+          {/* No "Mobile (scan QR)" group here - see allowMobile's comment in
+              WalletProviderOptions.tsx. The hint below points phone users
+              at the option that does work (open this site inside Keplr's/
+              Galaxy Station's own app, then use the plain, non-QR button
+              above). */}
+          <p className="onramp-dest-warning">{t("onramp.outbound.mobileHint")}</p>
           {providerMenuOpen && (
             <WalletProviderPopover
               anchorRef={connectBtnRef}
@@ -660,6 +666,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
                 setProviderMenuOpen(false);
                 connect(providerId, type);
               }}
+              allowMobile={false}
             />
           )}
         </>
