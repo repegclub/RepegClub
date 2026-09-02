@@ -141,4 +141,7 @@ pub enum ContractError {
 
     #[error("Round {round_id}'s challenge window is still open - a legitimate reveal can still land")]
     ChallengeWindowOpen { round_id: u64 },
+
+    #[error("Unknown reply id: {id}")]
+    UnknownReplyId { id: u64 },
 }

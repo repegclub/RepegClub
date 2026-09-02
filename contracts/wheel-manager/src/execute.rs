@@ -1,15 +1,15 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
     to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Empty, Env, HexBinary, MessageInfo,
-    Response, Storage, Uint128, WasmMsg,
+    Reply, Response, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 use sha2::{Digest, Sha256};
 
 use crate::error::ContractError;
 use crate::rand::pick_winner_index;
 use crate::state::{
-    GlobalState, Round, RoundStatus, CONFIG, COMMIT_QUEUE, REVEAL_QUEUE, ROUNDS, STATE,
-    TOTAL_INVESTED, TOTAL_REDEEMED, USED_COMMITS, WINNER_INDEX,
+    GlobalState, Round, RoundStatus, CONFIG, COMMIT_QUEUE, PENDING_WEEKLY_CONTRIBUTION,
+    REVEAL_QUEUE, ROUNDS, STATE, TOTAL_INVESTED, TOTAL_REDEEMED, USED_COMMITS, WINNER_INDEX,
 };
 
 const PRIZE_BPS: u128 = 6000; // 60%
@@ -74,6 +74,22 @@ pub const MAX_COMMIT_QUEUE_LEN: u32 = 500;
 /// matching the same constant across all 3 contracts keeps the mental model
 /// (and the CYOL factory's actual need for it) consistent.
 pub const DISCARD_COMMITS_MAX_BATCH: u32 = 100;
+/// Reply id for the weekly-round contribution `SubMsg` dispatched from
+/// `execute_reveal_draw` - see `handle_weekly_contribution_reply`'s own doc
+/// comment for why this exists. Only one reply id is needed (unlike CYOL's
+/// dynamic per-claim ids) since at most one such `SubMsg` is ever in flight -
+/// see `PENDING_WEEKLY_CONTRIBUTION`'s own doc comment.
+const WEEKLY_CONTRIBUTION_REPLY_ID: u64 = 1;
+/// Gas ceiling on the weekly-round contribution `SubMsg` - same defense-in-
+/// depth reasoning as create-your-own-luck's `PRIZE_TRANSFER_GAS_LIMIT`: even
+/// though `weekly_round_address` is this project's own trusted contract (not
+/// a third-party CW20), an unbounded call that somehow burned all remaining
+/// gas would still abort the whole transaction (out-of-gas isn't something
+/// `reply` can catch), reopening exactly the "revert until the hash favors
+/// me" grinding path the `SubMsg` conversion below exists to close.
+/// `ContributeToPool`'s own cost (one `route_carry` storage write) is a few
+/// hundred thousand gas at most - this leaves generous headroom.
+const WEEKLY_CONTRIBUTION_GAS_LIMIT: u64 = 1_000_000;
 
 /// Mirrors Weekly Round's `ExecuteMsg::ContributeToPool` just enough to build the
 /// outbound message. Deliberately not a shared crate dependency between the two
@@ -558,29 +574,96 @@ pub fn execute_reveal_draw(
             .into(),
         );
     }
+    let mut weekly_contribution_submsg: Option<SubMsg> = None;
     if !weekly_cut.is_zero() {
-        messages.push(
-            WasmMsg::Execute {
-                contract_addr: config.weekly_round_address.to_string(),
-                msg: to_json_binary(&WeeklyRoundExecuteMsg::ContributeToPool {
-                    source_wheel: env.contract.address.to_string(),
-                    source_round_id: finished_round_id,
-                })?,
-                funds: vec![Coin {
-                    denom: config.ticket_denom.clone(),
-                    amount: weekly_cut,
-                }],
-            }
-            .into(),
+        // Saved before dispatch, read back (and cleared) in the reply - see
+        // `PENDING_WEEKLY_CONTRIBUTION`'s own doc comment for why an `Item`
+        // is enough here and `handle_weekly_contribution_reply` for what
+        // happens to this amount if the contribution fails.
+        PENDING_WEEKLY_CONTRIBUTION.save(deps.storage, &weekly_cut)?;
+        weekly_contribution_submsg = Some(
+            // reply_always, not reply_on_error: the Ok branch of
+            // handle_weekly_contribution_reply exists to clear
+            // PENDING_WEEKLY_CONTRIBUTION right away rather than leaving it
+            // stale until the next round's weekly_cut overwrites it -
+            // reply_on_error would silently never invoke the reply entry
+            // point on success, making that branch dead code (code-review
+            // finding, 2026-09-02).
+            SubMsg::reply_always(
+                WasmMsg::Execute {
+                    contract_addr: config.weekly_round_address.to_string(),
+                    msg: to_json_binary(&WeeklyRoundExecuteMsg::ContributeToPool {
+                        source_wheel: env.contract.address.to_string(),
+                        source_round_id: finished_round_id,
+                    })?,
+                    funds: vec![Coin {
+                        denom: config.ticket_denom.clone(),
+                        amount: weekly_cut,
+                    }],
+                },
+                WEEKLY_CONTRIBUTION_REPLY_ID,
+            )
+            .with_gas_limit(WEEKLY_CONTRIBUTION_GAS_LIMIT),
         );
     }
 
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_messages(messages)
         .add_attribute("action", "reveal_draw")
         .add_attribute("round_id", finished_round_id.to_string())
         .add_attribute("winner", winner)
-        .add_attribute("prize", prize.to_string()))
+        .add_attribute("prize", prize.to_string());
+    if let Some(submsg) = weekly_contribution_submsg {
+        response = response.add_submessage(submsg);
+    }
+    Ok(response)
+}
+
+/// Handles the outcome of the weekly-round contribution `SubMsg` dispatched
+/// from `execute_reveal_draw` - the fix for the fragile Wheel Manager ->
+/// Weekly Round dependency flagged in the project's Obsidian notes ("Fix #3").
+/// Before this, the contribution was a plain `add_message`: if
+/// `ContributeToPool` failed for any reason (Weekly Round paused, migrated to
+/// an incompatible version, or any other future failure on a contract this
+/// one doesn't control), the *entire* `RevealDraw` transaction reverted,
+/// including the winner selection and every other payout already computed in
+/// the same execution - a healthy round could get stuck unable to ever
+/// resolve, purely because of a problem in a different contract.
+///
+/// On success, nothing else to do - just clear the pending amount. On
+/// failure, the contribution amount doesn't vanish and doesn't stay stranded
+/// in this contract's own balance either: it's redirected to the treasury in
+/// the same transaction (product decision, 2026-09-02 - the treasury's 2-of-3
+/// multisig can always send it back into Weekly Round's pool later by calling
+/// `ContributeToPool` itself, since that entrypoint has no caller
+/// restriction).
+fn handle_weekly_contribution_reply(deps: DepsMut, result: SubMsgResult) -> Result<Response, ContractError> {
+    let pending = PENDING_WEEKLY_CONTRIBUTION.load(deps.storage)?;
+    PENDING_WEEKLY_CONTRIBUTION.remove(deps.storage);
+
+    match result {
+        SubMsgResult::Ok(_) => Ok(Response::new()),
+        SubMsgResult::Err(_) => {
+            let config = CONFIG.load(deps.storage)?;
+            Ok(Response::new()
+                .add_message(BankMsg::Send {
+                    to_address: config.treasury_address.to_string(),
+                    amount: vec![Coin {
+                        denom: config.ticket_denom,
+                        amount: pending,
+                    }],
+                })
+                .add_attribute("weekly_contribution_failed", "true")
+                .add_attribute("redirected_to_treasury", pending.to_string()))
+        }
+    }
+}
+
+pub fn reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        WEEKLY_CONTRIBUTION_REPLY_ID => handle_weekly_contribution_reply(deps, msg.result),
+        id => Err(ContractError::UnknownReplyId { id }),
+    }
 }
 
 /// `config.commit_pusher`-only (a role separate from `admin` - see
