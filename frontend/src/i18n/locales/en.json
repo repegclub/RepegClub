@@ -41,6 +41,7 @@
     "wheelOfRepegLabel": "Wheel of Repeg"
   },
   "ticketBooth": {
+    "roundBadge": "Round #{{roundId}}",
     "label": "Ticket price",
     "buy": "Buy ticket",
     "buyTickets": "Buy {{count}} tickets",
@@ -111,12 +112,12 @@
     "closing": "Closing…",
     "waitingToClose": "Waiting for more tickets or the timeout.",
     "waitingForPlayers": "Waiting for more players to start the countdown.",
-    "waitingForMinPlayers": "Needs {{min}} players to start the countdown.",
+    "waitingForMinPlayers": "Round #{{roundId}} — needs {{min}} players to start the countdown.",
     "withdrawTicket": "Withdraw my ticket(s)",
     "withdrawing": "Withdrawing…",
     "withdrawnNote": "Withdrawn — your money is on its way back to your wallet.",
     "withdrawLockInNote": "Once a second player buys in, your ticket locks in and can no longer be withdrawn.",
-    "closesIn": "Closes in {{time}} unless someone buys another ticket",
+    "closesIn": "Round #{{roundId}} — closes in {{time}} unless someone buys another ticket",
     "closesInUrgent": "Last call! Closes in {{time}} unless someone buys another ticket",
     "lastCallShort": "Last call!",
     "hostHype": [
@@ -140,6 +141,7 @@
     "rescuing": "Working…",
     "continueNextRound": "Continue to next round",
     "continueShort": "Next\nRound",
+    "backToCurrent": "Back to\ncurrent round",
     "actionFailed": "Action failed.",
     "expireRound": "Expire round",
     "expiring": "Expiring…",

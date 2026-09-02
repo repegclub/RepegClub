@@ -8,6 +8,8 @@ import { HostGuide } from "./HostGuide";
 
 type TicketBoothProps = {
   priceDisplay: string;
+  // null/undefined = round not loaded yet, don't show the badge.
+  roundId?: number | null;
   ticketDenom?: string;
   ticketPriceAmount?: string;
   contractAddress?: string;
@@ -43,6 +45,7 @@ type TicketBoothProps = {
 
 export function TicketBooth({
   priceDisplay,
+  roundId,
   ticketDenom,
   ticketPriceAmount,
   contractAddress,
@@ -147,6 +150,9 @@ export function TicketBooth({
           extra nesting level. */}
       <div className="booth-info">
         <div>
+          {roundId !== null && roundId !== undefined && (
+            <p className="booth-round-badge">{t("ticketBooth.roundBadge", { roundId })}</p>
+          )}
           <p className="booth-label">{t("ticketBooth.label")}</p>
           <p className="booth-price">{priceDisplay}</p>
           {availableTickets !== null && availableTickets !== undefined && (

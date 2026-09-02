@@ -49,6 +49,11 @@ type WheelCardProps = {
   // it (no spoilers), so this button is the ONLY way to ever reach it -
   // has to read as an inviting, unmissable game action, not a footnote.
   onViewRound?: (roundId: number) => void;
+  // True while roundState is pinned to a past round (see WheelOfRepeg's
+  // viewRoundId) rather than showing whatever's actually live - lets a
+  // wallet that didn't play this round skip straight back to the live one
+  // without having to reveal/verify a result it has no stake in.
+  isViewingHistory?: boolean;
 };
 
 export function WheelCard({
@@ -63,6 +68,7 @@ export function WheelCard({
   onWithdrawn,
   onRevealed,
   onViewRound,
+  isViewingHistory,
 }: WheelCardProps) {
   const { t } = useTranslation();
   const { state: walletState } = useWallet();
@@ -387,10 +393,16 @@ export function WheelCard({
         return { type: "alarma", message: t("wheel.lastCallShort") };
       }
       if (secondsToDeadline !== null) {
-        return { type: "horizontal", message: t("wheel.closesIn", { time: formatCountdown(secondsToDeadline) }) };
+        return {
+          type: "horizontal",
+          message: t("wheel.closesIn", { roundId: roundState.round.round_id, time: formatCountdown(secondsToDeadline) }),
+        };
       }
       if (secondsToDeadline === null) {
-        return { type: "horizontal", message: t("wheel.waitingForMinPlayers", { min: roundState.config.min_players }) };
+        return {
+          type: "horizontal",
+          message: t("wheel.waitingForMinPlayers", { roundId: roundState.round.round_id, min: roundState.config.min_players }),
+        };
       }
     }
     if (roundState.round.status === "closed") {
@@ -658,11 +670,18 @@ export function WheelCard({
         )}
 
       {loaded && roundState.round.status === "drawn" && (
-        <div className={`verify-continue-row${isWinnerWithPrize ? "" : " verify-continue-row-solo"}`}>
+        <div className={`verify-continue-row${isWinnerWithPrize || isViewingHistory ? "" : " verify-continue-row-solo"}`}>
           <VerifyRoundPanel roundId={roundState.round.round_id} contractAddress={contractAddress} />
           {isWinnerWithPrize && (
             <button className="verify-open-btn continue-next-btn" onClick={handleContinue}>
               {t("wheel.continueShort").split("\n").map((line, i) => (
+                <span key={i}>{line}</span>
+              ))}
+            </button>
+          )}
+          {!isWinnerWithPrize && isViewingHistory && (
+            <button className="verify-open-btn continue-next-btn" onClick={handleContinue}>
+              {t("wheel.backToCurrent").split("\n").map((line, i) => (
                 <span key={i}>{line}</span>
               ))}
             </button>

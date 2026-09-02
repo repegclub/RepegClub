@@ -187,11 +187,13 @@ export function WheelOfRepeg() {
           onWithdrawn={handleWithdrawn}
           onRevealed={handleRevealed}
           onViewRound={setViewRoundId}
+          isViewingHistory={viewRoundId !== undefined}
         />
 
         <div className="cabinet-ticket-booth">
           <TicketBooth
             priceDisplay={ticketPriceDisplay}
+            roundId={roundId}
             ticketDenom={roundState.status === "loaded" ? roundState.config.ticket_denom : undefined}
             ticketPriceAmount={roundState.status === "loaded" ? roundState.config.ticket_price : undefined}
             contractAddress={selectedTier ?? undefined}
