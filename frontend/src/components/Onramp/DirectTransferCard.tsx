@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { WalletProviderPopover } from "../Wallet/WalletProviderPopover";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
+import { useCopyable } from "../../hooks/useCopyable";
 import {
   isValidEvmAddress,
   isValidSolanaAddress,
@@ -499,6 +500,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const connectBtnRef = useRef<HTMLButtonElement>(null);
   const address = walletState.status === "connected" ? walletState.address : null;
+  const { copiedKey, copy } = useCopyable();
 
   const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>("LUNC");
   const asset = chain.assets.find((a) => a.symbol === assetSymbol) ?? chain.assets[0];
@@ -742,15 +744,28 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
               real transfer and couldn't find the balance until told the
               exact contract address to add. Shown before sending (so it
               can be copied ahead of time) and repeated in the success
-              message below, since that's the moment it's actually needed. */}
-          <p className="onramp-dest-warning">
-            {destination.kind === "evm"
-              ? t("onramp.outbound.tokenHintEvm", {
-                  symbol: assetSymbol,
-                  address: destination.tokenAddress[assetSymbol],
-                })
-              : t("onramp.outbound.tokenHintSolana", { address: destination.tokenAddress[assetSymbol] })}
-          </p>
+              message below, since that's the moment it's actually needed.
+              The full address is shown (not truncated like a wallet
+              address elsewhere in this file) - the whole point here is
+              letting someone check it against a source they trust before
+              trusting it enough to paste into their own wallet. */}
+          <div className="onramp-dest-warning onramp-token-hint">
+            <span>
+              {destination.kind === "evm"
+                ? t("onramp.outbound.tokenHintEvm", { symbol: assetSymbol })
+                : t("onramp.outbound.tokenHintSolana")}
+            </span>
+            <div className="onramp-token-hint-row">
+              <code>{destination.tokenAddress[assetSymbol]}</code>
+              <button
+                type="button"
+                className="onramp-ghost-btn"
+                onClick={() => copy("outbound-hint", destination.tokenAddress[assetSymbol])}
+              >
+                {copiedKey === "outbound-hint" ? t("verify.copied") : t("verify.copy")}
+              </button>
+            </div>
+          </div>
 
           {amountValid && (
             <p className="onramp-breakdown">
@@ -788,16 +803,24 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
             </div>
           )}
           {txHash && (
-            <p className="onramp-success-text">
-              {t("onramp.direct.sent", { hash: txHash })}
-              <br />
-              {destination.kind === "evm"
-                ? t("onramp.outbound.tokenHintEvm", {
-                    symbol: assetSymbol,
-                    address: destination.tokenAddress[assetSymbol],
-                  })
-                : t("onramp.outbound.tokenHintSolana", { address: destination.tokenAddress[assetSymbol] })}
-            </p>
+            <div className="onramp-success-text onramp-token-hint">
+              <p>{t("onramp.direct.sent", { hash: txHash })}</p>
+              <span>
+                {destination.kind === "evm"
+                  ? t("onramp.outbound.tokenHintEvm", { symbol: assetSymbol })
+                  : t("onramp.outbound.tokenHintSolana")}
+              </span>
+              <div className="onramp-token-hint-row">
+                <code>{destination.tokenAddress[assetSymbol]}</code>
+                <button
+                  type="button"
+                  className="onramp-ghost-btn"
+                  onClick={() => copy("outbound-success", destination.tokenAddress[assetSymbol])}
+                >
+                  {copiedKey === "outbound-success" ? t("verify.copied") : t("verify.copy")}
+                </button>
+              </div>
+            </div>
           )}
         </>
       )}

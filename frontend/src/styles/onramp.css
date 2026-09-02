@@ -394,6 +394,32 @@
   color: #ffd166; /* ONRAMP_THEME.warning.text */
 }
 
+/* The token-to-add hint (DirectOutboundForm) - overrides the center
+   alignment its 2 host classes (.onramp-dest-warning/.onramp-success-text)
+   otherwise use, since a long address + a copy button read better
+   left-aligned than centered and wrapping unpredictably. */
+.onramp-token-hint {
+  text-align: left;
+}
+.onramp-token-hint-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.onramp-token-hint-row code {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-all;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: #f1f4fb;
+  background: #05060a; /* ONRAMP_THEME.secondary.background.normal */
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+}
+
 /* Native <select> - simplest real dropdown for "pick which asset on this
    chain", not a custom-built listbox, low risk for something this small. */
 .onramp-asset-select {

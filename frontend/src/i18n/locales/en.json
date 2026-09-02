@@ -728,8 +728,8 @@
       "sendButton": "Send to {{chain}}",
       "sendFailed": "Transaction failed.",
       "mobileHint": "On your phone? Open this page inside the Keplr (or Galaxy Station) app's own built-in browser, then tap \"Keplr\"/\"Galaxy Station\" above — not the QR-code option, which doesn't work for this specific transfer yet.",
-      "tokenHintEvm": "Your wallet won't show this on its own — add it as a custom token: {{address}} (symbol {{symbol}}, 6 decimals).",
-      "tokenHintSolana": "Most Solana wallets (Phantom, etc.) pick this up on their own once it arrives. If it doesn't show up, look for token mint {{address}}."
+      "tokenHintEvm": "Your wallet won't show this on its own — add it as a custom token (symbol {{symbol}}, 6 decimals):",
+      "tokenHintSolana": "Most Solana wallets (Phantom, etc.) pick this up on their own once it arrives. If it doesn't show up, look for this token mint:"
     }
   },
   "onrampFaq": {
