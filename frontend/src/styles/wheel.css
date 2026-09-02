@@ -2773,7 +2773,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.8rem;
+    gap: 0.4rem;
     align-self: flex-end;
     /* The scientist overflows past this row's own left edge (it's
        absolutely positioned, see .verify-scientist below) - without this,
@@ -2805,7 +2805,7 @@
   }
   .verify-scientist {
     position: absolute;
-    right: calc(100% + 0.5rem - 10px);
+    right: calc(100% + 0.25rem - 10px);
     top: 50%;
     transform: translateY(-50%);
     height: clamp(56px, 30cqw, 100px);
