@@ -53,11 +53,11 @@ export function OnrampPage() {
             <img src="/characters/onramp-counter.jpg" alt="" className="onramp-banner pixel-stepped-corners" />
             <img src="/brand/isotipo-pixel-art.png" alt="" className="wheel-booth-logo" />
             <p className="onramp-banner-screen-text">
-              Onramp
+              Move
               <br />
               Your
               <br />
-              USDC
+              Funds
             </p>
             <div className="onramp-host-bubble">
               {HYPE_LINES[hypeIndex] && <HostGuide message={HYPE_LINES[hypeIndex]} bubbleType="rectangulo" />}

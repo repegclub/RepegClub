@@ -691,8 +691,8 @@
       "Noble's my favorite —\ncheap and fast!",
       "Straight from Noble,\nCosmos Hub, Osmosis!"
     ],
-    "title": "Get USDC on Terra Classic",
-    "subtitle": "Pick where your USDC (or OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
+    "title": "Move Funds with Terra Classic",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC/USTC out to BSC, Ethereum, or Solana. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
     "modeBring": "Bring USDC in",
     "modeSend": "Send LUNC/USTC out",
     "direct": {
