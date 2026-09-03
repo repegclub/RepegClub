@@ -811,12 +811,17 @@ export async function sendOutViaHyperlane(
   // reaches the mailbox contract (verified reading mailbox/execute.rs's
   // use of cosmwasm_std::Coins, not assumed) - not something this project
   // needs to special-case here.
+  // Cosmos SDK requires a tx's Coins to be sorted ascending by denom -
+  // cosmes's own MsgExecuteContract doesn't sort `funds` for you (found in
+  // CodeRabbit review, PR #48 - this project never broadcast the USTC path
+  // with real funds to catch it live). "uluna" < "uusd" lexicographically,
+  // so it has to come first here.
   const funds =
     warp.denom === "uluna"
       ? [{ denom: "uluna", amount: (transferAmount + destination.igpFeeUluna).toString() }]
       : [
-          { denom: warp.denom, amount: transferAmount.toString() },
           { denom: "uluna", amount: destination.igpFeeUluna.toString() },
+          { denom: warp.denom, amount: transferAmount.toString() },
         ];
 
   const msgs: Adapter[] = [

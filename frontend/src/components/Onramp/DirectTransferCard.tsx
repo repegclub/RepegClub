@@ -735,7 +735,9 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
             <p className="onramp-dest-warning">{t("onramp.direct.destAddressWarning")}</p>
           )}
 
-          {!hasUlunaForFee && <p className="onramp-error-text">{t("onramp.outbound.gasNeeded")}</p>}
+          {!assetIsUluna && ulunaBalance.status === "loaded" && !hasUlunaForFee && (
+            <p className="onramp-error-text">{t("onramp.outbound.gasNeeded")}</p>
+          )}
 
           {/* Wallets don't auto-detect a brand-new token by themselves (an
               EVM wallet needs the contract address pasted in manually;

@@ -8,10 +8,19 @@ import { useState } from "react";
 export function useCopyable() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   function copy(key: string, text: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
-    });
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
+      },
+      // writeText rejects on an insecure context, an unfocused document, or
+      // a denied permission - without this the button silently never shows
+      // "Copied" and the rejection goes unhandled (found in CodeRabbit
+      // review, PR #48).
+      (err) => {
+        console.error(err);
+      }
+    );
   }
   return { copiedKey, copy };
 }

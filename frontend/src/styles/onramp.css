@@ -401,6 +401,15 @@
 .onramp-token-hint {
   text-align: left;
 }
+/* .onramp-success-text (below) also sets text-align, at equal specificity -
+   whichever is declared later in the file would silently win when both
+   classes land on the same element (the success-message copy of this
+   hint), overriding this back to centered (found in CodeRabbit review, PR
+   #48). This 2-class selector outranks either alone regardless of source
+   order. */
+.onramp-success-text.onramp-token-hint {
+  text-align: left;
+}
 .onramp-token-hint-row {
   display: flex;
   align-items: center;
