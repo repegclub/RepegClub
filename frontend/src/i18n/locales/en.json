@@ -777,6 +777,26 @@
       {
         "q": "Why do I have to paste my Terra Classic address?",
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
+      },
+      {
+        "q": "What does \"Send LUNC/USTC out\" do?",
+        "a": "The opposite direction — it bridges LUNC or USTC from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes for these two tokens. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
+      },
+      {
+        "q": "I sent LUNC or USTC out but can't see the balance on the other chain — is it lost?",
+        "a": "No — it's a wallet display issue, not a lost transfer. Wallets don't automatically show a token they've never seen before. After sending, this page shows you the exact contract address (with a copy button) to add manually as a custom token on BSC/Ethereum — Solana wallets usually pick it up on their own. Once added, the balance shows up correctly."
+      },
+      {
+        "q": "Can I bridge back from BSC/Ethereum/Solana to Terra Classic?",
+        "a": "Not yet from this site — only the outbound direction (Terra Classic → those chains) is built so far. Coming back needs its own wallet connection (MetaMask/Phantom), which isn't wired up here yet."
+      },
+      {
+        "q": "How much does sending LUNC/USTC out cost?",
+        "a": "Two pieces: Repeg Club's usual 0.2% service fee, plus Hyperlane's own interchain gas fee (paid in LUNC on the Terra Classic side, currently in the thousand-LUNC range depending on the destination — shown exactly, before you sign, in the amount breakdown). Both come out of the same signed transaction."
+      },
+      {
+        "q": "Why can't I connect by scanning a QR code with my phone here?",
+        "a": "That specific connection method (WalletConnect) has a real bug in the wallet library this project uses — confirmed live, it fails to sign this kind of transaction. The fix isn't scanning a QR at all: open this page directly inside the Keplr (or Galaxy Station) app's own built-in browser instead, and connect with the plain \"Keplr\"/\"Galaxy Station\" button — that already works."
       }
     ]
   },
