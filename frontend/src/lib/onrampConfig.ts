@@ -38,7 +38,12 @@ export const ONRAMP_DEFAULT_ROUTE = {
 // Matches TREASURY_COSMOS/FEE_KEEPER_COSMOS's keys further down - every
 // direct-transfer origin needs a fee address on both, so the type system
 // catches a chain added to one list but not the other.
-export type DirectFeeChainId = "noble-1" | "cosmoshub-4" | "osmosis-1";
+// "columbus-5" added 2026-09-02 for the Hyperlane outbound leg further down
+// (Terra Classic is the ORIGIN there, unlike every other entry here) -
+// TREASURY_COSMOS/FEE_KEEPER_COSMOS already had a columbus-5 entry (used by
+// ONRAMP_CHAIN_AFFILIATES's Skip Go config above), so getDirectFeeSplit
+// works for it with no other change.
+export type DirectFeeChainId = "noble-1" | "cosmoshub-4" | "osmosis-1" | typeof TERRA_CLASSIC_CHAIN_ID;
 
 export type DirectOriginAsset = {
   denom: string;
@@ -415,6 +420,122 @@ export const ONRAMP_CHAIN_AFFILIATES = {
 export const ONRAMP_BORDER_RADIUS_MAIN = "16px";
 export const ONRAMP_BORDER_RADIUS_BUTTON = "12px";
 export const ONRAMP_BORDER_RADIUS_PILL = "999px";
+
+// ---------- Hyperlane warp routes: LUNC/USTC leaving Terra Classic (2026-09-02) ----------
+// Outbound only for now ("salida") - Terra Classic -> BSC/Ethereum/Solana via
+// Hyperlane's Warp Routes, merged into the official Hyperlane registry
+// 2026-08-31 and re-verified live (2026-09-02) against both the registry's
+// own config YAML (hyperlane-registry/deployments/warp_routes/{LUNC,USTC}/)
+// and the Terra Classic Hyperlane team's own audited per-token docs
+// (terra-classic-hyperlane/cw-hyperlane, WARP-LUNC.md/WARP-USTC.md) - not
+// carried over from anything said in chat. The return leg (BSC/Ethereum/
+// Solana -> Terra Classic) needs its own EVM/Solana wallet integration this
+// project doesn't have yet (see project notes, 2026-09-02) - not built.
+export type HyperlaneAsset = "LUNC" | "USTC";
+
+// The Terra Classic-side warp contract for each asset - CwHypNative in
+// `collateral` mode: locks the real native coin (uluna/uusd) on the way out,
+// unlocks it again on the way back, rather than minting/burning a wrapped
+// version on this side. Same contract code (code_id 11390) for both assets.
+export const HYPERLANE_TERRA_CLASSIC_WARP: Record<HyperlaneAsset, { denom: string; contract: string }> = {
+  LUNC: { denom: "uluna", contract: "terra1m7jcqxfn4hd7q4sywhw508nxshaf078c4vh83y0ts43y9tlp9dcs50cggy" },
+  USTC: { denom: "uusd", contract: "terra1qu3x6vhk4y6w6erhmedzfp2ug53qm5nwpyarxveqa7tvwg0telxqvd3ccf" },
+};
+
+export type HyperlaneChainKind = "evm" | "solana";
+
+export type HyperlaneDestination = {
+  // Hyperlane's own internal chain numbering, NOT a bech32/EVM chain id -
+  // bsc=56 and ethereum=1 happen to match EVM's own chainId, but
+  // solanamainnet=1399811149 is Hyperlane-specific. Required as-is by
+  // ExecuteMsg::TransferRemote's dest_domain field (onrampActions.ts),
+  // confirmed live against the warp contract's own list_routes query.
+  domain: number;
+  label: string;
+  kind: HyperlaneChainKind;
+  // The synthetic token contract/program on this destination, per asset -
+  // never called directly by this leg (only shown to the user, and kept
+  // ready for a future entrada implementation).
+  tokenAddress: Record<HyperlaneAsset, string>;
+  // Interchain gas payment (IGP), always in uluna regardless of which asset
+  // (LUNC/USTC) is being bridged - interchainFeeConstants + localFeeConstants
+  // from the registry config, summed once here so callers never add them
+  // separately. Recentred periodically by Hyperlane's own governance -
+  // values confirmed live 2026-09-02, re-verify against the registry
+  // (deployments/warp_routes/{LUNC,USTC}/...) before trusting this is still
+  // current if this is picked back up much later.
+  igpFeeUluna: bigint;
+};
+
+export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
+  {
+    domain: 56,
+    label: "BSC",
+    kind: "evm",
+    tokenAddress: {
+      LUNC: "0x481095ecEd7A907e7f390b6226F53a66D379e6e2",
+      USTC: "0xfC067fd98FD123fC2cAd72d040AF60a523274339",
+    },
+    igpFeeUluna: 2_020_000_000n + 283_215n,
+  },
+  {
+    domain: 1,
+    label: "Ethereum",
+    kind: "evm",
+    tokenAddress: {
+      LUNC: "0xA4bc47a4C5461eB0E59A585a21A1222EF7544Ac6",
+      USTC: "0xf49408beb319aeCe3E8B3550a5C750C19b3F1e51",
+    },
+    igpFeeUluna: 1_400_000_000n + 283_215n,
+  },
+  {
+    domain: 1399811149,
+    label: "Solana",
+    kind: "solana",
+    tokenAddress: {
+      LUNC: "Dd3ajD8WbEyx7z3HqPnDyvUgFqEBzvF1VePjYd1NGnbr",
+      USTC: "7CUdBt1Qn2R2StE7MDPhQW2EhmnGg8zKK8oJXwAGEoyf",
+    },
+    igpFeeUluna: 2_330_000_000n + 283_215n,
+  },
+];
+
+// Terra Classic MAINNET (columbus-5), used only as the wallet-connection
+// target for the Hyperlane outbound leg above - shaped as a
+// DirectOriginChain purely to reuse useCosmosWallet/DirectFeeChainId as-is,
+// even though Terra Classic is never an "origin chain" in the direct-
+// transfer sense (nothing lands HERE from this chain - it's the far end of
+// every DIRECT_ORIGIN_CHAINS entry, and the near end of every
+// HYPERLANE_DESTINATIONS entry instead). Deliberately separate from
+// chainConfig.ts's CHAIN_ID (still testnet rebel-2 for the rest of this
+// app) - same reasoning as Noble/Cosmos Hub/Osmosis above, this project's
+// onramp tools always run against real mainnet chains regardless of the
+// testnet flag.
+export const TERRA_CLASSIC_MAINNET: DirectOriginChain = {
+  chainId: TERRA_CLASSIC_CHAIN_ID,
+  label: "Terra Classic",
+  assets: [
+    { denom: HYPERLANE_TERRA_CLASSIC_WARP.LUNC.denom, symbol: "LUNC" },
+    { denom: HYPERLANE_TERRA_CLASSIC_WARP.USTC.denom, symbol: "USTC" },
+  ],
+  bech32Prefix: "terra",
+  rpc: "https://rpc.terra-classic.hexxagon.io",
+  lcd: "https://lcd.terra-classic.hexxagon.io",
+  // Same 28.325uluna this project already uses for testnet (chainConfig.ts)
+  // - confirmed live (2026-09-02) that mainnet (columbus-5) and testnet
+  // (rebel-2) run the identical terra-classic-core v4.0.1 build, but this
+  // exact number isn't independently re-verified against mainnet's own
+  // min-gas-price. A wrong value here fails safely (the tx is rejected for
+  // insufficient fees, no funds move) rather than risking anything - not
+  // worth blocking on before a real broadcast test.
+  gasPrice: { amount: "28.325", denom: "uluna" },
+  // Covers only the ordinary Cosmos tx fee - the much larger Hyperlane IGP
+  // payment (2000+ LUNC, HyperlaneDestination.igpFeeUluna above) is
+  // reserved separately in DirectOutboundForm (DirectTransferCard.tsx),
+  // since unlike this flat per-tx amount it varies by destination.
+  maxGasReserve: 50_000_000n, // 50 LUNC
+  sdkVersion: "sdk53",
+};
 
 export const ONRAMP_THEME = {
   brandColor: "#ffd166", // --gold

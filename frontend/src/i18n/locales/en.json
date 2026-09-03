@@ -691,8 +691,10 @@
       "Noble's my favorite —\ncheap and fast!",
       "Straight from Noble,\nCosmos Hub, Osmosis!"
     ],
-    "title": "Get USDC on Terra Classic",
-    "subtitle": "Pick where your USDC (or OSMO/ATOM) already is, connect that wallet, and confirm — it lands directly in your Terra Classic wallet, ready to buy a ticket. No account, no sign-up, nothing held in between.",
+    "title": "Move Funds with Terra Classic",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC/USTC out to BSC, Ethereum, or Solana. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
+    "modeBring": "Bring USDC in",
+    "modeSend": "Send LUNC/USTC out",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
       "destAddressPlaceholder": "terra1... (paste your wallet)",
@@ -712,6 +714,22 @@
       "outcomeUnknown": "We couldn't confirm whether this went through — check your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
       "outcomeUnknownAck": "I checked — let me try again",
       "sent": "Sent! Tx hash: {{hash}}"
+    },
+    "outbound": {
+      "desc": "Connect your Terra Classic wallet, then send LUNC or USTC out to {{chain}} via Hyperlane.",
+      "connectButton": "Connect Terra Classic wallet",
+      "evmAddressLabel": "{{chain}} address to receive",
+      "solanaAddressLabel": "Solana address to receive",
+      "solanaAddressPlaceholder": "Paste your Solana wallet address",
+      "evmAddressInvalid": "That doesn't look like a valid address for this chain.",
+      "solanaAddressInvalid": "That doesn't look like a valid Solana address.",
+      "gasNeeded": "You need a little LUNC in this wallet to pay the interchain gas fee for this transfer.",
+      "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) + ~{{gas}} LUNC network gas — {{send}} {{symbol}} will be sent to {{chain}}.",
+      "sendButton": "Send to {{chain}}",
+      "sendFailed": "Transaction failed.",
+      "mobileHint": "On your phone? Open this page inside the Keplr (or Galaxy Station) app's own built-in browser, then tap \"Keplr\"/\"Galaxy Station\" above — not the QR-code option, which doesn't work for this specific transfer yet.",
+      "tokenHintEvm": "Your wallet won't show this on its own — add it as a custom token (symbol {{symbol}}, 6 decimals):",
+      "tokenHintSolana": "Most Solana wallets (Phantom, etc.) pick this up on their own once it arrives. If it doesn't show up, look for this token mint:"
     }
   },
   "onrampFaq": {
@@ -759,6 +777,26 @@
       {
         "q": "Why do I have to paste my Terra Classic address?",
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
+      },
+      {
+        "q": "What does \"Send LUNC/USTC out\" do?",
+        "a": "The opposite direction — it bridges LUNC or USTC from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes for these two tokens. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
+      },
+      {
+        "q": "I sent LUNC or USTC out but can't see the balance on the other chain — is it lost?",
+        "a": "No — it's a wallet display issue, not a lost transfer. Wallets don't automatically show a token they've never seen before. After sending, this page shows you the exact contract address (with a copy button) to add manually as a custom token on BSC/Ethereum — Solana wallets usually pick it up on their own. Once added, the balance shows up correctly."
+      },
+      {
+        "q": "Can I bridge back from BSC/Ethereum/Solana to Terra Classic?",
+        "a": "Not yet from this site — only the outbound direction (Terra Classic → those chains) is built so far. Coming back needs its own wallet connection (MetaMask/Phantom), which isn't wired up here yet."
+      },
+      {
+        "q": "How much does sending LUNC/USTC out cost?",
+        "a": "Two pieces: Repeg Club's usual 0.2% service fee, plus Hyperlane's own interchain gas fee (paid in LUNC on the Terra Classic side, currently in the thousand-LUNC range depending on the destination — shown exactly, before you sign, in the amount breakdown). Both come out of the same signed transaction."
+      },
+      {
+        "q": "Why can't I connect by scanning a QR code with my phone here?",
+        "a": "That specific connection method (WalletConnect) has a real bug in the wallet library this project uses — confirmed live, it fails to sign this kind of transaction. The fix isn't scanning a QR at all: open this page directly inside the Keplr (or Galaxy Station) app's own built-in browser instead, and connect with the plain \"Keplr\"/\"Galaxy Station\" button — that already works."
       }
     ]
   },

@@ -3,15 +3,27 @@ import { useTranslation } from "react-i18next";
 import { WalletProviderPopover } from "../Wallet/WalletProviderPopover";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
-import { isValidTerraClassicAddress, sendDirectToTerraClassic } from "../../lib/onrampActions";
+import { useCopyable } from "../../hooks/useCopyable";
+import {
+  isValidEvmAddress,
+  isValidSolanaAddress,
+  isValidTerraClassicAddress,
+  sendDirectToTerraClassic,
+  sendOutViaHyperlane,
+} from "../../lib/onrampActions";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import {
   DIRECT_ORIGIN_CHAINS,
+  HYPERLANE_DESTINATIONS,
+  HYPERLANE_TERRA_CLASSIC_WARP,
+  TERRA_CLASSIC_MAINNET,
   displayToMicro,
   getDirectFeeSplit,
   microToDisplay,
   type DirectOriginAsset,
   type DirectOriginChain,
+  type HyperlaneAsset,
+  type HyperlaneDestination,
 } from "../../lib/onrampConfig";
 
 function truncate(address: string): string {
@@ -37,8 +49,27 @@ function truncate(address: string): string {
 // ONRAMP_CHAIN_AFFILIATES) is left in onrampConfig.ts, not deleted -
 // restoring this tab once a whitelist comes through should just mean
 // bringing the <Widget> branch back, not rebuilding the config.
+// "Bring USDC" (DirectOriginForm, Noble/Cosmos Hub/Osmosis -> Terra
+// Classic) and "Send assets" (DirectOutboundForm, Terra Classic ->
+// BSC/Ethereum/Solana via Hyperlane) are opposite directions sharing one
+// widget (product decision, 2026-09-02: stays one tool with more options,
+// not two pages). First tried as one flat row of 6 chain tabs - found live
+// that a user testing it couldn't tell "bring in" from "send out" from tab
+// labels alone (Noble/BSC read the same at a glance, direction only
+// legible by reading the paragraph below). Fixed by making direction its
+// own explicit choice (the mode switch below), with which-chain as a
+// second, nested choice underneath it - not by relabeling the tabs, which
+// wouldn't have fixed the same-glance problem.
+type Mode = "bring" | "send";
+
 export function DirectTransferCard() {
-  const [selected, setSelected] = useState<DirectOriginChain>(DIRECT_ORIGIN_CHAINS[0]);
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<Mode>("bring");
+  // Each mode remembers its own last-picked chain independently (2 separate
+  // state slots, not 1 shared "selected tab") - switching modes and back
+  // shouldn't reset which chain was chosen.
+  const [selectedOrigin, setSelectedOrigin] = useState<DirectOriginChain>(DIRECT_ORIGIN_CHAINS[0]);
+  const [selectedDestination, setSelectedDestination] = useState<HyperlaneDestination>(HYPERLANE_DESTINATIONS[0]);
   // Lifted up here (not local to DirectOriginForm) so it survives
   // switching between the Noble/Cosmos Hub/Osmosis tabs - the destination
   // is the same address no matter which origin tab is active, the user
@@ -49,35 +80,80 @@ export function DirectTransferCard() {
 
   return (
     <div className="onramp-tool-panel pixel-stepped-corners">
-      <div className="onramp-tabs" role="tablist">
-        {DIRECT_ORIGIN_CHAINS.map((chain, index) => (
-          <button
-            key={chain.chainId}
-            type="button"
-            role="tab"
-            aria-selected={selected.chainId === chain.chainId}
-            // onramp-tab-cN: which of the 3 established accent colors
-            // (green/blue/crimson) this tab turns into once picked - stays
-            // plain gray otherwise, see .onramp-tab-active.onramp-tab-cN in
-            // onramp.css.
-            className={
-              `onramp-tab onramp-tab-c${index}` +
-              (selected.chainId === chain.chainId ? " onramp-tab-active" : "")
-            }
-            onClick={() => setSelected(chain)}
-          >
-            {chain.label}
-          </button>
-        ))}
+      <div className="onramp-mode-switch" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "bring"}
+          className={"onramp-mode-btn" + (mode === "bring" ? " onramp-mode-btn-active" : "")}
+          onClick={() => setMode("bring")}
+        >
+          {t("onramp.modeBring")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "send"}
+          className={"onramp-mode-btn" + (mode === "send" ? " onramp-mode-btn-active" : "")}
+          onClick={() => setMode("send")}
+        >
+          {t("onramp.modeSend")}
+        </button>
       </div>
 
-      <DirectOriginForm
-        key={selected.chainId}
-        chain={selected}
-        terraClassicAddressInput={terraClassicAddressInput}
-        onTerraClassicAddressInputChange={setTerraClassicAddressInput}
-        terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
-      />
+      {mode === "bring" ? (
+        <>
+          <div className="onramp-tabs" role="tablist">
+            {DIRECT_ORIGIN_CHAINS.map((chain, index) => (
+              <button
+                key={chain.chainId}
+                type="button"
+                role="tab"
+                aria-selected={selectedOrigin.chainId === chain.chainId}
+                // onramp-tab-cN: which of the 3 established accent colors
+                // (green/blue/crimson) this tab turns into once picked -
+                // stays plain gray otherwise, see
+                // .onramp-tab-active.onramp-tab-cN in onramp.css.
+                className={
+                  `onramp-tab onramp-tab-c${index}` +
+                  (selectedOrigin.chainId === chain.chainId ? " onramp-tab-active" : "")
+                }
+                onClick={() => setSelectedOrigin(chain)}
+              >
+                {chain.label}
+              </button>
+            ))}
+          </div>
+          <DirectOriginForm
+            key={selectedOrigin.chainId}
+            chain={selectedOrigin}
+            terraClassicAddressInput={terraClassicAddressInput}
+            onTerraClassicAddressInputChange={setTerraClassicAddressInput}
+            terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
+          />
+        </>
+      ) : (
+        <>
+          <div className="onramp-tabs" role="tablist">
+            {HYPERLANE_DESTINATIONS.map((dest, index) => (
+              <button
+                key={dest.domain}
+                type="button"
+                role="tab"
+                aria-selected={selectedDestination.domain === dest.domain}
+                className={
+                  `onramp-tab onramp-tab-c${index}` +
+                  (selectedDestination.domain === dest.domain ? " onramp-tab-active" : "")
+                }
+                onClick={() => setSelectedDestination(dest)}
+              >
+                {dest.label}
+              </button>
+            ))}
+          </div>
+          <DirectOutboundForm key={`out-${selectedDestination.domain}`} destination={selectedDestination} />
+        </>
+      )}
     </div>
   );
 }
@@ -403,6 +479,351 @@ function DirectOriginForm({
             </div>
           )}
           {txHash && <p className="onramp-success-text">{t("onramp.direct.sent", { hash: txHash })}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Mirrors DirectOriginForm's structure/validation rigor, adapted for the
+// reversed direction (2026-09-02): the wallet connects to Terra Classic
+// itself (always TERRA_CLASSIC_MAINNET, not per-tab), the asset is
+// LUNC/USTC leaving TC rather than something arriving, and the pasted
+// address is EVM/Solana-shaped instead of terra1... Kept as its own
+// component rather than parameterizing DirectOriginForm - the extra
+// Hyperlane gas reserve (ulunaReserve below) doesn't fit that component's
+// existing gasIsSameDenom/maxGasReserve math without contorting it.
+function DirectOutboundForm({ destination }: { destination: HyperlaneDestination }) {
+  const { t } = useTranslation();
+  const chain = TERRA_CLASSIC_MAINNET;
+  const { state: walletState, connect, disconnect } = useCosmosWallet(chain);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const connectBtnRef = useRef<HTMLButtonElement>(null);
+  const address = walletState.status === "connected" ? walletState.address : null;
+  const { copiedKey, copy } = useCopyable();
+
+  const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>("LUNC");
+  const asset = chain.assets.find((a) => a.symbol === assetSymbol) ?? chain.assets[0];
+  const balance = useBalance(address, asset.denom, chain.lcd);
+
+  // The Hyperlane gas payment (igpFeeUluna) is always uluna, on top of the
+  // ordinary tx gas reserve (chain.maxGasReserve, also uluna) - when the
+  // asset being bridged ISN'T uluna (USTC), both draw from a wholly
+  // separate uluna balance the asset balance above says nothing about.
+  // Same gasIsSameDenom reasoning as DirectOriginForm, with the IGP fee
+  // folded into what has to be reserved/checked.
+  const assetIsUluna = asset.denom === HYPERLANE_TERRA_CLASSIC_WARP.LUNC.denom;
+  const ulunaReserve = destination.igpFeeUluna + chain.maxGasReserve;
+  const ulunaBalance = useBalance(assetIsUluna ? null : address, "uluna", chain.lcd);
+  const hasUlunaForFee =
+    assetIsUluna || (ulunaBalance.status === "loaded" && BigInt(ulunaBalance.amount) >= ulunaReserve);
+
+  const [destAddressInput, setDestAddressInput] = useState("");
+  const destAddressValidator = destination.kind === "evm" ? isValidEvmAddress : isValidSolanaAddress;
+  const destAddressValid = destAddressValidator(destAddressInput);
+  const destAddressInvalid = destAddressInput !== "" && !destAddressValid;
+
+  const [amountInput, setAmountInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  // Same reasoning as DirectOriginForm's outcomeUnknown - see the comment
+  // there.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+
+  const amountNumber = Number(amountInput);
+  const amountRaw = displayToMicro(amountNumber);
+  const amountValid =
+    Number.isFinite(amountNumber) &&
+    amountNumber > 0 &&
+    amountRaw > 0n &&
+    balance.status === "loaded" &&
+    amountRaw <= BigInt(balance.amount) &&
+    (!assetIsUluna || amountRaw + ulunaReserve <= BigInt(balance.amount)) &&
+    hasUlunaForFee &&
+    destAddressValid;
+  const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);
+
+  function handleAssetChange(symbol: string) {
+    if (symbol !== "LUNC" && symbol !== "USTC") return;
+    setAssetSymbol(symbol);
+    setAmountInput("");
+    setTxHash(null);
+    setError(null);
+    setOutcomeUnknown(false);
+  }
+
+  function handleMax() {
+    if (balance.status !== "loaded") return;
+    const raw = BigInt(balance.amount);
+    // Only uluna needs headroom reserved off the top - a USTC balance
+    // doesn't need any of itself held back (the IGP fee + tx gas come out
+    // of the separate uluna balance instead, checked by hasUlunaForFee).
+    const reserve = assetIsUluna ? ulunaReserve : 0n;
+    const max = raw > reserve ? raw - reserve : 0n;
+    setAmountInput(microToDisplay(max).toString());
+  }
+
+  async function handleSend() {
+    if (walletState.status !== "connected" || !amountValid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await sendOutViaHyperlane(
+        walletState.wallet,
+        assetSymbol,
+        destination,
+        amountRaw,
+        destAddressInput
+      );
+      setTxHash(result.res.txResponse.txhash);
+      setAmountInput("");
+      balance.refetch();
+      if (!assetIsUluna) ulunaBalance.refetch();
+    } catch (err) {
+      // Same TypeError-vs-thrown-Error distinction as DirectOriginForm's
+      // handleSend - see the comment there.
+      if (err instanceof TypeError) {
+        console.error(err);
+        setOutcomeUnknown(true);
+      } else {
+        setError(err instanceof Error ? err.message : t("onramp.outbound.sendFailed"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="onramp-panel">
+      <p className="onramp-panel-desc">{t("onramp.outbound.desc", { chain: destination.label })}</p>
+
+      <select
+        className="onramp-asset-select"
+        value={assetSymbol}
+        onChange={(e) => handleAssetChange(e.target.value)}
+        aria-label={t("onramp.direct.assetSelectLabel")}
+      >
+        <option value="LUNC">LUNC</option>
+        <option value="USTC">USTC</option>
+      </select>
+
+      {walletState.status === "connected" ? (
+        <div className="onramp-wallet-row">
+          <span className="onramp-wallet-dot" />
+          <span className="onramp-wallet-address">{truncate(walletState.address)}</span>
+          <button className="onramp-ghost-btn" onClick={disconnect}>
+            {t("wallet.disconnect")}
+          </button>
+        </div>
+      ) : walletState.status === "error" ? (
+        (() => {
+          const provider = WALLET_PROVIDERS.find((p) => p.id === walletState.providerId)!;
+          return (
+            <div className="onramp-wallet-row onramp-wallet-row-error">
+              <span className="onramp-error-text">
+                {t(`wallet.${walletState.kind}`, { provider: provider.name })}
+              </span>
+              {walletState.kind === "notInstalled" ? (
+                <a className="onramp-main-btn" href={provider.installUrl} target="_blank" rel="noreferrer">
+                  {t("wallet.install", { provider: provider.name })}
+                </a>
+              ) : (
+                <button
+                  className="onramp-main-btn"
+                  onClick={() => connect(walletState.providerId, walletState.type)}
+                >
+                  {t("wallet.retry")}
+                </button>
+              )}
+              <button className="onramp-ghost-btn" onClick={disconnect}>
+                {t("wallet.chooseAnother")}
+              </button>
+            </div>
+          );
+        })()
+      ) : (
+        <>
+          <button
+            ref={connectBtnRef}
+            className="onramp-main-btn"
+            onClick={() => setProviderMenuOpen((open) => !open)}
+            disabled={walletState.status === "connecting"}
+            aria-haspopup="menu"
+            aria-expanded={providerMenuOpen}
+          >
+            {walletState.status === "connecting" ? t("wallet.connecting") : t("onramp.outbound.connectButton")}
+          </button>
+          {/* No "Mobile (scan QR)" group here - see allowMobile's comment in
+              WalletProviderOptions.tsx. The hint below points phone users
+              at the option that does work (open this site inside Keplr's/
+              Galaxy Station's own app, then use the plain, non-QR button
+              above). */}
+          <p className="onramp-dest-warning">{t("onramp.outbound.mobileHint")}</p>
+          {providerMenuOpen && (
+            <WalletProviderPopover
+              anchorRef={connectBtnRef}
+              onClose={() => setProviderMenuOpen(false)}
+              onSelect={(providerId, type) => {
+                setProviderMenuOpen(false);
+                connect(providerId, type);
+              }}
+              allowMobile={false}
+            />
+          )}
+        </>
+      )}
+
+      {walletState.status === "connected" && (
+        <>
+          {balance.status === "loaded" && (
+            <p className="onramp-balance-note">
+              {t("onramp.direct.balance", {
+                amount: microToDisplay(BigInt(balance.amount)).toFixed(2),
+                symbol: assetSymbol,
+              })}
+            </p>
+          )}
+          <label className="onramp-field-label" htmlFor={`outbound-amount-${destination.domain}`}>
+            {t("onramp.direct.amountLabel")}
+          </label>
+          <div className="onramp-input-row">
+            <div className="onramp-input-wrap">
+              <input
+                id={`outbound-amount-${destination.domain}`}
+                type="number"
+                min={0}
+                step="0.01"
+                value={amountInput}
+                onChange={(e) => {
+                  setAmountInput(e.target.value);
+                  setTxHash(null);
+                }}
+                className="onramp-input"
+              />
+              <span className="onramp-input-unit">{assetSymbol}</span>
+            </div>
+            {balance.status === "loaded" && (
+              <button type="button" className="onramp-ghost-btn" onClick={handleMax}>
+                {t("wheel.redeemMax")}
+              </button>
+            )}
+          </div>
+
+          <label className="onramp-field-label" htmlFor={`outbound-address-${destination.domain}`}>
+            {destination.kind === "evm"
+              ? t("onramp.outbound.evmAddressLabel")
+              : t("onramp.outbound.solanaAddressLabel")}
+          </label>
+          <div className={"onramp-input-wrap" + (destAddressInvalid ? " onramp-dest-input-invalid" : "")}>
+            <input
+              id={`outbound-address-${destination.domain}`}
+              type="text"
+              placeholder={destination.kind === "evm" ? "0x..." : t("onramp.outbound.solanaAddressPlaceholder")}
+              value={destAddressInput}
+              onChange={(e) => setDestAddressInput(e.target.value.trim())}
+              className="onramp-input"
+            />
+          </div>
+          {destAddressInvalid ? (
+            <p className="onramp-error-text">
+              {destination.kind === "evm"
+                ? t("onramp.outbound.evmAddressInvalid")
+                : t("onramp.outbound.solanaAddressInvalid")}
+            </p>
+          ) : (
+            <p className="onramp-dest-warning">{t("onramp.direct.destAddressWarning")}</p>
+          )}
+
+          {!assetIsUluna && ulunaBalance.status === "loaded" && !hasUlunaForFee && (
+            <p className="onramp-error-text">{t("onramp.outbound.gasNeeded")}</p>
+          )}
+
+          {/* Wallets don't auto-detect a brand-new token by themselves (an
+              EVM wallet needs the contract address pasted in manually;
+              Solana wallets are more likely to pick it up on their own,
+              but not guaranteed) - found live, 2026-09-02: the user sent a
+              real transfer and couldn't find the balance until told the
+              exact contract address to add. Shown before sending (so it
+              can be copied ahead of time) and repeated in the success
+              message below, since that's the moment it's actually needed.
+              The full address is shown (not truncated like a wallet
+              address elsewhere in this file) - the whole point here is
+              letting someone check it against a source they trust before
+              trusting it enough to paste into their own wallet. */}
+          <div className="onramp-dest-warning onramp-token-hint">
+            <span>
+              {destination.kind === "evm"
+                ? t("onramp.outbound.tokenHintEvm", { symbol: assetSymbol })
+                : t("onramp.outbound.tokenHintSolana")}
+            </span>
+            <div className="onramp-token-hint-row">
+              <code>{destination.tokenAddress[assetSymbol]}</code>
+              <button
+                type="button"
+                className="onramp-ghost-btn"
+                onClick={() => copy("outbound-hint", destination.tokenAddress[assetSymbol])}
+              >
+                {copiedKey === "outbound-hint" ? t("verify.copied") : t("verify.copy")}
+              </button>
+            </div>
+          </div>
+
+          {amountValid && (
+            <p className="onramp-breakdown">
+              {t("onramp.outbound.breakdown", {
+                fee: microToDisplay(treasuryAmount + feeKeeperAmount).toFixed(4),
+                symbol: assetSymbol,
+                send: microToDisplay(transferAmount).toFixed(2),
+                chain: destination.label,
+                gas: microToDisplay(destination.igpFeeUluna).toFixed(2),
+              })}
+            </p>
+          )}
+
+          <button
+            className="onramp-main-btn onramp-send-btn"
+            onClick={handleSend}
+            disabled={busy || !amountValid || outcomeUnknown}
+          >
+            {busy ? t("onramp.direct.sending") : t("onramp.outbound.sendButton", { chain: destination.label })}
+          </button>
+          {error && <p className="onramp-error-text">{error}</p>}
+          {outcomeUnknown && (
+            <div className="onramp-outcome-unknown">
+              <p className="onramp-error-text">{t("onramp.direct.outcomeUnknown")}</p>
+              <button
+                type="button"
+                className="onramp-ghost-btn"
+                onClick={() => {
+                  setOutcomeUnknown(false);
+                  balance.refetch();
+                }}
+              >
+                {t("onramp.direct.outcomeUnknownAck")}
+              </button>
+            </div>
+          )}
+          {txHash && (
+            <div className="onramp-success-text onramp-token-hint">
+              <p>{t("onramp.direct.sent", { hash: txHash })}</p>
+              <span>
+                {destination.kind === "evm"
+                  ? t("onramp.outbound.tokenHintEvm", { symbol: assetSymbol })
+                  : t("onramp.outbound.tokenHintSolana")}
+              </span>
+              <div className="onramp-token-hint-row">
+                <code>{destination.tokenAddress[assetSymbol]}</code>
+                <button
+                  type="button"
+                  className="onramp-ghost-btn"
+                  onClick={() => copy("outbound-success", destination.tokenAddress[assetSymbol])}
+                >
+                  {copiedKey === "outbound-success" ? t("verify.copied") : t("verify.copy")}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
