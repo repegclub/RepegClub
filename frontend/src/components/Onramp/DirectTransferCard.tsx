@@ -603,17 +603,21 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
     setError(null);
     // Re-quote right before signing rather than reusing whatever loaded
     // when this form mounted - keeps the gap between "price quoted" and
-    // "price actually paid" as small as possible. +3% on top absorbs the
-    // (much smaller) remaining gap up to broadcast - queryHyperlaneGas.ts
-    // explains why this only needs to be close, not exact: underpaying
-    // just fails the tx safely, it never strands funds. Kept in its own
-    // try/catch, separate from the broadcast below: a failure here means
-    // nothing was ever signed or sent, so it's an ordinary retriable
+    // "price actually paid" as small as possible. quoteHyperlaneGasFee
+    // already bakes in a margin (see that file) - not re-applied here on
+    // purpose, so this stays consistent with the mounted quote (igpFeeUluna
+    // below) instead of stacking a second margin on top or drifting out of
+    // sync with it (CodeRabbit finding, PR #49: an earlier version of this
+    // only margined the fresh quote, not the loaded one used for
+    // ulunaReserve/handleMax/the breakdown, so Max could reserve too little
+    // and this same re-validation would then wrongly reject it). Kept in
+    // its own try/catch, separate from the broadcast below: a failure here
+    // means nothing was ever signed or sent, so it's an ordinary retriable
     // error, not the "did my transfer actually go through?" case that
     // outcomeUnknown below is for.
     let freshIgpFeeUluna: bigint;
     try {
-      freshIgpFeeUluna = ((await quoteHyperlaneGasFee(chain.rpc, warpContract, destination.domain)) * 103n) / 100n;
+      freshIgpFeeUluna = await quoteHyperlaneGasFee(chain.rpc, warpContract, destination.domain);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't fetch the current gas price. Try again.");
       setBusy(false);
