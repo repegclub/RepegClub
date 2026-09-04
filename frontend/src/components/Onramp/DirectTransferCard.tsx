@@ -619,6 +619,20 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
       setBusy(false);
       return;
     }
+    // amountValid above only checked against the quote this form mounted
+    // with, not this fresh one - if the live price moved up in the
+    // meantime, that stale check could pass while this fee doesn't
+    // actually fit the balance (CodeRabbit finding, PR #49). Re-validate
+    // against the fresh fee before signing anything.
+    const freshUlunaReserve = freshIgpFeeUluna + chain.maxGasReserve;
+    const freshFeeFits = assetIsUluna
+      ? balance.status === "loaded" && amountRaw + freshUlunaReserve <= BigInt(balance.amount)
+      : ulunaBalance.status === "loaded" && BigInt(ulunaBalance.amount) >= freshUlunaReserve;
+    if (!freshFeeFits) {
+      setError("The interchain gas price just moved - try again.");
+      setBusy(false);
+      return;
+    }
     try {
       const result = await sendOutViaHyperlane(
         walletState.wallet,
@@ -655,6 +669,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
         value={assetSymbol}
         onChange={(e) => handleAssetChange(e.target.value)}
         aria-label={t("onramp.direct.assetSelectLabel")}
+        disabled={busy}
       >
         {availableAssets.map((sym) => (
           <option key={sym} value={sym}>
@@ -755,11 +770,12 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
                   setTxHash(null);
                 }}
                 className="onramp-input"
+                disabled={busy}
               />
               <span className="onramp-input-unit">{assetSymbol}</span>
             </div>
             {balance.status === "loaded" && (
-              <button type="button" className="onramp-ghost-btn" onClick={handleMax}>
+              <button type="button" className="onramp-ghost-btn" onClick={handleMax} disabled={busy}>
                 {t("wheel.redeemMax")}
               </button>
             )}
@@ -778,6 +794,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
               value={destAddressInput}
               onChange={(e) => setDestAddressInput(e.target.value.trim())}
               className="onramp-input"
+              disabled={busy}
             />
           </div>
           {destAddressInvalid ? (
