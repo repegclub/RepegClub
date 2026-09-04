@@ -800,64 +800,122 @@ export async function sendOutViaHyperlane(
       ? evmAddressToHyperlaneRecipient(destinationAddress)
       : solanaAddressToHyperlaneRecipient(destinationAddress);
 
-  // One coin (transferAmount + gas together) when the asset being bridged
-  // IS uluna (LUNC) - exactly the shape confirmed against the warp
-  // contract's own test suite. Two coins when it isn't (USTC/uusd) - the
-  // gas payment always needs its own separate uluna entry regardless of
-  // which asset is being bridged. The warp contract subtracts
-  // transferAmount from the matching-denom coin before forwarding the
-  // rest to the mailbox - for USTC that leaves a zero-amount uusd entry,
-  // which the Cosmos SDK's own coin normalization drops before it ever
-  // reaches the mailbox contract (verified reading mailbox/execute.rs's
-  // use of cosmwasm_std::Coins, not assumed) - not something this project
-  // needs to special-case here.
-  // Cosmos SDK requires a tx's Coins to be sorted ascending by denom -
-  // cosmes's own MsgExecuteContract doesn't sort `funds` for you (found in
-  // CodeRabbit review, PR #48 - this project never broadcast the USTC path
-  // with real funds to catch it live). "uluna" < "uusd" lexicographically,
-  // so it has to come first here.
-  const funds =
-    warp.denom === "uluna"
-      ? [{ denom: "uluna", amount: (transferAmount + destination.igpFeeUluna).toString() }]
-      : [
-          { denom: "uluna", amount: destination.igpFeeUluna.toString() },
-          { denom: warp.denom, amount: transferAmount.toString() },
-        ];
+  const msgs: Adapter[] = [];
 
-  const msgs: Adapter[] = [
-    new MsgExecuteContract({
-      sender: wallet.address,
-      contract: warp.contract,
-      msg: {
-        transfer_remote: {
-          dest_domain: destination.domain,
-          recipient,
-          amount: transferAmount.toString(),
-          hook: null,
-          metadata: null,
+  if (warp.kind === "cw20") {
+    // JURIS (2026-09-04) and any future CW20 riding CwHypCollateral -
+    // confirmed reading the real contract source (many-things/cw-hyperlane,
+    // contracts/warp/cw20/src/contract.rs): TransferRemote pulls the token
+    // via Cw20ExecuteMsg::TransferFrom, which needs an IncreaseAllowance
+    // first - there's no `funds` for the asset itself, only the IGP gas
+    // payment (still uluna, same as the native path below). The service fee
+    // can't ride MsgSend (no bank denom for a CW20), so it's 2 more Cw20
+    // Transfer messages instead - all 4 messages in the one signed tx, same
+    // "no separate step where the fee could be skipped" bundling as native.
+    msgs.push(
+      new MsgExecuteContract({
+        sender: wallet.address,
+        contract: warp.tokenContract,
+        msg: {
+          increase_allowance: { spender: warp.warpContract, amount: transferAmount.toString(), expires: null },
         },
-      },
-      funds,
-    }),
-  ];
+        funds: [],
+      }),
+      new MsgExecuteContract({
+        sender: wallet.address,
+        contract: warp.warpContract,
+        msg: {
+          transfer_remote: {
+            dest_domain: destination.domain,
+            recipient,
+            amount: transferAmount.toString(),
+            hook: null,
+            metadata: null,
+          },
+        },
+        funds: [{ denom: "uluna", amount: destination.igpFeeUluna.toString() }],
+      })
+    );
+    if (treasuryAmount > 0n) {
+      msgs.push(
+        new MsgExecuteContract({
+          sender: wallet.address,
+          contract: warp.tokenContract,
+          msg: { transfer: { recipient: treasuryAddress, amount: treasuryAmount.toString() } },
+          funds: [],
+        })
+      );
+    }
+    if (feeKeeperAmount > 0n) {
+      msgs.push(
+        new MsgExecuteContract({
+          sender: wallet.address,
+          contract: warp.tokenContract,
+          msg: { transfer: { recipient: feeKeeperAddress, amount: feeKeeperAmount.toString() } },
+          funds: [],
+        })
+      );
+    }
+  } else {
+    // Native (LUNC/USTC) - CwHypNative in `collateral` mode, funds attached
+    // directly. One coin (transferAmount + gas together) when the asset
+    // being bridged IS uluna (LUNC) - exactly the shape confirmed against
+    // the warp contract's own test suite. Two coins when it isn't
+    // (USTC/uusd) - the gas payment always needs its own separate uluna
+    // entry regardless of which asset is being bridged. The warp contract
+    // subtracts transferAmount from the matching-denom coin before
+    // forwarding the rest to the mailbox - for USTC that leaves a
+    // zero-amount uusd entry, which the Cosmos SDK's own coin normalization
+    // drops before it ever reaches the mailbox contract (verified reading
+    // mailbox/execute.rs's use of cosmwasm_std::Coins, not assumed) - not
+    // something this project needs to special-case here.
+    // Cosmos SDK requires a tx's Coins to be sorted ascending by denom -
+    // cosmes's own MsgExecuteContract doesn't sort `funds` for you (found in
+    // CodeRabbit review, PR #48 - this project never broadcast the USTC
+    // path with real funds to catch it live). "uluna" < "uusd"
+    // lexicographically, so it has to come first here.
+    const funds =
+      warp.denom === "uluna"
+        ? [{ denom: "uluna", amount: (transferAmount + destination.igpFeeUluna).toString() }]
+        : [
+            { denom: "uluna", amount: destination.igpFeeUluna.toString() },
+            { denom: warp.denom, amount: transferAmount.toString() },
+          ];
 
-  if (treasuryAmount > 0n) {
     msgs.push(
-      new MsgSend({
-        fromAddress: wallet.address,
-        toAddress: treasuryAddress,
-        amount: [{ denom: warp.denom, amount: treasuryAmount.toString() }],
+      new MsgExecuteContract({
+        sender: wallet.address,
+        contract: warp.contract,
+        msg: {
+          transfer_remote: {
+            dest_domain: destination.domain,
+            recipient,
+            amount: transferAmount.toString(),
+            hook: null,
+            metadata: null,
+          },
+        },
+        funds,
       })
     );
-  }
-  if (feeKeeperAmount > 0n) {
-    msgs.push(
-      new MsgSend({
-        fromAddress: wallet.address,
-        toAddress: feeKeeperAddress,
-        amount: [{ denom: warp.denom, amount: feeKeeperAmount.toString() }],
-      })
-    );
+    if (treasuryAmount > 0n) {
+      msgs.push(
+        new MsgSend({
+          fromAddress: wallet.address,
+          toAddress: treasuryAddress,
+          amount: [{ denom: warp.denom, amount: treasuryAmount.toString() }],
+        })
+      );
+    }
+    if (feeKeeperAmount > 0n) {
+      msgs.push(
+        new MsgSend({
+          fromAddress: wallet.address,
+          toAddress: feeKeeperAddress,
+          amount: [{ denom: warp.denom, amount: feeKeeperAmount.toString() }],
+        })
+      );
+    }
   }
 
   const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });

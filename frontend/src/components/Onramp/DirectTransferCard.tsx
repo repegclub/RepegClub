@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { WalletProviderPopover } from "../Wallet/WalletProviderPopover";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
+import { useCw20Balance } from "../../hooks/useCw20Balance";
 import { useCopyable } from "../../hooks/useCopyable";
 import {
   isValidEvmAddress,
@@ -502,17 +503,39 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   const address = walletState.status === "connected" ? walletState.address : null;
   const { copiedKey, copy } = useCopyable();
 
-  const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>("LUNC");
-  const asset = chain.assets.find((a) => a.symbol === assetSymbol) ?? chain.assets[0];
-  const balance = useBalance(address, asset.denom, chain.lcd);
+  // Which assets this destination actually has a route for (JURIS is
+  // Solana-only) - see onrampConfig.ts's HyperlaneDestination.tokenAddress.
+  const availableAssets = (Object.keys(HYPERLANE_TERRA_CLASSIC_WARP) as HyperlaneAsset[]).filter(
+    (sym) => destination.tokenAddress[sym] !== undefined
+  );
+  const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>(availableAssets[0]);
+  const warp = HYPERLANE_TERRA_CLASSIC_WARP[assetSymbol];
+
+  // LUNC/USTC (bank denom) go through the ordinary balance hook; JURIS (and
+  // any future CW20) through the CW20 one - both hooks are always called
+  // (never conditionally), disabled via a null address/denom/contract arg
+  // when not the active kind, same pattern gasIsSameDenom/ulunaBalance
+  // already use below. See onrampConfig.ts's HyperlaneCw20Warp for why a
+  // CW20 balance can't go through useBalance at all.
+  const nativeBalance = useBalance(
+    warp.kind === "native" ? address : null,
+    warp.kind === "native" ? warp.denom : undefined,
+    chain.lcd
+  );
+  const cw20Balance = useCw20Balance(
+    warp.kind === "cw20" ? address : null,
+    warp.kind === "cw20" ? warp.tokenContract : null,
+    chain.rpc
+  );
+  const balance = warp.kind === "native" ? nativeBalance : cw20Balance;
 
   // The Hyperlane gas payment (igpFeeUluna) is always uluna, on top of the
   // ordinary tx gas reserve (chain.maxGasReserve, also uluna) - when the
-  // asset being bridged ISN'T uluna (USTC), both draw from a wholly
+  // asset being bridged ISN'T uluna (USTC/JURIS), both draw from a wholly
   // separate uluna balance the asset balance above says nothing about.
   // Same gasIsSameDenom reasoning as DirectOriginForm, with the IGP fee
   // folded into what has to be reserved/checked.
-  const assetIsUluna = asset.denom === HYPERLANE_TERRA_CLASSIC_WARP.LUNC.denom;
+  const assetIsUluna = warp.kind === "native" && warp.denom === "uluna";
   const ulunaReserve = destination.igpFeeUluna + chain.maxGasReserve;
   const ulunaBalance = useBalance(assetIsUluna ? null : address, "uluna", chain.lcd);
   const hasUlunaForFee =
@@ -545,8 +568,8 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);
 
   function handleAssetChange(symbol: string) {
-    if (symbol !== "LUNC" && symbol !== "USTC") return;
-    setAssetSymbol(symbol);
+    if (!availableAssets.includes(symbol as HyperlaneAsset)) return;
+    setAssetSymbol(symbol as HyperlaneAsset);
     setAmountInput("");
     setTxHash(null);
     setError(null);
@@ -604,8 +627,11 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
         onChange={(e) => handleAssetChange(e.target.value)}
         aria-label={t("onramp.direct.assetSelectLabel")}
       >
-        <option value="LUNC">LUNC</option>
-        <option value="USTC">USTC</option>
+        {availableAssets.map((sym) => (
+          <option key={sym} value={sym}>
+            {sym}
+          </option>
+        ))}
       </select>
 
       {walletState.status === "connected" ? (
@@ -758,11 +784,11 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
                 : t("onramp.outbound.tokenHintSolana")}
             </span>
             <div className="onramp-token-hint-row">
-              <code>{destination.tokenAddress[assetSymbol]}</code>
+              <code>{destination.tokenAddress[assetSymbol] ?? ""}</code>
               <button
                 type="button"
                 className="onramp-ghost-btn"
-                onClick={() => copy("outbound-hint", destination.tokenAddress[assetSymbol])}
+                onClick={() => copy("outbound-hint", destination.tokenAddress[assetSymbol] ?? "")}
               >
                 {copiedKey === "outbound-hint" ? t("verify.copied") : t("verify.copy")}
               </button>
@@ -813,11 +839,11 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
                   : t("onramp.outbound.tokenHintSolana")}
               </span>
               <div className="onramp-token-hint-row">
-                <code>{destination.tokenAddress[assetSymbol]}</code>
+                <code>{destination.tokenAddress[assetSymbol] ?? ""}</code>
                 <button
                   type="button"
                   className="onramp-ghost-btn"
-                  onClick={() => copy("outbound-success", destination.tokenAddress[assetSymbol])}
+                  onClick={() => copy("outbound-success", destination.tokenAddress[assetSymbol] ?? "")}
                 >
                   {copiedKey === "outbound-success" ? t("verify.copied") : t("verify.copy")}
                 </button>
