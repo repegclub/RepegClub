@@ -116,8 +116,9 @@ export function OriginOptionsPanel() {
                       and just bring them in below.
                     </p>
                     <p className="origin-option-note">
-                      Going the other way? Switch to "Send LUNC/USTC out" below to bridge straight
-                      to BSC, Ethereum, or Solana via Hyperlane.
+                      Going the other way? Switch to "Send LUNC/USTC/CW20 out" below to bridge
+                      LUNC, USTC, or a supported CW20 token straight to BSC, Ethereum, or Solana
+                      via Hyperlane.
                     </p>
                   </div>
                 </div>

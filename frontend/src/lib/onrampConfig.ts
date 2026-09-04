@@ -421,7 +421,7 @@ export const ONRAMP_BORDER_RADIUS_MAIN = "16px";
 export const ONRAMP_BORDER_RADIUS_BUTTON = "12px";
 export const ONRAMP_BORDER_RADIUS_PILL = "999px";
 
-// ---------- Hyperlane warp routes: LUNC/USTC leaving Terra Classic (2026-09-02) ----------
+// ---------- Hyperlane warp routes: LUNC/USTC/JURIS leaving Terra Classic (2026-09-02/04) ----------
 // Outbound only for now ("salida") - Terra Classic -> BSC/Ethereum/Solana via
 // Hyperlane's Warp Routes, merged into the official Hyperlane registry
 // 2026-08-31 and re-verified live (2026-09-02) against both the registry's
@@ -431,16 +431,43 @@ export const ONRAMP_BORDER_RADIUS_PILL = "999px";
 // carried over from anything said in chat. The return leg (BSC/Ethereum/
 // Solana -> Terra Classic) needs its own EVM/Solana wallet integration this
 // project doesn't have yet (see project notes, 2026-09-02) - not built.
-export type HyperlaneAsset = "LUNC" | "USTC";
+export type HyperlaneAsset = "LUNC" | "USTC" | "JURIS";
 
-// The Terra Classic-side warp contract for each asset - CwHypNative in
-// `collateral` mode: locks the real native coin (uluna/uusd) on the way out,
-// unlocks it again on the way back, rather than minting/burning a wrapped
-// version on this side. Same contract code (code_id 11390) for both assets.
-export const HYPERLANE_TERRA_CLASSIC_WARP: Record<HyperlaneAsset, { denom: string; contract: string }> = {
-  LUNC: { denom: "uluna", contract: "terra1m7jcqxfn4hd7q4sywhw508nxshaf078c4vh83y0ts43y9tlp9dcs50cggy" },
-  USTC: { denom: "uusd", contract: "terra1qu3x6vhk4y6w6erhmedzfp2ug53qm5nwpyarxveqa7tvwg0telxqvd3ccf" },
-};
+// LUNC/USTC ride CwHypNative in `collateral` mode: lock the real native coin
+// (uluna/uusd) via `funds` on the way out. JURIS (added 2026-09-04, first
+// CW20 on this leg) rides CwHypCollateral (`hpl_warp_cw20` on-chain, code_id
+// 11389) instead - a wholly different mechanism confirmed by reading the
+// real contract source (many-things/cw-hyperlane, contracts/warp/cw20/src/
+// contract.rs): `TransferRemote` pulls the CW20 via `TransferFrom`, which
+// needs an `IncreaseAllowance` first (onrampActions.ts) - there's no bank
+// denom or `funds` involved for this asset at all. `decimals` isn't read
+// anywhere yet (JURIS happens to match this project's usual 6, same as
+// microToDisplay/displayToMicro below) - kept for the next CW20 added here,
+// which might not. Both variants verified live against mainnet 2026-09-04
+// (JURIS: contract_info, token_type, token_mode, and list_routes' route
+// bytes hand-decoded from base58 and checked byte-for-byte against the
+// dev-supplied Solana mint) - not carried over from anything said in chat.
+export type HyperlaneNativeWarp = { kind: "native"; denom: string; contract: string };
+export type HyperlaneCw20Warp = { kind: "cw20"; tokenContract: string; warpContract: string; decimals: number };
+
+export const HYPERLANE_TERRA_CLASSIC_WARP = {
+  LUNC: {
+    kind: "native",
+    denom: "uluna",
+    contract: "terra1m7jcqxfn4hd7q4sywhw508nxshaf078c4vh83y0ts43y9tlp9dcs50cggy",
+  },
+  USTC: {
+    kind: "native",
+    denom: "uusd",
+    contract: "terra1qu3x6vhk4y6w6erhmedzfp2ug53qm5nwpyarxveqa7tvwg0telxqvd3ccf",
+  },
+  JURIS: {
+    kind: "cw20",
+    tokenContract: "terra1vhgq25vwuhdhn9xjll0rhl2s67jzw78a4g2t78y5kz89q9lsdskq2pxcj2",
+    warpContract: "terra1dkr5hngjngneqmfrye2fuppckk34uxuxjes5pqzfu59jvncs27uszw8wj5",
+    decimals: 6,
+  },
+} as const satisfies Record<HyperlaneAsset, HyperlaneNativeWarp | HyperlaneCw20Warp>;
 
 export type HyperlaneChainKind = "evm" | "solana";
 
@@ -455,16 +482,13 @@ export type HyperlaneDestination = {
   kind: HyperlaneChainKind;
   // The synthetic token contract/program on this destination, per asset -
   // never called directly by this leg (only shown to the user, and kept
-  // ready for a future entrada implementation).
-  tokenAddress: Record<HyperlaneAsset, string>;
-  // Interchain gas payment (IGP), always in uluna regardless of which asset
-  // (LUNC/USTC) is being bridged - interchainFeeConstants + localFeeConstants
-  // from the registry config, summed once here so callers never add them
-  // separately. Recentred periodically by Hyperlane's own governance -
-  // values confirmed live 2026-09-02, re-verify against the registry
-  // (deployments/warp_routes/{LUNC,USTC}/...) before trusting this is still
-  // current if this is picked back up much later.
-  igpFeeUluna: bigint;
+  // ready for a future entrada implementation). Partial, not every asset
+  // has a route to every destination - JURIS is Solana-only (confirmed
+  // directly by Igor, the Terra Classic Hyperlane infra lead, 2026-09-02:
+  // Juris only ever deployed the Solana leg). The asset picker in
+  // DirectTransferCard.tsx reads this to decide which assets to offer per
+  // destination tab, instead of hardcoding "JURIS only on Solana" there.
+  tokenAddress: Partial<Record<HyperlaneAsset, string>>;
 };
 
 export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
@@ -476,7 +500,6 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       LUNC: "0x481095ecEd7A907e7f390b6226F53a66D379e6e2",
       USTC: "0xfC067fd98FD123fC2cAd72d040AF60a523274339",
     },
-    igpFeeUluna: 2_020_000_000n + 283_215n,
   },
   {
     domain: 1,
@@ -486,17 +509,36 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       LUNC: "0xA4bc47a4C5461eB0E59A585a21A1222EF7544Ac6",
       USTC: "0xf49408beb319aeCe3E8B3550a5C750C19b3F1e51",
     },
-    igpFeeUluna: 1_400_000_000n + 283_215n,
   },
   {
     domain: 1399811149,
     label: "Solana",
     kind: "solana",
+    // All 3 of these are the actual SPL/Token-2022 MINT address, not the
+    // warp route's own program address (list_routes on the Terra Classic
+    // warp contract returns that program address, and it's easy to mix the
+    // two up - happened here once already, see JURIS's history below).
+    // LUNC/USTC verified 2026-09-04 (audit round, docs/audit-prompts/
+    // hyperlane-outbound-onramp/round-01-findings-opus.md, Finding 1):
+    // list_routes' route bytes for these two, base58-encoded, reproduce the
+    // OLD wrong values here exactly (Dd3ajD8W.../7CUdBt1Q...) - getAccountInfo
+    // on those confirms they're BPFLoaderUpgradeab1e-owned *programs*, not
+    // mints. The real mints (independently confirmed here too - real
+    // Token-2022 mints, 6 decimals, tokenMetadata name "Luna Classic"/"Terra
+    // Classic USD") are the values now in place below.
     tokenAddress: {
-      LUNC: "Dd3ajD8WbEyx7z3HqPnDyvUgFqEBzvF1VePjYd1NGnbr",
-      USTC: "7CUdBt1Qn2R2StE7MDPhQW2EhmnGg8zKK8oJXwAGEoyf",
+      LUNC: "8dxTo5reLtvRDx3Q8WEP33Uj2C5u6372EygJdNbsLFKG",
+      USTC: "GNUbsF5mrurtDzNc65HipN5Fyzzzqbj5UonLNhj9frjF",
+      // JURIS's synthetic mint on Solana. The previous value here
+      // (8pktAA5FdXJta2V1U1xzRz5GBcpqH7gTjfFQirJTpZfm) was actually the
+      // route's recipient/program address from list_routes, not the mint -
+      // confirmed wrong, and this one confirmed correct, by querying the
+      // real token account a real transferRemote to this route created
+      // (getTokenAccountsByOwner on mainnet, 2026-09-04): mint field is
+      // this address, matching the JURIS/USDC pair already verified on
+      // Dexscreener/Raydium.
+      JURIS: "HmKUJLZGTyFbEUX5sDisr8PERHjJRyoAkgZwc2YsbeRr",
     },
-    igpFeeUluna: 2_330_000_000n + 283_215n,
   },
 ];
 
@@ -530,10 +572,17 @@ export const TERRA_CLASSIC_MAINNET: DirectOriginChain = {
   // worth blocking on before a real broadcast test.
   gasPrice: { amount: "28.325", denom: "uluna" },
   // Covers only the ordinary Cosmos tx fee - the much larger Hyperlane IGP
-  // payment (2000+ LUNC, HyperlaneDestination.igpFeeUluna above) is
-  // reserved separately in DirectOutboundForm (DirectTransferCard.tsx),
-  // since unlike this flat per-tx amount it varies by destination.
-  maxGasReserve: 50_000_000n, // 50 LUNC
+  // payment (1000+ LUNC, live-quoted per destination by
+  // queryHyperlaneGas.ts's quoteHyperlaneGasFee) is reserved separately in
+  // DirectOutboundForm (DirectTransferCard.tsx), since unlike this flat
+  // per-tx amount it varies by destination. Was
+  // 50 LUNC, raised 2026-09-04 (audit round, docs/audit-prompts/
+  // hyperlane-outbound-onramp/round-01-findings-opus.md, Finding 2) after
+  // pulling this project's own real mainnet broadcasts: the 4-message JURIS
+  // tx paid 72.87 LUNC, a 3-message LUNC tx paid 68.60 LUNC (both
+  // independently re-verified against the LCD) - 50 LUNC left the Max
+  // button building an unpayable transaction on the flagship (LUNC) path.
+  maxGasReserve: 100_000_000n, // 100 LUNC
   sdkVersion: "sdk53",
 };
 
