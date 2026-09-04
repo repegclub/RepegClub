@@ -692,9 +692,9 @@
       "Straight from Noble,\nCosmos Hub, Osmosis!"
     ],
     "title": "Move Funds with Terra Classic",
-    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC/USTC out to BSC, Ethereum, or Solana. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
     "modeBring": "Bring USDC in",
-    "modeSend": "Send LUNC/USTC out",
+    "modeSend": "Send LUNC/USTC/CW20 out",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
       "destAddressPlaceholder": "terra1... (paste your wallet)",
@@ -716,15 +716,18 @@
       "sent": "Sent! Tx hash: {{hash}}"
     },
     "outbound": {
-      "desc": "Connect your Terra Classic wallet, then send LUNC or USTC out to {{chain}} via Hyperlane.",
+      "desc": "Connect your Terra Classic wallet, then send LUNC, USTC, or a supported CW20 token out to {{chain}} via Hyperlane.",
       "connectButton": "Connect Terra Classic wallet",
       "evmAddressLabel": "{{chain}} address to receive",
       "solanaAddressLabel": "Solana address to receive",
       "solanaAddressPlaceholder": "Paste your Solana wallet address",
       "evmAddressInvalid": "That doesn't look like a valid address for this chain.",
       "solanaAddressInvalid": "That doesn't look like a valid Solana address.",
-      "gasNeeded": "You need a little LUNC in this wallet to pay the interchain gas fee for this transfer.",
-      "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) + ~{{gas}} LUNC network gas — {{send}} {{symbol}} will be sent to {{chain}}.",
+      "gasNeeded": "You need about {{amount}} LUNC in this wallet to pay the interchain gas fee for this transfer.",
+      "gasNeededUnknown": "You'll need some LUNC in this wallet to pay the interchain gas fee for this transfer — checking the current price…",
+      "gasPriceError": "Couldn't check the current interchain gas price.",
+      "gasPriceRetry": "Retry",
+      "breakdown": "Fee: {{fee}} {{symbol}} (0.2%) + ~{{gas}} LUNC interchain gas — {{send}} {{symbol}} will be sent to {{chain}}.",
       "sendButton": "Send to {{chain}}",
       "sendFailed": "Transaction failed.",
       "mobileHint": "On your phone? Open this page inside the Keplr (or Galaxy Station) app's own built-in browser, then tap \"Keplr\"/\"Galaxy Station\" above — not the QR-code option, which doesn't work for this specific transfer yet.",
@@ -779,7 +782,7 @@
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       },
       {
-        "q": "What does \"Send LUNC/USTC out\" do?",
+        "q": "What does \"Send LUNC/USTC/CW20 out\" do?",
         "a": "The opposite direction — it bridges LUNC or USTC from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes for these two tokens. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
       },
       {

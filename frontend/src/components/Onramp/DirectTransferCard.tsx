@@ -5,6 +5,7 @@ import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
 import { useCw20Balance } from "../../hooks/useCw20Balance";
 import { useCopyable } from "../../hooks/useCopyable";
+import { useHyperlaneGasFee } from "../../hooks/useHyperlaneGasFee";
 import {
   isValidEvmAddress,
   isValidSolanaAddress,
@@ -12,6 +13,7 @@ import {
   sendDirectToTerraClassic,
   sendOutViaHyperlane,
 } from "../../lib/onrampActions";
+import { quoteHyperlaneGasFee } from "../../lib/queryHyperlaneGas";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import {
   DIRECT_ORIGIN_CHAINS,
@@ -529,17 +531,23 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   );
   const balance = warp.kind === "native" ? nativeBalance : cw20Balance;
 
-  // The Hyperlane gas payment (igpFeeUluna) is always uluna, on top of the
+  // The Hyperlane interchain gas payment is always uluna, on top of the
   // ordinary tx gas reserve (chain.maxGasReserve, also uluna) - when the
   // asset being bridged ISN'T uluna (USTC/JURIS), both draw from a wholly
   // separate uluna balance the asset balance above says nothing about.
   // Same gasIsSameDenom reasoning as DirectOriginForm, with the IGP fee
-  // folded into what has to be reserved/checked.
+  // folded into what has to be reserved/checked. Live-quoted per
+  // asset/destination (queryHyperlaneGas.ts) rather than a hardcoded
+  // constant - see that file's comment for why a hardcoded number was
+  // silently burning ~300-450 LUNC per transfer (2026-09-04 audit finding).
   const assetIsUluna = warp.kind === "native" && warp.denom === "uluna";
-  const ulunaReserve = destination.igpFeeUluna + chain.maxGasReserve;
+  const warpContract = warp.kind === "cw20" ? warp.warpContract : warp.contract;
+  const gasFee = useHyperlaneGasFee(warpContract, destination.domain, chain.rpc);
+  const igpFeeUluna = gasFee.status === "loaded" ? gasFee.amountUluna : null;
+  const ulunaReserve = igpFeeUluna === null ? null : igpFeeUluna + chain.maxGasReserve;
   const ulunaBalance = useBalance(assetIsUluna ? null : address, "uluna", chain.lcd);
   const hasUlunaForFee =
-    assetIsUluna || (ulunaBalance.status === "loaded" && BigInt(ulunaBalance.amount) >= ulunaReserve);
+    assetIsUluna || (ulunaReserve !== null && ulunaBalance.status === "loaded" && BigInt(ulunaBalance.amount) >= ulunaReserve);
 
   const [destAddressInput, setDestAddressInput] = useState("");
   const destAddressValidator = destination.kind === "evm" ? isValidEvmAddress : isValidSolanaAddress;
@@ -562,7 +570,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
     amountRaw > 0n &&
     balance.status === "loaded" &&
     amountRaw <= BigInt(balance.amount) &&
-    (!assetIsUluna || amountRaw + ulunaReserve <= BigInt(balance.amount)) &&
+    (!assetIsUluna || (ulunaReserve !== null && amountRaw + ulunaReserve <= BigInt(balance.amount))) &&
     hasUlunaForFee &&
     destAddressValid;
   const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);
@@ -577,12 +585,14 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   }
 
   function handleMax() {
-    if (balance.status !== "loaded") return;
-    const raw = BigInt(balance.amount);
     // Only uluna needs headroom reserved off the top - a USTC balance
     // doesn't need any of itself held back (the IGP fee + tx gas come out
     // of the separate uluna balance instead, checked by hasUlunaForFee).
-    const reserve = assetIsUluna ? ulunaReserve : 0n;
+    // Requires the live gas quote to have loaded when the asset itself IS
+    // uluna, since that's what sizes the reserve.
+    if (balance.status !== "loaded" || (assetIsUluna && ulunaReserve === null)) return;
+    const raw = BigInt(balance.amount);
+    const reserve = assetIsUluna ? (ulunaReserve as bigint) : 0n;
     const max = raw > reserve ? raw - reserve : 0n;
     setAmountInput(microToDisplay(max).toString());
   }
@@ -591,13 +601,32 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
     if (walletState.status !== "connected" || !amountValid) return;
     setBusy(true);
     setError(null);
+    // Re-quote right before signing rather than reusing whatever loaded
+    // when this form mounted - keeps the gap between "price quoted" and
+    // "price actually paid" as small as possible. +3% on top absorbs the
+    // (much smaller) remaining gap up to broadcast - queryHyperlaneGas.ts
+    // explains why this only needs to be close, not exact: underpaying
+    // just fails the tx safely, it never strands funds. Kept in its own
+    // try/catch, separate from the broadcast below: a failure here means
+    // nothing was ever signed or sent, so it's an ordinary retriable
+    // error, not the "did my transfer actually go through?" case that
+    // outcomeUnknown below is for.
+    let freshIgpFeeUluna: bigint;
+    try {
+      freshIgpFeeUluna = ((await quoteHyperlaneGasFee(chain.rpc, warpContract, destination.domain)) * 103n) / 100n;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't fetch the current gas price. Try again.");
+      setBusy(false);
+      return;
+    }
     try {
       const result = await sendOutViaHyperlane(
         walletState.wallet,
         assetSymbol,
         destination,
         amountRaw,
-        destAddressInput
+        destAddressInput,
+        freshIgpFeeUluna
       );
       setTxHash(result.res.txResponse.txhash);
       setAmountInput("");
@@ -762,7 +791,19 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
           )}
 
           {!assetIsUluna && ulunaBalance.status === "loaded" && !hasUlunaForFee && (
-            <p className="onramp-error-text">{t("onramp.outbound.gasNeeded")}</p>
+            <p className="onramp-error-text">
+              {ulunaReserve !== null
+                ? t("onramp.outbound.gasNeeded", { amount: microToDisplay(ulunaReserve).toFixed(0) })
+                : t("onramp.outbound.gasNeededUnknown")}
+            </p>
+          )}
+          {gasFee.status === "error" && (
+            <p className="onramp-error-text">
+              {t("onramp.outbound.gasPriceError")}{" "}
+              <button type="button" className="onramp-ghost-btn" onClick={gasFee.refetch}>
+                {t("onramp.outbound.gasPriceRetry")}
+              </button>
+            </p>
           )}
 
           {/* Wallets don't auto-detect a brand-new token by themselves (an
@@ -802,7 +843,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
                 symbol: assetSymbol,
                 send: microToDisplay(transferAmount).toFixed(2),
                 chain: destination.label,
-                gas: microToDisplay(destination.igpFeeUluna).toFixed(2),
+                gas: microToDisplay(igpFeeUluna ?? 0n).toFixed(2),
               })}
             </p>
           )}

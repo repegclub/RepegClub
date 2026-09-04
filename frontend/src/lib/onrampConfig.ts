@@ -489,14 +489,6 @@ export type HyperlaneDestination = {
   // DirectTransferCard.tsx reads this to decide which assets to offer per
   // destination tab, instead of hardcoding "JURIS only on Solana" there.
   tokenAddress: Partial<Record<HyperlaneAsset, string>>;
-  // Interchain gas payment (IGP), always in uluna regardless of which asset
-  // is being bridged - interchainFeeConstants + localFeeConstants from the
-  // registry config, summed once here so callers never add them
-  // separately. Recentred periodically by Hyperlane's own governance -
-  // values confirmed live 2026-09-02, re-verify against the registry
-  // (deployments/warp_routes/{LUNC,USTC}/...) before trusting this is still
-  // current if this is picked back up much later.
-  igpFeeUluna: bigint;
 };
 
 export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
@@ -508,7 +500,6 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       LUNC: "0x481095ecEd7A907e7f390b6226F53a66D379e6e2",
       USTC: "0xfC067fd98FD123fC2cAd72d040AF60a523274339",
     },
-    igpFeeUluna: 2_020_000_000n + 283_215n,
   },
   {
     domain: 1,
@@ -518,15 +509,26 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       LUNC: "0xA4bc47a4C5461eB0E59A585a21A1222EF7544Ac6",
       USTC: "0xf49408beb319aeCe3E8B3550a5C750C19b3F1e51",
     },
-    igpFeeUluna: 1_400_000_000n + 283_215n,
   },
   {
     domain: 1399811149,
     label: "Solana",
     kind: "solana",
+    // All 3 of these are the actual SPL/Token-2022 MINT address, not the
+    // warp route's own program address (list_routes on the Terra Classic
+    // warp contract returns that program address, and it's easy to mix the
+    // two up - happened here once already, see JURIS's history below).
+    // LUNC/USTC verified 2026-09-04 (audit round, docs/audit-prompts/
+    // hyperlane-outbound-onramp/round-01-findings-opus.md, Finding 1):
+    // list_routes' route bytes for these two, base58-encoded, reproduce the
+    // OLD wrong values here exactly (Dd3ajD8W.../7CUdBt1Q...) - getAccountInfo
+    // on those confirms they're BPFLoaderUpgradeab1e-owned *programs*, not
+    // mints. The real mints (independently confirmed here too - real
+    // Token-2022 mints, 6 decimals, tokenMetadata name "Luna Classic"/"Terra
+    // Classic USD") are the values now in place below.
     tokenAddress: {
-      LUNC: "Dd3ajD8WbEyx7z3HqPnDyvUgFqEBzvF1VePjYd1NGnbr",
-      USTC: "7CUdBt1Qn2R2StE7MDPhQW2EhmnGg8zKK8oJXwAGEoyf",
+      LUNC: "8dxTo5reLtvRDx3Q8WEP33Uj2C5u6372EygJdNbsLFKG",
+      USTC: "GNUbsF5mrurtDzNc65HipN5Fyzzzqbj5UonLNhj9frjF",
       // JURIS's synthetic mint on Solana. The previous value here
       // (8pktAA5FdXJta2V1U1xzRz5GBcpqH7gTjfFQirJTpZfm) was actually the
       // route's recipient/program address from list_routes, not the mint -
@@ -537,7 +539,6 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       // Dexscreener/Raydium.
       JURIS: "HmKUJLZGTyFbEUX5sDisr8PERHjJRyoAkgZwc2YsbeRr",
     },
-    igpFeeUluna: 2_330_000_000n + 283_215n,
   },
 ];
 
@@ -571,10 +572,17 @@ export const TERRA_CLASSIC_MAINNET: DirectOriginChain = {
   // worth blocking on before a real broadcast test.
   gasPrice: { amount: "28.325", denom: "uluna" },
   // Covers only the ordinary Cosmos tx fee - the much larger Hyperlane IGP
-  // payment (2000+ LUNC, HyperlaneDestination.igpFeeUluna above) is
-  // reserved separately in DirectOutboundForm (DirectTransferCard.tsx),
-  // since unlike this flat per-tx amount it varies by destination.
-  maxGasReserve: 50_000_000n, // 50 LUNC
+  // payment (1000+ LUNC, live-quoted per destination by
+  // queryHyperlaneGas.ts's quoteHyperlaneGasFee) is reserved separately in
+  // DirectOutboundForm (DirectTransferCard.tsx), since unlike this flat
+  // per-tx amount it varies by destination. Was
+  // 50 LUNC, raised 2026-09-04 (audit round, docs/audit-prompts/
+  // hyperlane-outbound-onramp/round-01-findings-opus.md, Finding 2) after
+  // pulling this project's own real mainnet broadcasts: the 4-message JURIS
+  // tx paid 72.87 LUNC, a 3-message LUNC tx paid 68.60 LUNC (both
+  // independently re-verified against the LCD) - 50 LUNC left the Max
+  // button building an unpayable transaction on the flagship (LUNC) path.
+  maxGasReserve: 100_000_000n, // 100 LUNC
   sdkVersion: "sdk53",
 };
 
