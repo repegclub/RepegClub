@@ -284,7 +284,19 @@ async function tickCyolRaffle(keeper: ReturnType<typeof loadWallet>, raffleAddre
 }
 
 async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
-  const nowSeconds = await currentBlockTimeSeconds();
+  // Deliberately outside the per-target try/catch below but still guarded:
+  // an RPC hiccup here (timeout, reset, an HTML error page instead of JSON)
+  // used to bubble all the way up to main()'s process.exit(1), killing the
+  // whole keeper over a single failed request - systemd restarts it, but
+  // that costs a ~20-30s reconnect and, during a longer RPC outage, means
+  // the process is crash-looping instead of just retrying next tick.
+  let nowSeconds: number;
+  try {
+    nowSeconds = await currentBlockTimeSeconds();
+  } catch (err) {
+    console.error(`tick error: failed to fetch current block time: ${(err as Error).message}`);
+    return;
+  }
   for (const target of targets) {
     try {
       if (target.type === "wheel-manager") {
