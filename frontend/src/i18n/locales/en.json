@@ -688,11 +688,11 @@
       "Terra Classic needs\nfresh capital, friend!",
       "USDC dodges that\nnasty burn tax!",
       "Our cut's tiny\nnext to that tax!",
-      "Noble's my favorite —\ncheap and fast!",
-      "Straight from Noble,\nCosmos Hub, Osmosis!"
+      "Circle's ending Noble-USDC\nDec 1 — move it now!",
+      "Injective's the next stop —\nget your USDC out today!"
     ],
     "title": "Move Funds with Terra Classic",
-    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana, or USDC back out to Noble. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana, or USDC back out to Noble. Heads up: Circle is retiring Noble-USDC on Dec 1, 2026 — if you're holding it here, now's the time to move it out. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
     "modeBring": "Bring USDC in",
     "modeSend": "Send assets out",
     "direct": {
@@ -754,6 +754,10 @@
       {
         "q": "What can I bring in?",
         "a": "USDC already sitting on Noble, Cosmos Hub, or Osmosis — or native ATOM or OSMO, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
+      },
+      {
+        "q": "Is Noble-USDC going away?",
+        "a": "Circle is shutting down CCTP v1 on December 1, 2026, and Noble — the issuer of the USDC used across Terra Classic — runs only on v1 with no plan to upgrade. A community proposal is underway to migrate Terra Classic's liquidity to Injective-USDC (the version of CCTP Circle keeps supporting), but that migration isn't live yet. Bringing USDC in here still works today, but if you're already holding USDC on Terra Classic, consider using \"Send assets out\" to move it to Noble now, ahead of the deadline — we'll add an Injective-USDC route here once that migration is complete."
       },
       {
         "q": "How do I find my Noble wallet address?",

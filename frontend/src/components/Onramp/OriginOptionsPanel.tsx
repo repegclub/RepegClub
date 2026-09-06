@@ -99,6 +99,11 @@ export function OriginOptionsPanel() {
                     <p id="origin-options-modal-title" className="origin-options-modal-title">
                       Understand your options
                     </p>
+                    <p className="onramp-dest-warning">
+                      Heads up: Circle is retiring Noble-USDC on Dec 1, 2026. These routes still
+                      work today, but consider timing new deposits around that — an Injective-USDC
+                      route is planned here once that migration is complete.
+                    </p>
                     <div className="origin-options-list">
                       {ORIGIN_OPTIONS.map((o) => (
                         <div className="origin-option-row" key={o.exchange}>
