@@ -15,6 +15,11 @@ export const NOBLE_USDC_DENOM = "uusdc";
 // against the chain immediately before writing this (STATE_OPEN), not
 // carried over from an earlier note.
 export const NOBLE_TO_TERRA_CLASSIC_CHANNEL = "channel-149";
+// Terra Classic's own side of that same channel pair, for the reverse hop
+// (Terra Classic -> Noble) - counterparty channel-149 above, confirmed live
+// against the chain (STATE_OPEN) 2026-09-06, same discipline as that
+// comment.
+export const TERRA_CLASSIC_TO_NOBLE_CHANNEL = "channel-113";
 
 export const ONRAMP_DEFAULT_ROUTE = {
   destChainId: TERRA_CLASSIC_CHAIN_ID,
@@ -541,6 +546,46 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
     },
   },
 ];
+
+// "Send out" destination that isn't a Hyperlane warp route - USDC leaving
+// Terra Classic back to Noble via a plain IBC transfer, the mirror of
+// DIRECT_ORIGIN_CHAINS' Noble entry above. Added 2026-09-06: Circle retires
+// CCTP v1 (the only version Noble supports) on 2026-12-01, and the ~54,781
+// USDC held by individual Noble-USDC holders on Terra Classic (per the
+// LuncGoblins community migration proposal, discourse.luncgoblins.com/t/
+// reroute-lunc-usdc-position-to-injective-usdc/530) has no official path
+// out - this gives them one. Kept as its own destination `kind` rather than
+// forced into HyperlaneDestination's shape - domain/tokenAddress mean
+// nothing for a plain IBC transfer, and there's no Hyperlane gas quote
+// involved (ordinary Cosmos tx gas only, same as DIRECT_ORIGIN_CHAINS'
+// Noble entry).
+export type IbcSendDestination = {
+  kind: "ibc";
+  chainId: typeof NOBLE_CHAIN_ID;
+  label: string;
+  bech32Prefix: string;
+  channel: string;
+  denom: string;
+  symbol: string;
+};
+
+export type SendDestination = HyperlaneDestination | IbcSendDestination;
+
+export const NOBLE_SEND_DESTINATION: IbcSendDestination = {
+  kind: "ibc",
+  chainId: NOBLE_CHAIN_ID,
+  label: "Noble",
+  bech32Prefix: "noble",
+  channel: TERRA_CLASSIC_TO_NOBLE_CHANNEL,
+  denom: TERRA_CLASSIC_USDC_DENOM,
+  symbol: "USDC",
+};
+
+// Tabs for "send" mode - Hyperlane's 3 chains plus the IBC-out leg to
+// Noble. Order matters (first entry is the tab's default selection, same
+// convention as DIRECT_ORIGIN_CHAINS) - Noble last since LUNC/USTC/CW20 out
+// are the more-established paths today.
+export const SEND_DESTINATIONS: SendDestination[] = [...HYPERLANE_DESTINATIONS, NOBLE_SEND_DESTINATION];
 
 // Terra Classic MAINNET (columbus-5), used only as the wallet-connection
 // target for the Hyperlane outbound leg above - shaped as a
