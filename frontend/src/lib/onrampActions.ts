@@ -17,6 +17,7 @@ import {
   type DirectOriginChain,
   type HyperlaneAsset,
   type HyperlaneDestination,
+  type IbcSendDestination,
 } from "./onrampConfig";
 
 // Same memo convention as every other tx this project broadcasts
@@ -43,6 +44,19 @@ const SKIP_API_BASE = "https://api.skip.build/v2";
 export function isValidTerraClassicAddress(address: string): boolean {
   try {
     return bech32.decode(address as `${string}1${string}`).prefix === "terra";
+  } catch {
+    return false;
+  }
+}
+
+// Same "structurally valid, pasted not derived" trust model as
+// isValidTerraClassicAddress above - Noble shares the origin wallet's coin
+// type (118, see KNOWN_SLIP44_118_CHAIN_IDS), but the destination here is
+// still a foreign chain's address the user pastes in by hand, same as
+// withdrawing to any external wallet.
+export function isValidNobleAddress(address: string): boolean {
+  try {
+    return bech32.decode(address as `${string}1${string}`).prefix === "noble";
   } catch {
     return false;
   }
@@ -944,6 +958,73 @@ export async function sendOutViaHyperlane(
         })
       );
     }
+  }
+
+  const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });
+  if (res.txResponse.code !== 0) {
+    throw new Error(res.txResponse.rawLog || "Transaction failed.");
+  }
+  return { res, transferAmount, treasuryAmount, feeKeeperAmount };
+}
+
+// ---------- IBC outbound leg: USDC leaving Terra Classic back to Noble (2026-09-06) ----------
+// The exact mirror of sendDirectToTerraClassic's Noble branch above -
+// same channel pair (destination.channel is Terra Classic's own side,
+// channel-113, counterparty of Noble's channel-149), same plain
+// MsgIbcTransfer with no swap involved either direction, just sender/
+// receiver and the channel ID reversed. Added so individual Noble-USDC
+// holders on Terra Classic have a way out before Circle retires CCTP v1
+// (the only version Noble supports) on 2026-12-01 - see project notes.
+
+export async function sendUsdcOutToNoble(
+  wallet: ConnectedWallet,
+  destination: IbcSendDestination,
+  amount: bigint,
+  nobleAddress: string
+) {
+  if (!isValidNobleAddress(nobleAddress)) {
+    throw new Error("Not a valid Noble address.");
+  }
+  if (amount <= 0n) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  const { treasuryAddress, treasuryAmount, feeKeeperAddress, feeKeeperAmount, transferAmount } = getDirectFeeSplit(
+    TERRA_CLASSIC_CHAIN_ID,
+    amount
+  );
+
+  const msgs: Adapter[] = [
+    new MsgIbcTransfer({
+      sourcePort: "transfer",
+      sourceChannel: destination.channel,
+      token: { denom: destination.denom, amount: transferAmount.toString() },
+      sender: wallet.address,
+      receiver: nobleAddress,
+      timeoutTimestamp: BigInt(Date.now() + 10 * 60 * 1000) * 1_000_000n,
+      memo: MEMO,
+      encoding: "",
+      useAliasing: false,
+    }),
+  ];
+
+  if (treasuryAmount > 0n) {
+    msgs.push(
+      new MsgSend({
+        fromAddress: wallet.address,
+        toAddress: treasuryAddress,
+        amount: [{ denom: destination.denom, amount: treasuryAmount.toString() }],
+      })
+    );
+  }
+  if (feeKeeperAmount > 0n) {
+    msgs.push(
+      new MsgSend({
+        fromAddress: wallet.address,
+        toAddress: feeKeeperAddress,
+        amount: [{ denom: destination.denom, amount: feeKeeperAmount.toString() }],
+      })
+    );
   }
 
   const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });

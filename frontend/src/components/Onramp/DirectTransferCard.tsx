@@ -8,17 +8,19 @@ import { useCopyable } from "../../hooks/useCopyable";
 import { useHyperlaneGasFee } from "../../hooks/useHyperlaneGasFee";
 import {
   isValidEvmAddress,
+  isValidNobleAddress,
   isValidSolanaAddress,
   isValidTerraClassicAddress,
   sendDirectToTerraClassic,
   sendOutViaHyperlane,
+  sendUsdcOutToNoble,
 } from "../../lib/onrampActions";
 import { quoteHyperlaneGasFee } from "../../lib/queryHyperlaneGas";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import {
   DIRECT_ORIGIN_CHAINS,
-  HYPERLANE_DESTINATIONS,
   HYPERLANE_TERRA_CLASSIC_WARP,
+  SEND_DESTINATIONS,
   TERRA_CLASSIC_MAINNET,
   displayToMicro,
   getDirectFeeSplit,
@@ -27,6 +29,8 @@ import {
   type DirectOriginChain,
   type HyperlaneAsset,
   type HyperlaneDestination,
+  type IbcSendDestination,
+  type SendDestination,
 } from "../../lib/onrampConfig";
 
 function truncate(address: string): string {
@@ -65,6 +69,14 @@ function truncate(address: string): string {
 // wouldn't have fixed the same-glance problem.
 type Mode = "bring" | "send";
 
+// A stable identifier for a SendDestination tab - HyperlaneDestination and
+// IbcSendDestination don't share a field that's both unique and always
+// present (domain means nothing for the IBC leg, chainId means nothing for
+// Hyperlane's EVM/Solana entries).
+function sendDestinationKey(destination: SendDestination): string | number {
+  return destination.kind === "ibc" ? destination.chainId : destination.domain;
+}
+
 export function DirectTransferCard() {
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>("bring");
@@ -72,7 +84,7 @@ export function DirectTransferCard() {
   // state slots, not 1 shared "selected tab") - switching modes and back
   // shouldn't reset which chain was chosen.
   const [selectedOrigin, setSelectedOrigin] = useState<DirectOriginChain>(DIRECT_ORIGIN_CHAINS[0]);
-  const [selectedDestination, setSelectedDestination] = useState<HyperlaneDestination>(HYPERLANE_DESTINATIONS[0]);
+  const [selectedDestination, setSelectedDestination] = useState<SendDestination>(SEND_DESTINATIONS[0]);
   // Lifted up here (not local to DirectOriginForm) so it survives
   // switching between the Noble/Cosmos Hub/Osmosis tabs - the destination
   // is the same address no matter which origin tab is active, the user
@@ -138,15 +150,15 @@ export function DirectTransferCard() {
       ) : (
         <>
           <div className="onramp-tabs" role="tablist">
-            {HYPERLANE_DESTINATIONS.map((dest, index) => (
+            {SEND_DESTINATIONS.map((dest, index) => (
               <button
-                key={dest.domain}
+                key={sendDestinationKey(dest)}
                 type="button"
                 role="tab"
-                aria-selected={selectedDestination.domain === dest.domain}
+                aria-selected={sendDestinationKey(selectedDestination) === sendDestinationKey(dest)}
                 className={
                   `onramp-tab onramp-tab-c${index}` +
-                  (selectedDestination.domain === dest.domain ? " onramp-tab-active" : "")
+                  (sendDestinationKey(selectedDestination) === sendDestinationKey(dest) ? " onramp-tab-active" : "")
                 }
                 onClick={() => setSelectedDestination(dest)}
               >
@@ -154,7 +166,11 @@ export function DirectTransferCard() {
               </button>
             ))}
           </div>
-          <DirectOutboundForm key={`out-${selectedDestination.domain}`} destination={selectedDestination} />
+          {selectedDestination.kind === "ibc" ? (
+            <DirectOutboundIbcForm key={`out-${selectedDestination.chainId}`} destination={selectedDestination} />
+          ) : (
+            <DirectOutboundForm key={`out-${selectedDestination.domain}`} destination={selectedDestination} />
+          )}
         </>
       )}
     </div>
@@ -464,6 +480,258 @@ function DirectOriginForm({
             disabled={busy || !amountValid || outcomeUnknown}
           >
             {busy ? t("onramp.direct.sending") : t("onramp.direct.sendButton")}
+          </button>
+          {error && <p className="onramp-error-text">{error}</p>}
+          {outcomeUnknown && (
+            <div className="onramp-outcome-unknown">
+              <p className="onramp-error-text">{t("onramp.direct.outcomeUnknown")}</p>
+              <button
+                type="button"
+                className="onramp-ghost-btn"
+                onClick={() => {
+                  setOutcomeUnknown(false);
+                  balance.refetch();
+                }}
+              >
+                {t("onramp.direct.outcomeUnknownAck")}
+              </button>
+            </div>
+          )}
+          {txHash && <p className="onramp-success-text">{t("onramp.direct.sent", { hash: txHash })}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// USDC leaving Terra Classic back to Noble via a plain IBC transfer -
+// mirrors DirectOriginForm above (reversed), not DirectOutboundForm below:
+// there's no Hyperlane gas quote here at all, just the ordinary Cosmos tx
+// gas reserve (chain.maxGasReserve), same math as DirectOriginForm's
+// Cosmos Hub/Osmosis USDC path (asset denom is never the gas denom, so
+// gasIsSameDenom is always false here). Added 2026-09-06 so individual
+// Noble-USDC holders on Terra Classic have a way out before Circle
+// retires CCTP v1 (the only version Noble supports) on 2026-12-01 - see
+// project notes.
+function DirectOutboundIbcForm({ destination }: { destination: IbcSendDestination }) {
+  const { t } = useTranslation();
+  const chain = TERRA_CLASSIC_MAINNET;
+  const { state: walletState, connect, disconnect } = useCosmosWallet(chain);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const connectBtnRef = useRef<HTMLButtonElement>(null);
+  const address = walletState.status === "connected" ? walletState.address : null;
+
+  const balance = useBalance(address, destination.denom, chain.lcd);
+  // USDC is never Terra Classic's own gas denom - gas always comes out of a
+  // separate uluna balance, same reasoning as DirectOriginForm's Cosmos
+  // Hub/Osmosis USDC path.
+  const gasBalance = useBalance(address, "uluna", chain.lcd);
+  const hasGasForFee = gasBalance.status === "loaded" && BigInt(gasBalance.amount) >= chain.maxGasReserve;
+
+  const [destAddressInput, setDestAddressInput] = useState("");
+  const destAddressValid = isValidNobleAddress(destAddressInput);
+  const destAddressInvalid = destAddressInput !== "" && !destAddressValid;
+
+  const [amountInput, setAmountInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  // Same reasoning as DirectOriginForm's outcomeUnknown - see the comment
+  // there.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+
+  const amountNumber = Number(amountInput);
+  const amountRaw = displayToMicro(amountNumber);
+  const amountValid =
+    Number.isFinite(amountNumber) &&
+    amountNumber > 0 &&
+    amountRaw > 0n &&
+    balance.status === "loaded" &&
+    amountRaw <= BigInt(balance.amount) &&
+    hasGasForFee &&
+    destAddressValid;
+  const { transferAmount, treasuryAmount, feeKeeperAmount } = getDirectFeeSplit(chain.chainId, amountRaw);
+
+  function handleMax() {
+    // Unlike DirectOriginForm's uluna case, nothing here needs to be
+    // reserved off the top of the USDC balance itself - gas comes entirely
+    // out of the separate uluna balance checked by hasGasForFee.
+    if (balance.status !== "loaded") return;
+    setAmountInput(microToDisplay(BigInt(balance.amount)).toString());
+  }
+
+  async function handleSend() {
+    if (walletState.status !== "connected" || !amountValid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await sendUsdcOutToNoble(walletState.wallet, destination, amountRaw, destAddressInput);
+      setTxHash(result.res.txResponse.txhash);
+      setAmountInput("");
+      balance.refetch();
+    } catch (err) {
+      // Same TypeError-vs-thrown-Error distinction as DirectOriginForm's
+      // handleSend - see the comment there.
+      if (err instanceof TypeError) {
+        console.error(err);
+        setOutcomeUnknown(true);
+      } else {
+        setError(err instanceof Error ? err.message : t("onramp.outbound.sendFailed"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="onramp-panel">
+      <p className="onramp-panel-desc">{t("onramp.outbound.ibcDesc", { chain: destination.label })}</p>
+
+      {walletState.status === "connected" ? (
+        <div className="onramp-wallet-row">
+          <span className="onramp-wallet-dot" />
+          <span className="onramp-wallet-address">{truncate(walletState.address)}</span>
+          <button className="onramp-ghost-btn" onClick={disconnect}>
+            {t("wallet.disconnect")}
+          </button>
+        </div>
+      ) : walletState.status === "error" ? (
+        (() => {
+          const provider = WALLET_PROVIDERS.find((p) => p.id === walletState.providerId)!;
+          return (
+            <div className="onramp-wallet-row onramp-wallet-row-error">
+              <span className="onramp-error-text">
+                {t(`wallet.${walletState.kind}`, { provider: provider.name })}
+              </span>
+              {walletState.kind === "notInstalled" ? (
+                <a className="onramp-main-btn" href={provider.installUrl} target="_blank" rel="noreferrer">
+                  {t("wallet.install", { provider: provider.name })}
+                </a>
+              ) : (
+                <button
+                  className="onramp-main-btn"
+                  onClick={() => connect(walletState.providerId, walletState.type)}
+                >
+                  {t("wallet.retry")}
+                </button>
+              )}
+              <button className="onramp-ghost-btn" onClick={disconnect}>
+                {t("wallet.chooseAnother")}
+              </button>
+            </div>
+          );
+        })()
+      ) : (
+        <>
+          <button
+            ref={connectBtnRef}
+            className="onramp-main-btn"
+            onClick={() => setProviderMenuOpen((open) => !open)}
+            disabled={walletState.status === "connecting"}
+            aria-haspopup="menu"
+            aria-expanded={providerMenuOpen}
+          >
+            {walletState.status === "connecting" ? t("wallet.connecting") : t("onramp.outbound.connectButton")}
+          </button>
+          {/* No "Mobile (scan QR)" group here, same caution as
+              DirectOutboundForm below - only MsgExecuteContract against
+              Terra Classic via WalletConnect Amino signing was ever
+              confirmed broken/fixed (see project notes); this leg signs a
+              different message type (MsgIbcTransfer) that hasn't been
+              tested that way, so there's no basis to assume it fares any
+              better until proven with a real transfer. */}
+          <p className="onramp-dest-warning">{t("onramp.outbound.mobileHint")}</p>
+          {providerMenuOpen && (
+            <WalletProviderPopover
+              anchorRef={connectBtnRef}
+              onClose={() => setProviderMenuOpen(false)}
+              onSelect={(providerId, type) => {
+                setProviderMenuOpen(false);
+                connect(providerId, type);
+              }}
+              allowMobile={false}
+            />
+          )}
+        </>
+      )}
+
+      {walletState.status === "connected" && (
+        <>
+          {balance.status === "loaded" && (
+            <p className="onramp-balance-note">
+              {t("onramp.direct.balance", {
+                amount: microToDisplay(BigInt(balance.amount)).toFixed(2),
+                symbol: destination.symbol,
+              })}
+            </p>
+          )}
+          <label className="onramp-field-label" htmlFor="outbound-ibc-amount">
+            {t("onramp.direct.amountLabel")}
+          </label>
+          <div className="onramp-input-row">
+            <div className="onramp-input-wrap">
+              <input
+                id="outbound-ibc-amount"
+                type="number"
+                min={0}
+                step="0.01"
+                value={amountInput}
+                onChange={(e) => {
+                  setAmountInput(e.target.value);
+                  setTxHash(null);
+                }}
+                className="onramp-input"
+              />
+              <span className="onramp-input-unit">{destination.symbol}</span>
+            </div>
+            {balance.status === "loaded" && (
+              <button type="button" className="onramp-ghost-btn" onClick={handleMax}>
+                {t("wheel.redeemMax")}
+              </button>
+            )}
+          </div>
+
+          <label className="onramp-field-label" htmlFor="outbound-ibc-address">
+            {t("onramp.outbound.ibcAddressLabel")}
+          </label>
+          <div className={"onramp-input-wrap" + (destAddressInvalid ? " onramp-dest-input-invalid" : "")}>
+            <input
+              id="outbound-ibc-address"
+              type="text"
+              placeholder={t("onramp.outbound.ibcAddressPlaceholder")}
+              value={destAddressInput}
+              onChange={(e) => setDestAddressInput(e.target.value.trim())}
+              className="onramp-input"
+            />
+          </div>
+          {destAddressInvalid ? (
+            <p className="onramp-error-text">{t("onramp.outbound.ibcAddressInvalid")}</p>
+          ) : (
+            <p className="onramp-dest-warning">{t("onramp.direct.destAddressWarning")}</p>
+          )}
+
+          {gasBalance.status === "loaded" && !hasGasForFee && (
+            <p className="onramp-error-text">{t("onramp.outbound.ibcGasNeeded")}</p>
+          )}
+
+          {amountValid && (
+            <p className="onramp-breakdown">
+              {t("onramp.outbound.ibcBreakdown", {
+                fee: microToDisplay(treasuryAmount + feeKeeperAmount).toFixed(4),
+                symbol: destination.symbol,
+                send: microToDisplay(transferAmount).toFixed(2),
+                address: truncate(destAddressInput),
+                chain: destination.label,
+              })}
+            </p>
+          )}
+
+          <button
+            className="onramp-main-btn onramp-send-btn"
+            onClick={handleSend}
+            disabled={busy || !amountValid || outcomeUnknown}
+          >
+            {busy ? t("onramp.direct.sending") : t("onramp.outbound.sendButton", { chain: destination.label })}
           </button>
           {error && <p className="onramp-error-text">{error}</p>}
           {outcomeUnknown && (

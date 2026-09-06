@@ -692,9 +692,9 @@
       "Straight from Noble,\nCosmos Hub, Osmosis!"
     ],
     "title": "Move Funds with Terra Classic",
-    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana, or USDC back out to Noble. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
     "modeBring": "Bring USDC in",
-    "modeSend": "Send LUNC/USTC/CW20 out",
+    "modeSend": "Send assets out",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
       "destAddressPlaceholder": "terra1... (paste your wallet)",
@@ -732,7 +732,13 @@
       "sendFailed": "Transaction failed.",
       "mobileHint": "On your phone? Open this page inside the Keplr (or Galaxy Station) app's own built-in browser, then tap \"Keplr\"/\"Galaxy Station\" above — not the QR-code option, which doesn't work for this specific transfer yet.",
       "tokenHintEvm": "Your wallet won't show this on its own — add it as a custom token (symbol {{symbol}}, 6 decimals):",
-      "tokenHintSolana": "Most Solana wallets (Phantom, etc.) pick this up on their own once it arrives. If it doesn't show up, look for this token mint:"
+      "tokenHintSolana": "Most Solana wallets (Phantom, etc.) pick this up on their own once it arrives. If it doesn't show up, look for this token mint:",
+      "ibcDesc": "Connect your Terra Classic wallet, then send USDC out to {{chain}} via IBC — the first hop toward redeeming or migrating it elsewhere.",
+      "ibcAddressLabel": "Noble address to receive",
+      "ibcAddressPlaceholder": "noble1... (paste your Noble wallet)",
+      "ibcAddressInvalid": "That doesn't look like a valid Noble address.",
+      "ibcGasNeeded": "You need a little LUNC in this wallet to pay gas for this transfer.",
+      "ibcBreakdown": "Fee: {{fee}} {{symbol}} (0.2%) — {{send}} {{symbol}} will be sent to {{address}} on {{chain}}."
     }
   },
   "onrampFaq": {
@@ -782,8 +788,8 @@
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       },
       {
-        "q": "What does \"Send LUNC/USTC/CW20 out\" do?",
-        "a": "The opposite direction — it bridges LUNC or USTC from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes for these two tokens. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
+        "q": "What does \"Send assets out\" do?",
+        "a": "The opposite direction — it bridges LUNC, USTC, or supported CW20 tokens from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes. It also has a Noble tab for sending USDC straight back to Noble over IBC — no bridge involved, just a plain transfer. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
       },
       {
         "q": "I sent LUNC or USTC out but can't see the balance on the other chain — is it lost?",
