@@ -370,6 +370,18 @@
     inset -2px -2px 0 rgba(120,10,30,0.9),
     0 3px 0 #78141f;
 }
+/* 4th accent (Noble tab, "send" mode) - a 4th chain landed here (2026-09-06)
+   past the original 3, deliberately distinct from --gold (reserved for the
+   mode switch above, per the comment before .onramp-tab-active.onramp-tab-c0)
+   and from green/blue/crimson above. Same arbitrary-color reasoning as
+   those - only needs to diverge visibly from its siblings. */
+.onramp-tab-active.onramp-tab-c3 {
+  background: #8b5cf6;
+  box-shadow:
+    inset 2px 2px 0 rgba(216,196,255,0.9),
+    inset -2px -2px 0 rgba(74,29,150,0.9),
+    0 3px 0 #4c1d95;
+}
 
 .onramp-panel-desc {
   margin: 0 0 0.8rem;

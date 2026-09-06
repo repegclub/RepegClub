@@ -716,11 +716,12 @@ function DirectOutboundIbcForm({ destination }: { destination: IbcSendDestinatio
 
           {amountValid && (
             <p className="onramp-breakdown">
-              {t("onramp.direct.breakdown", {
+              {t("onramp.outbound.ibcBreakdown", {
                 fee: microToDisplay(treasuryAmount + feeKeeperAmount).toFixed(4),
                 symbol: destination.symbol,
                 send: microToDisplay(transferAmount).toFixed(2),
                 address: truncate(destAddressInput),
+                chain: destination.label,
               })}
             </p>
           )}

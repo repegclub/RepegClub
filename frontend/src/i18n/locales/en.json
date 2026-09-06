@@ -737,7 +737,8 @@
       "ibcAddressLabel": "Noble address to receive",
       "ibcAddressPlaceholder": "noble1... (paste your Noble wallet)",
       "ibcAddressInvalid": "That doesn't look like a valid Noble address.",
-      "ibcGasNeeded": "You need a little LUNC in this wallet to pay gas for this transfer."
+      "ibcGasNeeded": "You need a little LUNC in this wallet to pay gas for this transfer.",
+      "ibcBreakdown": "Fee: {{fee}} {{symbol}} (0.2%) — {{send}} {{symbol}} will be sent to {{address}} on {{chain}}."
     }
   },
   "onrampFaq": {
@@ -787,8 +788,8 @@
         "a": "Terra Classic happens to use a different address format under the hood than the rest of the Cosmos chains here (Noble, Cosmos Hub, Osmosis) — so instead of guessing it, you paste it yourself, the same way you'd paste a destination address withdrawing from an exchange. Double-check it before sending — like any on-chain transfer, funds sent to the wrong address can't be recovered by Repeg Club."
       },
       {
-        "q": "What does \"Send LUNC/USTC/CW20 out\" do?",
-        "a": "The opposite direction — it bridges LUNC or USTC from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes for these two tokens. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
+        "q": "What does \"Send assets out\" do?",
+        "a": "The opposite direction — it bridges LUNC, USTC, or supported CW20 tokens from your own Terra Classic wallet out to BSC, Ethereum, or Solana, using Hyperlane's official Warp Routes. It also has a Noble tab for sending USDC straight back to Noble over IBC — no bridge involved, just a plain transfer. Same trust model as the rest of this page: you sign it yourself, nothing passes through Repeg Club."
       },
       {
         "q": "I sent LUNC or USTC out but can't see the balance on the other chain — is it lost?",
