@@ -712,6 +712,7 @@
       "sending": "Sending…",
       "sendFailed": "Transaction failed.",
       "outcomeUnknown": "We couldn't confirm whether this went through — check your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
+      "outcomeUnknownWithHash": "We couldn't confirm whether this went through — check tx hash {{hash}} in your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
       "outcomeUnknownAck": "I checked — let me try again",
       "sent": "Sent! Tx hash: {{hash}}"
     },
