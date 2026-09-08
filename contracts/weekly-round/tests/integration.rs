@@ -2,7 +2,7 @@ use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 use cosmwasm_std::{coins, from_json, CosmosMsg, HexBinary, Uint128};
 use sha2::{Digest, Sha256};
 
-use weekly_round::contract::{execute, instantiate, query};
+use weekly_round::contract::{execute, instantiate, query, MAX_MAX_PLAYERS};
 use weekly_round::execute::{
     open_new_week, EXPIRE_CHALLENGE_BLOCKS, EXPIRE_FINALIZE_DELAY_BLOCKS, REVEAL_PRIORITY_MARGIN_BLOCKS,
 };
@@ -585,6 +585,79 @@ fn instantiate_rejects_degenerate_player_bounds() {
 }
 
 #[test]
+fn instantiate_rejects_max_players_above_ceiling() {
+    // Ronda 11 finding (Fable, 2026-09-08): see wheel-manager's matching test
+    // - same entrants growth formula, same reason.
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |max_players: u32| InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players,
+        round_duration_days: 7,
+        unclaimed_deadline_days: 90,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(MAX_MAX_PLAYERS + 1)).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHigh { max } if max == MAX_MAX_PLAYERS));
+
+    instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(MAX_MAX_PLAYERS)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_zero_ticket_price() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        base_ticket_price: Uint128::zero(),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 7,
+        unclaimed_deadline_days: 90,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::TicketPriceMustBePositive {}));
+}
+
+#[test]
+fn instantiate_rejects_redemption_denom_equal_to_ticket_denom() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: TICKET_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 7,
+        unclaimed_deadline_days: 90,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::RedemptionDenomMustDifferFromTicketDenom {}));
+}
+
+#[test]
 fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
     let mut deps = mock_dependencies();
     let env = mock_env();
@@ -606,6 +679,70 @@ fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
     let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0)).unwrap_err();
     assert!(matches!(err, ContractError::InvalidMaxRevealAgeSeconds { .. }));
     instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(MAX_REVEAL_AGE_SECONDS)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_out_of_bounds_unclaimed_deadline_days() {
+    // Ronda 11 finding (Opus, 2026-09-08): see wheel-manager's matching test
+    // - same reasoning, same permissionless sweep risk.
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |unclaimed_deadline_days: u64| InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days: 7,
+        unclaimed_deadline_days,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(366)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(90)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_out_of_bounds_round_duration_days() {
+    // Ronda 11 findings (Opus + Nemotron, 2026-09-08): Opus flagged 0 (see
+    // wheel-manager's matching test on max_round_age_seconds - same
+    // reasoning, same field renamed); Nemotron separately flagged the
+    // missing upper bound - with overflow-checks enabled, an astronomically
+    // large value panics the round_duration_days * SECONDS_PER_DAY math in
+    // execute.rs instead of just erroring cleanly here.
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |round_duration_days: u64| InstantiateMsg {
+        base_ticket_price: Uint128::new(BASE_PRICE),
+        price_increment_per_day: Uint128::new(INCREMENT),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_duration_days,
+        unclaimed_deadline_days: 90,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundDurationDays { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(u64::MAX)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidRoundDurationDays { .. }));
+
+    instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(7)).unwrap();
 }
 
 #[test]
