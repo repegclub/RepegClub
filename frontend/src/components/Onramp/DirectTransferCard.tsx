@@ -920,8 +920,16 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
       if (!assetIsUluna) ulunaBalance.refetch();
     } catch (err) {
       // Same TypeError-vs-thrown-Error distinction as DirectOriginForm's
-      // handleSend - see the comment there.
-      if (err instanceof TypeError) {
+      // handleSend - see the comment there. Also caught here: cosmes'
+      // broadcastTxSync is broadcastTx (returns a real tx hash) followed by
+      // pollTx (waits up to ~128s for that hash to show up in a block) - if
+      // congestion means pollTx exhausts its attempts, it throws a plain
+      // `Error("Tx not found")` even though the tx DID reach the chain and
+      // may still land. That's the same "did this actually go through?"
+      // ambiguity as the TypeError case, not an ordinary pre-broadcast
+      // failure - retrying here risks the user paying and sending twice
+      // (Ronda 2 Hyperlane pre-mainnet audit finding, Fable, 2026-09-08).
+      if (err instanceof TypeError || (err instanceof Error && err.message === "Tx not found")) {
         console.error(err);
         setOutcomeUnknown(true);
       } else {
