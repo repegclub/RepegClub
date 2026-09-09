@@ -474,6 +474,23 @@ export const HYPERLANE_TERRA_CLASSIC_WARP = {
   },
 } as const satisfies Record<HyperlaneAsset, HyperlaneNativeWarp | HyperlaneCw20Warp>;
 
+// Ronda 2 pre-mainnet audit finding (Opus, 2026-09-08): the CW20 warp path
+// (onrampActions.ts) sends `transfer_remote`'s amount on the wire as a raw
+// integer with no decimal conversion anywhere in the corridor (confirmed
+// reading the real cw-hyperlane warp/mailbox source) - this project's own
+// micro/display conversion (microToDisplay/displayToMicro below) is
+// hardcoded to 6 decimals throughout, and `decimals` on a cw20 warp entry
+// above isn't read anywhere yet (see HyperlaneCw20Warp's own doc comment).
+// A future CW20 added here with a different decimals count would silently
+// move funds off by a power of ten instead of erroring. Asserted at module
+// load, same pattern as KNOWN_SLIP44_118_CHAIN_IDS/
+// KNOWN_SLIP44_118_CHAIN_PREFIXES above.
+for (const [symbol, warp] of Object.entries(HYPERLANE_TERRA_CLASSIC_WARP)) {
+  if (warp.kind === "cw20" && warp.decimals !== 6) {
+    throw new Error(`${symbol}: HYPERLANE_TERRA_CLASSIC_WARP only supports 6-decimal CW20s today, got ${warp.decimals}.`);
+  }
+}
+
 export type HyperlaneChainKind = "evm" | "solana";
 
 export type HyperlaneDestination = {

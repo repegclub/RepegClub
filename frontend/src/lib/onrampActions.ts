@@ -25,6 +25,58 @@ import {
 const MEMO = "REPEG CLUB";
 const SKIP_API_BASE = "https://api.skip.build/v2";
 
+// Ronda 2 pre-mainnet audit finding (Opus, 2026-09-08): `wallet.broadcastTxSync`
+// (cosmes) is `broadcastTx` (returns a real tx hash) followed by `pollTx`
+// (waits up to ~128s for that hash to land in a block) - if `pollTx` times
+// out under real congestion, it throws a plain `Error("Tx not found")` and
+// the hash from the broadcastTx step is gone, even though the tx DID reach
+// the chain and may still land. `broadcastAndPoll` below unrolls the exact
+// same 3 steps `broadcastTxSync` itself runs (see cosmes' ConnectedWallet
+// source) so that hash survives a `pollTx` failure, letting the caller tell
+// the user which tx to go check instead of just "something went wrong".
+export class TxOutcomeUnknownError extends Error {
+  readonly txHash: string;
+  constructor(txHash: string) {
+    super("Tx not found");
+    this.name = "TxOutcomeUnknownError";
+    this.txHash = txHash;
+  }
+}
+
+// Ronda 2 Hyperlane pre-mainnet audit finding (Nemotron, 2026-09-08),
+// re-derived against the real on-chain contracts (many-things/cw-hyperlane,
+// GitHub, read live 2026-09-08): the mailbox and IGP both re-check the
+// interchain gas payment against a LIVE quote at execution time, not the
+// one this app fetched earlier - `mailbox/execute.rs::dispatch` errors with
+// "insufficient hook payment: wanted ..., received ..." and
+// `igps/core/execute.rs::pay_for_gas` errors with "insufficient funds:
+// needed ..., but only received ..." when the price moved up during the
+// ~128s pollTx window and the fee this app attached no longer covers it.
+// Either error reverts the WHOLE tx atomically (nothing moves, nothing is
+// lost) - this class exists only so the UI can say that plainly instead of
+// showing the raw contract error string.
+const STALE_GAS_QUOTE_PATTERNS = ["insufficient hook payment", "insufficient funds: needed"];
+
+export class HyperlaneGasQuoteStaleError extends Error {
+  constructor() {
+    super("Hyperlane gas quote went stale before the tx confirmed");
+    this.name = "HyperlaneGasQuoteStaleError";
+  }
+}
+
+async function broadcastAndPoll(wallet: ConnectedWallet, unsignedTx: { msgs: Adapter[]; memo?: string }) {
+  const fee = await wallet.estimateFee(unsignedTx);
+  const txHash = await wallet.broadcastTx(unsignedTx, fee);
+  try {
+    return await wallet.pollTx(txHash);
+  } catch (err) {
+    if (err instanceof Error && err.message === "Tx not found") {
+      throw new TxOutcomeUnknownError(txHash);
+    }
+    throw err;
+  }
+}
+
 // Terra Classic's receiver is never derived from the connected origin
 // wallet's pubkey - Terra Classic (and Terra 2.0) use a non-standard
 // SLIP-44 coin type (330) in Keplr's own default registry, unlike Noble/
@@ -914,15 +966,19 @@ export async function sendOutViaHyperlane(
     // Cosmos SDK requires a tx's Coins to be sorted ascending by denom -
     // cosmes's own MsgExecuteContract doesn't sort `funds` for you (found in
     // CodeRabbit review, PR #48 - this project never broadcast the USTC
-    // path with real funds to catch it live). "uluna" < "uusd"
-    // lexicographically, so it has to come first here.
+    // path with real funds to catch it live). Sorted explicitly instead of
+    // hand-ordering "uluna" first (Ronda 2 pre-mainnet audit finding, Opus,
+    // 2026-09-08: that assumed "uluna" sorts before every other denom this
+    // corridor could ever see, but 12 of columbus-5's 23 native denoms sort
+    // before "uluna" lexicographically - a hand-ordered pair silently breaks
+    // the instant a warp entry's denom is one of those).
     const funds =
       warp.denom === "uluna"
         ? [{ denom: "uluna", amount: (transferAmount + igpFeeUluna).toString() }]
         : [
             { denom: "uluna", amount: igpFeeUluna.toString() },
             { denom: warp.denom, amount: transferAmount.toString() },
-          ];
+          ].sort((a, b) => (a.denom < b.denom ? -1 : a.denom > b.denom ? 1 : 0));
 
     msgs.push(
       new MsgExecuteContract({
@@ -960,9 +1016,13 @@ export async function sendOutViaHyperlane(
     }
   }
 
-  const res = await wallet.broadcastTxSync({ msgs, memo: MEMO });
+  const res = await broadcastAndPoll(wallet, { msgs, memo: MEMO });
   if (res.txResponse.code !== 0) {
-    throw new Error(res.txResponse.rawLog || "Transaction failed.");
+    const rawLog = res.txResponse.rawLog || "";
+    if (STALE_GAS_QUOTE_PATTERNS.some((pattern) => rawLog.includes(pattern))) {
+      throw new HyperlaneGasQuoteStaleError();
+    }
+    throw new Error(rawLog || "Transaction failed.");
   }
   return { res, transferAmount, treasuryAmount, feeKeeperAmount };
 }

@@ -7,6 +7,7 @@ import { useCw20Balance } from "../../hooks/useCw20Balance";
 import { useCopyable } from "../../hooks/useCopyable";
 import { useHyperlaneGasFee } from "../../hooks/useHyperlaneGasFee";
 import {
+  HyperlaneGasQuoteStaleError,
   isValidEvmAddress,
   isValidNobleAddress,
   isValidSolanaAddress,
@@ -14,6 +15,7 @@ import {
   sendDirectToTerraClassic,
   sendOutViaHyperlane,
   sendUsdcOutToNoble,
+  TxOutcomeUnknownError,
 } from "../../lib/onrampActions";
 import { quoteHyperlaneGasFee } from "../../lib/queryHyperlaneGas";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
@@ -571,8 +573,15 @@ function DirectOutboundIbcForm({ destination }: { destination: IbcSendDestinatio
       balance.refetch();
     } catch (err) {
       // Same TypeError-vs-thrown-Error distinction as DirectOriginForm's
-      // handleSend - see the comment there.
-      if (err instanceof TypeError) {
+      // handleSend - see the comment there. Also caught here: the same
+      // pollTx-timeout ambiguity as the Hyperlane leg's handleSend (this
+      // form's own sibling below) - a plain `Error("Tx not found")` here
+      // means the tx DID reach the chain and may still land, so it needs
+      // the same outcomeUnknown treatment, not an ordinary retryable error
+      // (Ronda 2 pre-mainnet audit finding, Opus, 2026-09-08, O5-C - this
+      // leg doesn't yet carry the tx hash through that failure the way the
+      // Hyperlane leg's does; only the message match is fixed here).
+      if (err instanceof TypeError || (err instanceof Error && err.message === "Tx not found")) {
         console.error(err);
         setOutcomeUnknown(true);
       } else {
@@ -829,6 +838,11 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   // Same reasoning as DirectOriginForm's outcomeUnknown - see the comment
   // there.
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  // Set only for a TxOutcomeUnknownError (pollTx timeout) - unlike a
+  // TypeError, that case always has a real tx hash to point the user at
+  // (Ronda 2 pre-mainnet audit finding, Opus, 2026-09-08 - see
+  // broadcastAndPoll's own comment in onrampActions.ts).
+  const [outcomeUnknownTxHash, setOutcomeUnknownTxHash] = useState<string | null>(null);
 
   const amountNumber = Number(amountInput);
   const amountRaw = displayToMicro(amountNumber);
@@ -920,10 +934,33 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
       if (!assetIsUluna) ulunaBalance.refetch();
     } catch (err) {
       // Same TypeError-vs-thrown-Error distinction as DirectOriginForm's
-      // handleSend - see the comment there.
-      if (err instanceof TypeError) {
+      // handleSend - see the comment there. Also caught here: cosmes'
+      // broadcastTxSync is broadcastTx (returns a real tx hash) followed by
+      // pollTx (waits up to ~128s for that hash to show up in a block) - if
+      // congestion means pollTx exhausts its attempts, it throws a plain
+      // `Error("Tx not found")` even though the tx DID reach the chain and
+      // may still land. That's the same "did this actually go through?"
+      // ambiguity as the TypeError case, not an ordinary pre-broadcast
+      // failure - retrying here risks the user paying and sending twice
+      // (Ronda 2 Hyperlane pre-mainnet audit finding, Fable, 2026-09-08).
+      // TxOutcomeUnknownError (onrampActions.ts) carries the real tx hash
+      // through that same failure instead of discarding it, so the user has
+      // something concrete to go check (Opus, 2026-09-08 follow-up finding
+      // on Fable's fix above).
+      if (err instanceof TxOutcomeUnknownError) {
+        console.error(err);
+        setOutcomeUnknownTxHash(err.txHash);
+        setOutcomeUnknown(true);
+      } else if (err instanceof TypeError) {
         console.error(err);
         setOutcomeUnknown(true);
+      } else if (err instanceof HyperlaneGasQuoteStaleError) {
+        // The chain itself rejected the tx atomically because the interchain
+        // gas price moved between our quote and the tx actually confirming
+        // (Ronda 2 Hyperlane pre-mainnet audit finding, Nemotron, 2026-09-08,
+        // re-derived against the real mailbox/IGP contract source) - nothing
+        // was moved or lost, so this is a plain retry, not outcomeUnknown.
+        setError(t("onramp.outbound.gasQuoteStale"));
       } else {
         setError(err instanceof Error ? err.message : t("onramp.outbound.sendFailed"));
       }
@@ -1147,13 +1184,23 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
           {error && <p className="onramp-error-text">{error}</p>}
           {outcomeUnknown && (
             <div className="onramp-outcome-unknown">
-              <p className="onramp-error-text">{t("onramp.direct.outcomeUnknown")}</p>
+              <p className="onramp-error-text">
+                {outcomeUnknownTxHash
+                  ? t("onramp.direct.outcomeUnknownWithHash", { hash: outcomeUnknownTxHash })
+                  : t("onramp.direct.outcomeUnknown")}
+              </p>
               <button
                 type="button"
                 className="onramp-ghost-btn"
                 onClick={() => {
                   setOutcomeUnknown(false);
+                  setOutcomeUnknownTxHash(null);
                   balance.refetch();
+                  // O5-D (Ronda 2 pre-mainnet audit, Opus, 2026-09-08): this
+                  // used to only refetch `balance` - when the asset being
+                  // bridged isn't uluna, the gas actually spent comes out of
+                  // the separate ulunaBalance below, which stayed stale.
+                  if (!assetIsUluna) ulunaBalance.refetch();
                 }}
               >
                 {t("onramp.direct.outcomeUnknownAck")}
