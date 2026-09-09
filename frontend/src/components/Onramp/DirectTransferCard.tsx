@@ -7,6 +7,7 @@ import { useCw20Balance } from "../../hooks/useCw20Balance";
 import { useCopyable } from "../../hooks/useCopyable";
 import { useHyperlaneGasFee } from "../../hooks/useHyperlaneGasFee";
 import {
+  HyperlaneGasQuoteStaleError,
   isValidEvmAddress,
   isValidNobleAddress,
   isValidSolanaAddress,
@@ -953,6 +954,13 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
       } else if (err instanceof TypeError) {
         console.error(err);
         setOutcomeUnknown(true);
+      } else if (err instanceof HyperlaneGasQuoteStaleError) {
+        // The chain itself rejected the tx atomically because the interchain
+        // gas price moved between our quote and the tx actually confirming
+        // (Ronda 2 Hyperlane pre-mainnet audit finding, Nemotron, 2026-09-08,
+        // re-derived against the real mailbox/IGP contract source) - nothing
+        // was moved or lost, so this is a plain retry, not outcomeUnknown.
+        setError(t("onramp.outbound.gasQuoteStale"));
       } else {
         setError(err instanceof Error ? err.message : t("onramp.outbound.sendFailed"));
       }

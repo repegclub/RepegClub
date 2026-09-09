@@ -43,6 +43,27 @@ export class TxOutcomeUnknownError extends Error {
   }
 }
 
+// Ronda 2 Hyperlane pre-mainnet audit finding (Nemotron, 2026-09-08),
+// re-derived against the real on-chain contracts (many-things/cw-hyperlane,
+// GitHub, read live 2026-09-08): the mailbox and IGP both re-check the
+// interchain gas payment against a LIVE quote at execution time, not the
+// one this app fetched earlier - `mailbox/execute.rs::dispatch` errors with
+// "insufficient hook payment: wanted ..., received ..." and
+// `igps/core/execute.rs::pay_for_gas` errors with "insufficient funds:
+// needed ..., but only received ..." when the price moved up during the
+// ~128s pollTx window and the fee this app attached no longer covers it.
+// Either error reverts the WHOLE tx atomically (nothing moves, nothing is
+// lost) - this class exists only so the UI can say that plainly instead of
+// showing the raw contract error string.
+const STALE_GAS_QUOTE_PATTERNS = ["insufficient hook payment", "insufficient funds: needed"];
+
+export class HyperlaneGasQuoteStaleError extends Error {
+  constructor() {
+    super("Hyperlane gas quote went stale before the tx confirmed");
+    this.name = "HyperlaneGasQuoteStaleError";
+  }
+}
+
 async function broadcastAndPoll(wallet: ConnectedWallet, unsignedTx: { msgs: Adapter[]; memo?: string }) {
   const fee = await wallet.estimateFee(unsignedTx);
   const txHash = await wallet.broadcastTx(unsignedTx, fee);
@@ -997,7 +1018,11 @@ export async function sendOutViaHyperlane(
 
   const res = await broadcastAndPoll(wallet, { msgs, memo: MEMO });
   if (res.txResponse.code !== 0) {
-    throw new Error(res.txResponse.rawLog || "Transaction failed.");
+    const rawLog = res.txResponse.rawLog || "";
+    if (STALE_GAS_QUOTE_PATTERNS.some((pattern) => rawLog.includes(pattern))) {
+      throw new HyperlaneGasQuoteStaleError();
+    }
+    throw new Error(rawLog || "Transaction failed.");
   }
   return { res, transferAmount, treasuryAmount, feeKeeperAmount };
 }
