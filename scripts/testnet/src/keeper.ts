@@ -176,6 +176,14 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
         const reason = deadlinePassed ? "rolling deadline passed" : "hard cap reached with min players";
         console.log(`[${target.label}] round ${roundId} eligible to close (${reason}) - closing`);
         await sendExecute(keeper, target.address, { close_round: {} });
+      } else if (!hasMin && hardCapPassed) {
+        // Ronda 11 finding (Opus, pre-mainnet audit, 2026-09-08): this branch
+        // was missing entirely - a round that never reaches min_players was
+        // stuck open forever, since BuyTicket itself starts rejecting tickets
+        // once stale but nothing ever called ExpireRound to move the game
+        // forward. Mirrors tickCyolRaffle's own expire_raffle branch below.
+        console.log(`[${target.label}] round ${roundId} never reached min_players and hard cap elapsed - expiring`);
+        await sendExecute(keeper, target.address, { expire_round: {} }, { quiet: true });
       }
       break;
     }
@@ -214,6 +222,11 @@ async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Ta
       if (durationElapsed && hasMin) {
         console.log(`[${target.label}] week ${weekId} reached its full duration with enough players - closing`);
         await sendExecute(keeper, target.address, { close_week: {} });
+      } else if (durationElapsed && !hasMin) {
+        // Ronda 11 finding (Opus, pre-mainnet audit, 2026-09-08): see
+        // tickWheelManager's matching branch - same missing case, same fix.
+        console.log(`[${target.label}] week ${weekId} never reached min_players and duration elapsed - expiring`);
+        await sendExecute(keeper, target.address, { expire_week: {} }, { quiet: true });
       }
       break;
     }

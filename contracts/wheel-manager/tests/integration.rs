@@ -2,7 +2,7 @@ use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 use cosmwasm_std::{coin, coins, from_json, CosmosMsg, HexBinary, Uint128, WasmMsg};
 use sha2::{Digest, Sha256};
 
-use wheel_manager::contract::{execute, instantiate, query};
+use wheel_manager::contract::{execute, instantiate, query, MAX_MAX_PLAYERS};
 use wheel_manager::execute::{
     open_new_round, EXPIRE_CHALLENGE_BLOCKS, EXPIRE_FINALIZE_DELAY_BLOCKS, REVEAL_PRIORITY_MARGIN_BLOCKS,
 };
@@ -809,6 +809,85 @@ fn instantiate_rejects_degenerate_player_bounds() {
 }
 
 #[test]
+fn instantiate_rejects_max_players_above_ceiling() {
+    // Ronda 11 finding (Fable, 2026-09-08): RevealDraw hashes every entrant,
+    // and entrants can reach roughly max_players^2/2 with no ceiling on
+    // max_players - a large enough value could make RevealDraw exceed the
+    // block gas limit.
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |max_players: u32| InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(MAX_MAX_PLAYERS + 1)).unwrap_err();
+    assert!(matches!(err, ContractError::MaxPlayersTooHigh { max } if max == MAX_MAX_PLAYERS));
+
+    // At the ceiling succeeds.
+    instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(MAX_MAX_PLAYERS)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_zero_ticket_price() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        ticket_price: Uint128::zero(),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::TicketPriceMustBePositive {}));
+}
+
+#[test]
+fn instantiate_rejects_redemption_denom_equal_to_ticket_denom() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: TICKET_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 172_800,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::RedemptionDenomMustDifferFromTicketDenom {}));
+}
+
+#[test]
 fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
     let mut deps = mock_dependencies();
     let env = mock_env();
@@ -840,6 +919,65 @@ fn instantiate_rejects_out_of_bounds_max_reveal_age_seconds() {
 
     // In bounds succeeds.
     instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(MAX_REVEAL_AGE_SECONDS)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_out_of_bounds_unclaimed_deadline_days() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let base_msg = |unclaimed_deadline_days: u64| InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days,
+        max_round_age_seconds: 172_800,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    // Zero would let execute_sweep_expired_prize (permissionless) sweep a
+    // winner's prize to the treasury in the same block it was drawn.
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(0)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    let err = instantiate(deps.as_mut(), env.clone(), mock_info("admin", &[]), base_msg(366)).unwrap_err();
+    assert!(matches!(err, ContractError::InvalidUnclaimedDeadlineDays { .. }));
+
+    // In bounds succeeds.
+    instantiate(deps.as_mut(), env, mock_info("admin", &[]), base_msg(90)).unwrap();
+}
+
+#[test]
+fn instantiate_rejects_zero_max_round_age_seconds() {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        ticket_price: Uint128::new(TICKET_PRICE),
+        ticket_denom: TICKET_DENOM.to_string(),
+        redemption_denom: REDEMPTION_DENOM.to_string(),
+        min_players: 2,
+        max_players: 5,
+        round_timeout_seconds: 3600,
+        unclaimed_deadline_days: 90,
+        max_round_age_seconds: 0,
+        max_reveal_age_seconds: MAX_REVEAL_AGE_SECONDS,
+        treasury_address: "treasury".to_string(),
+        admin_fee_address: "adminfee".to_string(),
+        weekly_round_address: "weeklyround".to_string(),
+        commit_pusher: "committer".to_string(),
+    };
+
+    // At 0, the round would be immediately "stale" (opened_at + 0 <= now)
+    // before min_players is reached, so execute_buy_ticket would reject
+    // every single ticket purchase from the very first block.
+    let err = instantiate(deps.as_mut(), env, mock_info("admin", &[]), msg).unwrap_err();
+    assert!(matches!(err, ContractError::MaxRoundAgeSecondsMustBePositive {}));
 }
 
 #[test]

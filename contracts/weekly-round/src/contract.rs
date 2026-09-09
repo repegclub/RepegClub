@@ -17,6 +17,33 @@ use crate::state::{Config, GlobalState, CONFIG, STATE};
 pub const MIN_MAX_REVEAL_AGE_SECONDS: u64 = 1800; // 30 min
 pub const MAX_MAX_REVEAL_AGE_SECONDS: u64 = 604_800; // 7 days
 
+/// See wheel-manager's `MAX_MAX_PLAYERS` doc comment - identical rationale
+/// and identical entrants growth formula (`max_tickets_per_wallet` caps a
+/// wallet at `max_players/2` tickets here too). Ronda 11 finding (Fable,
+/// pre-mainnet audit, 2026-09-08).
+pub const MAX_MAX_PLAYERS: u32 = 100;
+
+/// See wheel-manager's matching constants' doc comment - same rationale.
+/// Ronda 11 finding (Opus, pre-mainnet audit, 2026-09-08).
+pub const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
+pub const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
+
+/// Bounds on `round_duration_days`. Ronda 11 finding (Nemotron, pre-mainnet
+/// audit, 2026-09-08): unlike wheel-manager's equivalent field
+/// (`max_round_age_seconds`, already in seconds, only ever added to a
+/// timestamp), this field is multiplied by `SECONDS_PER_DAY` at 3 call sites
+/// in `execute.rs` before use. With `overflow-checks = true` (this contract's
+/// Cargo.toml), an astronomically large value panics that multiplication -
+/// which runs on every `BuyWeeklyTicket` before `min_players` is reached, not
+/// just on close/expire - permanently stranding the week (no successful
+/// ticket purchase, no close, no expire ever again). The lower bound alone
+/// (>0, closing a separate finding from the same round: a week can never
+/// accumulate players if it is immediately stale) doesn't address this - both
+/// need a real ceiling. Same 365-day "human-scale ceiling" reasoning as
+/// `MAX_UNCLAIMED_DEADLINE_DAYS` above.
+pub const MIN_ROUND_DURATION_DAYS: u64 = 1;
+pub const MAX_ROUND_DURATION_DAYS: u64 = 365;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -27,12 +54,35 @@ pub fn instantiate(
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
     }
+    if msg.max_players > MAX_MAX_PLAYERS {
+        return Err(ContractError::MaxPlayersTooHigh { max: MAX_MAX_PLAYERS });
+    }
+    if msg.base_ticket_price.is_zero() {
+        return Err(ContractError::TicketPriceMustBePositive {});
+    }
+    if msg.redemption_denom == msg.ticket_denom {
+        return Err(ContractError::RedemptionDenomMustDifferFromTicketDenom {});
+    }
     if msg.max_reveal_age_seconds < MIN_MAX_REVEAL_AGE_SECONDS
         || msg.max_reveal_age_seconds > MAX_MAX_REVEAL_AGE_SECONDS
     {
         return Err(ContractError::InvalidMaxRevealAgeSeconds {
             min: MIN_MAX_REVEAL_AGE_SECONDS,
             max: MAX_MAX_REVEAL_AGE_SECONDS,
+        });
+    }
+    if msg.unclaimed_deadline_days < MIN_UNCLAIMED_DEADLINE_DAYS
+        || msg.unclaimed_deadline_days > MAX_UNCLAIMED_DEADLINE_DAYS
+    {
+        return Err(ContractError::InvalidUnclaimedDeadlineDays {
+            min: MIN_UNCLAIMED_DEADLINE_DAYS,
+            max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
+    }
+    if msg.round_duration_days < MIN_ROUND_DURATION_DAYS || msg.round_duration_days > MAX_ROUND_DURATION_DAYS {
+        return Err(ContractError::InvalidRoundDurationDays {
+            min: MIN_ROUND_DURATION_DAYS,
+            max: MAX_ROUND_DURATION_DAYS,
         });
     }
     // See wheel-manager's matching check's own doc comment (round-review

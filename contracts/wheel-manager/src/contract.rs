@@ -24,6 +24,32 @@ use crate::state::{Config, GlobalState, CONFIG, STATE};
 pub const MIN_MAX_REVEAL_AGE_SECONDS: u64 = 1800; // 30 min
 pub const MAX_MAX_REVEAL_AGE_SECONDS: u64 = 604_800; // 7 days
 
+/// Hard ceiling on `max_players`. Ronda 11 finding (Fable, pre-mainnet audit,
+/// 2026-09-08): unlike the 4 "pull"-style payout functions (execute_redeem/
+/// execute_reclaim_ticket/claim_expired_round/execute_sweep_expired_prize,
+/// none of which loop over all entrants in one tx), `execute_reveal_draw`'s
+/// `pick_winner_index` (rand.rs) DOES hash every entry in `entrants` - and
+/// with `max_tickets_per_wallet` capping a single wallet at `max_players/2`
+/// tickets, `entrants.len()` can reach roughly `max_players^2/2` with no
+/// ceiling here. Same growth formula, same accepted cap (100) as
+/// create-your-own-luck's `MAX_PLAYERS_SINGLE_WINNER_PODIUM` for the
+/// identical reason - without it, a large enough `max_players` could make
+/// RevealDraw exceed the block gas limit, leaving a round stuck `Closed`
+/// forever (refundable via the 3-phase expiration cascade, but never drawn).
+pub const MAX_MAX_PLAYERS: u32 = 100;
+
+/// Bounds on `unclaimed_deadline_days`. Ronda 11 finding (Opus, pre-mainnet
+/// audit, 2026-09-08): unlike create-your-own-luck (which has validated this
+/// same field since a 2026-07-21 Opus+Fable review), wheel-manager never
+/// validated it at all. At 0, `execute_sweep_expired_prize` - permissionless,
+/// no `MessageInfo` check - can sweep a round's unredeemed prize to the
+/// treasury in the same block it was drawn, before the winner has any real
+/// chance to call `Redeem`. Same 1-365 range and same "real, human-scale
+/// ceiling, not just avoiding a panic" rationale as CYOL's
+/// `MAX_UNCLAIMED_DEADLINE_DAYS`.
+pub const MIN_UNCLAIMED_DEADLINE_DAYS: u64 = 1;
+pub const MAX_UNCLAIMED_DEADLINE_DAYS: u64 = 365;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -34,6 +60,15 @@ pub fn instantiate(
     if msg.min_players < 2 || msg.max_players < msg.min_players {
         return Err(ContractError::InvalidPlayerBounds {});
     }
+    if msg.max_players > MAX_MAX_PLAYERS {
+        return Err(ContractError::MaxPlayersTooHigh { max: MAX_MAX_PLAYERS });
+    }
+    if msg.ticket_price.is_zero() {
+        return Err(ContractError::TicketPriceMustBePositive {});
+    }
+    if msg.redemption_denom == msg.ticket_denom {
+        return Err(ContractError::RedemptionDenomMustDifferFromTicketDenom {});
+    }
     if msg.max_reveal_age_seconds < MIN_MAX_REVEAL_AGE_SECONDS
         || msg.max_reveal_age_seconds > MAX_MAX_REVEAL_AGE_SECONDS
     {
@@ -41,6 +76,17 @@ pub fn instantiate(
             min: MIN_MAX_REVEAL_AGE_SECONDS,
             max: MAX_MAX_REVEAL_AGE_SECONDS,
         });
+    }
+    if msg.unclaimed_deadline_days < MIN_UNCLAIMED_DEADLINE_DAYS
+        || msg.unclaimed_deadline_days > MAX_UNCLAIMED_DEADLINE_DAYS
+    {
+        return Err(ContractError::InvalidUnclaimedDeadlineDays {
+            min: MIN_UNCLAIMED_DEADLINE_DAYS,
+            max: MAX_UNCLAIMED_DEADLINE_DAYS,
+        });
+    }
+    if msg.max_round_age_seconds == 0 {
+        return Err(ContractError::MaxRoundAgeSecondsMustBePositive {});
     }
     // Round-review fix (Opus, commit_pusher audit round, 2026-08-30): nothing
     // used to stop a deploy from passing the same address for both roles,

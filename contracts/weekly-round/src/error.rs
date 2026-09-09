@@ -45,6 +45,15 @@ pub enum ContractError {
     #[error("min_players must be at least 2, and max_players must be >= min_players")]
     InvalidPlayerBounds {},
 
+    #[error("max_players must not exceed {max} - entrants (tickets, not unique players) can reach roughly max_players^2/2, and RevealDraw hashes every entrant in a single transaction")]
+    MaxPlayersTooHigh { max: u32 },
+
+    #[error("base_ticket_price must be greater than zero")]
+    TicketPriceMustBePositive {},
+
+    #[error("redemption_denom must be different from ticket_denom")]
+    RedemptionDenomMustDifferFromTicketDenom {},
+
     #[error("commit_pusher must be a different wallet than admin - collapsing the two roles defeats the reason commit_pusher was split off admin in the first place")]
     CommitPusherMustDifferFromAdmin {},
 
@@ -75,6 +84,12 @@ pub enum ContractError {
     // --- v9: commit-reveal + reveal queue + 3-phase expiration ---
     #[error("max_reveal_age_seconds must be between {min} and {max} seconds")]
     InvalidMaxRevealAgeSeconds { min: u64, max: u64 },
+
+    #[error("unclaimed_deadline_days must be between {min} and {max} days")]
+    InvalidUnclaimedDeadlineDays { min: u64, max: u64 },
+
+    #[error("round_duration_days must be between {min} and {max} days - zero would make a week immediately eligible for ExpireWeek before a single ticket can be bought, and with overflow-checks enabled an astronomically large value panics the round_duration_days * SECONDS_PER_DAY math used to gate CloseWeek/ExpireWeek/RequestExpireClosedWeek, stranding the week permanently")]
+    InvalidRoundDurationDays { min: u64, max: u64 },
 
     #[error("This week does not have a commit assigned yet - wait for the operator to seed it")]
     WeekNotSeeded {},
