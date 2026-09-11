@@ -2517,6 +2517,71 @@
     color: var(--text-dim);
   }
 
+  .jurisdiction-gate-body {
+    color: var(--text-dim);
+    font-size: 0.943rem;
+    line-height: 1.5;
+    margin: 0 0 0.9rem;
+  }
+  .jurisdiction-gate-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.897rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .jurisdiction-gate-link {
+    display: inline-block;
+    margin-top: 0.6rem;
+    color: var(--gold);
+    font-size: 0.897rem;
+  }
+  .jurisdiction-gate-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+
+  .legal-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 2rem 1.2rem 3rem;
+  }
+  .legal-back-link {
+    display: inline-block;
+    color: var(--gold);
+    font-size: 0.897rem;
+    margin-bottom: 1.2rem;
+  }
+  .legal-title {
+    font-family: var(--display);
+    font-weight: 400;
+    color: var(--gold);
+    font-size: 1.6rem;
+    margin: 0 0 0.9rem;
+  }
+  .legal-intro {
+    color: var(--text);
+    line-height: 1.6;
+    margin: 0 0 1.6rem;
+  }
+  .legal-section {
+    margin-bottom: 1.3rem;
+  }
+  .legal-section-heading {
+    font-family: var(--display);
+    font-weight: 400;
+    color: var(--text);
+    font-size: 1.1rem;
+    margin: 0 0 0.4rem;
+  }
+  .legal-section-body {
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin: 0;
+  }
+
   .redeem-balance-note {
     margin-top: 0.5rem;
     font-size: 0.897rem;

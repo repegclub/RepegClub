@@ -818,7 +818,43 @@
   "socialLinks": {
     "whitepaper": "Whitepaper",
     "telegram": "Join Telegram",
-    "repo": "Public repo"
+    "repo": "Public repo",
+    "legal": "Legal disclaimer"
+  },
+  "jurisdictionGate": {
+    "title": "⚠️ Before you buy a ticket",
+    "body": "Wheel of Repeg, Weekly Round, and Create Your Own Luck all involve a chance-based draw — buying a ticket is a game of chance, not an investment. You must be 18 or older and outside all Restricted Jurisdictions (see full terms) to participate, including the United States. It's on you to confirm participating is legal where you are.",
+    "checkbox": "I'm 18+, I'm not located in a Restricted Jurisdiction, and I understand this involves chance.",
+    "readFullTerms": "Read full terms",
+    "cancel": "Cancel",
+    "confirm": "I understand, continue"
+  },
+  "legal": {
+    "backLink": "← Back to Repeg Club",
+    "title": "Legal Disclaimer & Restricted Jurisdictions",
+    "intro": "Wheel of Repeg, Weekly Round, and Create Your Own Luck are games of chance: you pay for a ticket for a chance-based draw. This is not an investment product.",
+    "sections": [
+      {
+        "heading": "Eligibility",
+        "body": "You must be 18 or older. You may not access or use this site if you are located in, resident of, or accessing from the United States (any state), the United Kingdom, Australia, France, Italy, Spain, the Netherlands, Belgium, Germany, Austria, or any country or region subject to comprehensive U.S. sanctions (Cuba, Iran, North Korea, Syria, and the Crimea, Donetsk, and Luhansk regions of Ukraine) (\"Restricted Jurisdictions\")."
+      },
+      {
+        "heading": "No warranties",
+        "body": "This site and its smart contracts are provided \"as is\" and \"at your own risk,\" without warranties of any kind. No developer or entity involved in Repeg Club is liable for any losses or claims arising from use of the site or its contracts."
+      },
+      {
+        "heading": "Not advice",
+        "body": "Nothing on this site is legal, financial, or tax advice."
+      },
+      {
+        "heading": "Your responsibility",
+        "body": "You are solely responsible for determining whether it is legal for you to participate given your location."
+      },
+      {
+        "heading": "Create Your Own Luck creators",
+        "body": "If you create a raffle with this tool, you are independently responsible for ensuring it complies with the law in every jurisdiction you open it to. Repeg Club does not vet, endorse, or take responsibility for any raffle created by a third party."
+      }
+    ]
   },
   "treasury": {
     "bankBubble": [
