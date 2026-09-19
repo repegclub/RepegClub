@@ -215,7 +215,14 @@ export function WeeklyWheelCard({
       setFinalizeSubmittedAt(Math.floor(Date.now() / 1000));
       weekState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+      const message = err instanceof Error ? err.message : "";
+      // Same Request-TTL reset as Wheel of Repeg's WheelCard - see its own
+      // comment on this exact check (CodeRabbit, PR #53).
+      if (/expiration request .* has expired/i.test(message)) {
+        setRequestSubmitted(false);
+        setRequestSubmittedAt(null);
+      }
+      setActionError(message ? friendlyRoundError(message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
@@ -764,7 +771,9 @@ export function WeeklyWheelCard({
             : t("wheel.rescueAvailableLabel")}
         </p>
       )}
-      {requestSubmitted && (
+      {/* status === "closed" matters here too (CodeRabbit, PR #53) - see
+          WheelCard.tsx's own comment on this exact check. */}
+      {requestSubmitted && loaded && weekState.week.status === "closed" && (
         <p className="round-status-note">
           {secondsToFinalizeEligible === null
             ? t("wheel.rescueFinalizeUnknownLabel")

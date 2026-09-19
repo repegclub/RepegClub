@@ -107,6 +107,14 @@ async function abciQuery(path: string, dataHex: string): Promise<{ value: string
   });
   const { result, error } = await res.json();
   if (error) throw new Error(error.data);
+  // A nonzero ABCI response `code` (an application-level query error - e.g.
+  // a malformed request, or the node rejecting the query for some other
+  // reason) is a separate failure channel from the JSON-RPC `error` above,
+  // and CometBFT returns it with an empty `value` - readDequeMeta's own
+  // "empty value means an untouched key" fallback can't tell that apart
+  // from a genuine error without this check, and would silently read it as
+  // 0 commits queued instead of failing loudly (CodeRabbit, PR #53).
+  if (result.response.code) throw new Error(`abci_query failed (code ${result.response.code}): ${result.response.log}`);
   return result.response;
 }
 

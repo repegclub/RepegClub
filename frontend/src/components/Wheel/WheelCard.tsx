@@ -254,7 +254,17 @@ export function WheelCard({
       setFinalizeSubmittedAt(Math.floor(Date.now() / 1000));
       roundState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+      const message = err instanceof Error ? err.message : "";
+      // The Request itself has a TTL (REQUEST_EXPIRE_TTL_BLOCKS) - if it
+      // lapses before Finalize is tried, the round needs a fresh Request,
+      // not another Finalize. Without this, the merged button stays stuck
+      // offering "Finalize" forever, since requestSubmitted never resets on
+      // its own (CodeRabbit, PR #53).
+      if (/expiration request .* has expired/i.test(message)) {
+        setRequestSubmitted(false);
+        setRequestSubmittedAt(null);
+      }
+      setActionError(message ? friendlyRoundError(message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
@@ -843,8 +853,11 @@ export function WheelCard({
           the real one already landed earlier - see requestSubmittedAt's own
           comment) - falls back to a plain no-countdown note instead of
           going silent again, the exact regression this whole thing exists
-          to avoid. */}
-      {requestSubmitted && (
+          to avoid. status === "closed" matters too (CodeRabbit, PR #53):
+          requestSubmitted otherwise stays true straight through
+          ExpiryPending/Expired, stacking this stale note on top of the
+          Claim/expired messages below instead of yielding to them. */}
+      {requestSubmitted && loaded && roundState.round.status === "closed" && (
         <p className="round-status-note">
           {secondsToFinalizeEligible === null
             ? t("wheel.rescueFinalizeUnknownLabel")
