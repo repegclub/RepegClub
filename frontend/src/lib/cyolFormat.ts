@@ -1,15 +1,16 @@
 import { ulunaToDisplayNumber } from "./format";
 
-// Same site-wide rule as lib/format.ts's formatUluna: ticket/pool/prize
-// amounts always display as USDC, never LUNC (confirmed 2026-07-13 across
-// Wheel of Repeg/Weekly Round) - USTC is the one exception, reserved for
-// the actual redemption-target currency. CreatorForm's own prize field is
-// explicitly labeled "(USDC)" for the same reason. On this testnet,
-// USDC_DENOM is "uluna" too (see contracts/create-your-own-luck/src/
-// contract.rs) - denom-string lookup alone can't distinguish real LUNC from
-// real USDC until mainnet uses their actual distinct denoms.
+// Real mainnet denoms (2026-09-19): uusd is USTC, uluna is real LUNC, and
+// USDC now has its own real IBC denom - all 3 distinguishable by denom
+// string alone, unlike testnet where USDC_DENOM was also "uluna" (see
+// cyolPrizeDenoms.ts's own comment). Found live (2026-09-19): this used to
+// default anything-not-uusd to "USDC", which would now mislabel a real
+// LUNC-denominated prize as USDC instead of just being the old harmless
+// testnet ambiguity.
 export function prizeCurrencyLabel(denom: string): string {
-  return denom === "uusd" ? "USTC" : "USDC";
+  if (denom === "uusd") return "USTC";
+  if (denom === "uluna") return "LUNC";
+  return "USDC";
 }
 
 export function formatAmount(amount: string, currency: string): string {
