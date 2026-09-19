@@ -85,6 +85,31 @@ export function WheelCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const [justReclaimed, setJustReclaimed] = useState(false);
   const [justWithdrawn, setJustWithdrawn] = useState(false);
+  // Whether Request has already landed for the current round - the query
+  // never exposed expire_requested_at_height (see the "Verificación pública
+  // del sorteo" project note), so this is best-effort local tracking, not a
+  // read of real on-chain state: set on a successful Request, or on a
+  // redundant one that the contract itself rejects as already-pending (a
+  // refresh mid-rescue re-arms this to false, and the very next click just
+  // gets the same rejection and re-syncs it - never a stuck/wrong button).
+  // Combined with the Request button into one below, per direct request
+  // (2026-09-18) after the drill made the always-2-buttons layout confusing.
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
+  // Wall-clock time Request landed, for a Finalize countdown - same
+  // approximation trade-off as requestSubmitted itself (a few seconds of
+  // broadcast/confirm latency, and unknown after a page refresh mid-rescue,
+  // in which case Finalize just shows no countdown and falls back to the
+  // discreet contract-rejects-if-early pattern, same as before this existed
+  // at all). EXPIRE_FINALIZE_DELAY_BLOCKS (100 blocks) converted via this
+  // chain's own ~6s block time, same estimate already used throughout this
+  // project's mainnet drill notes.
+  const [requestSubmittedAt, setRequestSubmittedAt] = useState<number | null>(null);
+  const FINALIZE_DELAY_SECONDS = 100 * 6;
+  // Same approximation, third phase - EXPIRE_CHALLENGE_BLOCKS (100) +
+  // REVEAL_PRIORITY_MARGIN_BLOCKS (20) blocks (contracts/wheel-manager/src/
+  // execute.rs), same ~6s block time.
+  const [finalizeSubmittedAt, setFinalizeSubmittedAt] = useState<number | null>(null);
+  const CLAIM_DELAY_SECONDS = (100 + 20) * 6;
   // RedeemBox opens as a popup instead of inline - inline, its amount
   // input/balance/confirm stack made this card grow tall enough to
   // stretch (and visibly distort) the lab-screen image next to it.
@@ -98,6 +123,17 @@ export function WheelCard({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isRedeemOpen]);
+
+  // A new round means any earlier rescue attempt was for a different round
+  // entirely - without this, requestSubmitted from a rescued round 2 would
+  // wrongly carry over and skip straight to "Finalize rescue" if round 5
+  // later got stuck too.
+  const currentRoundId = roundState.status === "loaded" ? roundState.round.round_id : null;
+  useEffect(() => {
+    setRequestSubmitted(false);
+    setRequestSubmittedAt(null);
+    setFinalizeSubmittedAt(null);
+  }, [currentRoundId]);
 
   // A fresh purchase makes any earlier "just withdrew/reclaimed" note stale
   // - without this, buying a new ticket after withdrawing left the old
@@ -166,35 +202,56 @@ export function WheelCard({
   }
 
   // 3-phase outage safety net for a Closed round that has gone unrevealed too
-  // long (the keeper is down) - see lib/roundActions.ts. Rare enough that
-  // this doesn't try to precompute exact block-height countdowns for the
-  // Finalize/Claim steps the way closeEligible does above, or hide Request
-  // vs. Finalize based on which is actually valid right now (the query
-  // doesn't expose expire_requested_at_height/expiry_pending_since_height,
-  // or whether this round is genuinely at the front of REVEAL_QUEUE) - the
-  // contract's own rejection surfaces as friendly text (friendlyRoundError)
-  // if a step is tried before it's ready, same pattern RaffleDetailPage.tsx
-  // already uses for CYOL.
+  // long (the keeper is down) - see lib/roundActions.ts. Request's own
+  // stuckEligible countdown is precomputed client-side (closed_at +
+  // max_reveal_age_seconds, both already known), but Finalize/Claim aren't -
+  // the query doesn't expose expire_requested_at_height/
+  // expiry_pending_since_height, or whether this round is genuinely at the
+  // front of REVEAL_QUEUE - the contract's own rejection surfaces as
+  // friendly text (friendlyRoundError) if a step is tried before it's ready,
+  // same pattern RaffleDetailPage.tsx already uses for CYOL.
   async function handleRequestExpireClosed() {
-    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    // Guards the merged button below against firing early: it stays visible
+    // (not HTML-disabled, so it keeps its pixel-art border instead of
+    // flattening to .round-action-btn:disabled) through the whole countdown,
+    // only actually clickable in effect once this passes.
+    if (walletState.status !== "connected" || roundState.status !== "loaded" || !stuckEligible) return;
     setActionBusy("requestingRescue");
     setActionError(null);
     try {
       await requestExpireClosedRound(walletState.wallet, roundState.round.round_id, contractAddress);
+      setRequestSubmitted(true);
+      setRequestSubmittedAt(Math.floor(Date.now() / 1000));
       roundState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+      const message = err instanceof Error ? err.message : "";
+      // A redundant Request (this session already got one through, or a
+      // page refresh lost track of that) rejects with this exact text -
+      // re-syncs local state instead of leaving the button stuck offering
+      // "Request" forever when Finalize is what's actually next. No
+      // requestSubmittedAt here deliberately - we don't know when the real
+      // Request actually landed, so no Finalize countdown shows rather than
+      // a wrong one (falls back to the plain "Finalize rescue" label).
+      if (/expiration request .* is already pending/i.test(message)) setRequestSubmitted(true);
+      setActionError(message ? friendlyRoundError(message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
   }
 
   async function handleFinalizeExpireClosed() {
-    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    // The !stuckEligible check alone isn't enough here (found live,
+    // 2026-09-18) - it never turns back false once true, so it doesn't
+    // guard against Finalize's own separate delay after Request. The
+    // locked-button visual already dims this from finalizeLocked, but the
+    // real guard has to live here too, same as Request's.
+    const finalizeLocked = secondsToFinalizeEligible !== null && secondsToFinalizeEligible > 0;
+    if (walletState.status !== "connected" || roundState.status !== "loaded" || !stuckEligible || finalizeLocked) return;
     setActionBusy("finalizingRescue");
     setActionError(null);
     try {
       await finalizeExpireClosedRound(walletState.wallet, roundState.round.round_id, contractAddress);
+      setFinalizeSubmittedAt(Math.floor(Date.now() / 1000));
       roundState.refetch();
     } catch (err) {
       setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
@@ -208,7 +265,10 @@ export function WheelCard({
   // any Expired round below, is what each entrant then uses to actually get
   // their ticket money back.
   async function handleClaimExpiredClosed() {
-    if (walletState.status !== "connected" || roundState.status !== "loaded") return;
+    // Same visible-but-locked pattern as Request/Finalize above - the real
+    // guard lives here, not in the button's disabled attribute.
+    const claimLocked = secondsToClaimEligible !== null && secondsToClaimEligible > 0;
+    if (walletState.status !== "connected" || roundState.status !== "loaded" || claimLocked) return;
     setActionBusy("claimingRescue");
     setActionError(null);
     try {
@@ -318,6 +378,23 @@ export function WheelCard({
     roundState.round.status === "closed" &&
     roundState.round.closed_at !== null &&
     nowSec >= roundState.round.closed_at + roundState.config.max_reveal_age_seconds;
+
+  // Countdown to stuckEligible - see its render site in lab-screen-message
+  // below for why this needs to be shown at all.
+  const secondsToRescueEligible =
+    loaded && roundState.round.status === "closed" && roundState.round.closed_at !== null
+      ? Math.ceil(roundState.round.closed_at + roundState.config.max_reveal_age_seconds - nowSec)
+      : null;
+
+  // Same countdown, next phase - only known at all if Request happened this
+  // session (see requestSubmittedAt's own comment on the approximation).
+  const secondsToFinalizeEligible =
+    requestSubmittedAt !== null ? Math.ceil(requestSubmittedAt + FINALIZE_DELAY_SECONDS - nowSec) : null;
+
+  // Same countdown, third phase - only known if Finalize happened this
+  // session (see finalizeSubmittedAt's own comment).
+  const secondsToClaimEligible =
+    finalizeSubmittedAt !== null ? Math.ceil(finalizeSubmittedAt + CLAIM_DELAY_SECONDS - nowSec) : null;
 
   // Whether the top full-width action slot is taken by Redeem. When it's
   // not (any revealed round where this wallet isn't sitting on an unclaimed
@@ -555,38 +632,66 @@ export function WheelCard({
         </div>
       )}
 
-      {/* Outage safety net, discreet by design - only shows once a Closed
-          round has actually sat unrevealed for max_reveal_age_seconds
-          (stuckEligible), which never happens in the normal keeper-driven
-          flow. Request and Finalize render together rather than trying to
-          hide whichever isn't valid yet - see stuckEligible's own comment. */}
-      {stuckEligible && walletState.status === "connected" && (
-        <div className="wheel-actions-row">
-          <button
-            className="round-action-btn round-action-btn-secondary wheel-actions-row-btn"
-            onClick={handleRequestExpireClosed}
-            disabled={actionBusy !== "idle"}
-          >
-            {actionBusy === "requestingRescue" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
-          </button>
-          <button
-            className="round-action-btn round-action-btn-secondary wheel-actions-row-btn"
-            onClick={handleFinalizeExpireClosed}
-            disabled={actionBusy !== "idle"}
-          >
-            {actionBusy === "finalizingRescue" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
-          </button>
-        </div>
-      )}
-      {loaded && roundState.round.status === "expiry_pending" && walletState.status === "connected" && (
-        <button
-          className="round-action-btn"
-          onClick={handleClaimExpiredClosed}
-          disabled={actionBusy !== "idle"}
-        >
-          {actionBusy === "claimingRescue" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
-        </button>
-      )}
+      {/* Outage safety net - one button covering both Request and Finalize
+          (merged 2026-09-18, per direct request - having both sit side by
+          side from the moment a round closes read as confusing rather than
+          reassuring). Visible, with its full pixel-art border, as soon as a
+          round is Closed at all - not HTML-disabled while locked (that
+          would trigger .round-action-btn:disabled's box-shadow:none and
+          flatten it, looking broken rather than "armed and counting down");
+          instead .round-action-btn-locked only dims it, and the real guard
+          against firing early lives inside handleRequestExpireClosed/
+          handleFinalizeExpireClosed themselves. requestSubmitted (best-
+          effort local tracking, see its own comment) decides which of the
+          two this actually calls and which label it shows once unlocked -
+          Finalize never appears before Request has actually gone through. */}
+      {loaded &&
+        roundState.round.status === "closed" &&
+        walletState.status === "connected" &&
+        (() => {
+          // Only known if Request happened this session - see
+          // requestSubmittedAt's own comment. null means "don't know", not
+          // "not locked", so a stale/refreshed session falls back to plain
+          // "Finalize rescue" instead of a countdown it can't back up.
+          const finalizeLocked = requestSubmitted && secondsToFinalizeEligible !== null && secondsToFinalizeEligible > 0;
+          const locked = !stuckEligible || finalizeLocked;
+          return (
+            <button
+              className={`round-action-btn round-action-btn-secondary${locked ? " round-action-btn-locked" : ""}`}
+              onClick={requestSubmitted ? handleFinalizeExpireClosed : handleRequestExpireClosed}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "requestingRescue" || actionBusy === "finalizingRescue"
+                ? t("wheel.rescuing")
+                : !stuckEligible
+                  ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToRescueEligible ?? 0) })
+                  : finalizeLocked
+                    ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToFinalizeEligible ?? 0) })
+                    : requestSubmitted
+                      ? t("wheel.rescueFinalize")
+                      : t("wheel.rescueRequest")}
+            </button>
+          );
+        })()}
+      {loaded &&
+        roundState.round.status === "expiry_pending" &&
+        walletState.status === "connected" &&
+        (() => {
+          const claimLocked = secondsToClaimEligible !== null && secondsToClaimEligible > 0;
+          return (
+            <button
+              className={`round-action-btn${claimLocked ? " round-action-btn-locked" : ""}`}
+              onClick={handleClaimExpiredClosed}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "claimingRescue"
+                ? t("wheel.rescuing")
+                : claimLocked
+                  ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToClaimEligible ?? 0) })
+                  : t("wheel.rescueClaim")}
+            </button>
+          );
+        })()}
 
       {loaded && roundState.round.status === "expired" && (
         <>
@@ -713,20 +818,72 @@ export function WheelCard({
           <p className="withdraw-lockin-note">{t("wheel.withdrawLockInNote")}</p>
         )}
 
-      {/* closedWaitingDraw is skipped here too - the Host already says it
-          (see hostBubble above). */}
+      {/* closedWaitingDraw itself is skipped here - the Host already says it
+          (see hostBubble above). This countdown isn't, though: it only ever
+          shows once the round has sat Closed long enough to matter, and a
+          silent screen at that point reads as the site having swallowed the
+          player's ticket, not as a safety net quietly ticking down (found
+          live, 2026-09-18, watching a real Closed round with the keeper
+          deliberately down for a drill). */}
+      {/* !requestSubmitted matters here (found live, 2026-09-18): once
+          Request has actually gone through, this phase-1 message going
+          stale and still claiming "available now" reads as the WHOLE
+          refund being ready, when only Request was - the Finalize message
+          below takes over exclusively from here instead of stacking with
+          this leftover one. */}
+      {!requestSubmitted && secondsToRescueEligible !== null && (
+        <p className="round-status-note">
+          {secondsToRescueEligible > 0
+            ? t("wheel.rescueCountdownLabel", { time: formatCountdown(secondsToRescueEligible) })
+            : t("wheel.rescueAvailableLabel")}
+        </p>
+      )}
+      {/* Same reasoning, next phase. requestSubmitted can be true with no
+          timestamp to back it up (a redundant Request this session, after
+          the real one already landed earlier - see requestSubmittedAt's own
+          comment) - falls back to a plain no-countdown note instead of
+          going silent again, the exact regression this whole thing exists
+          to avoid. */}
+      {requestSubmitted && (
+        <p className="round-status-note">
+          {secondsToFinalizeEligible === null
+            ? t("wheel.rescueFinalizeUnknownLabel")
+            : secondsToFinalizeEligible > 0
+              ? t("wheel.rescueFinalizeCountdownLabel", { time: formatCountdown(secondsToFinalizeEligible) })
+              : t("wheel.rescueFinalizeAvailableLabel")}
+        </p>
+      )}
+      {/* Same reasoning, third phase - status itself (not a local flag) is
+          reliable here, since ExpiryPending can only ever be reached via a
+          successful Finalize. */}
+      {loaded && roundState.round.status === "expiry_pending" && (
+        <p className="round-status-note">
+          {secondsToClaimEligible === null
+            ? t("wheel.rescueClaimUnknownLabel")
+            : secondsToClaimEligible > 0
+              ? t("wheel.rescueClaimCountdownLabel", { time: formatCountdown(secondsToClaimEligible) })
+              : t("wheel.rescueClaimAvailableLabel")}
+        </p>
+      )}
 
       {/* reclaimedNote is skipped here too, same pattern - the Host already
           says it (see hostBubble above). expiredNote stays, it's long.
           RoundStatus::Expired is reached 2 different ways (see the
           contract's own doc comment on that variant) - never reached
           min_players, or reached Closed and then rescued via the 3-phase
-          outage safety net after going unrevealed too long. hasMinPlayers
-          tells them apart: only the never-reached-minimum path can ever
-          have it false once terminal. */}
+          outage safety net after going unrevealed too long. Deliberately
+          NOT hasMinPlayers here (found live, 2026-09-18): that reads
+          unique_player_count, which ReclaimTicket decrements as each
+          entrant claims their refund - once every entrant has reclaimed, a
+          genuinely-rescued round reads back as 0 players and wrongly looks
+          like it never reached the minimum at all. closed_at is never
+          touched by ReclaimTicket, and is only ever set by the
+          reached-minimum path (execute_close_round) - the never-reached
+          path (ExpireRound) goes straight from Open to Expired without
+          ever setting it, so it survives every reclaim intact. */}
       {loaded && roundState.round.status === "expired" && (
         <p className="round-status-note">
-          {hasMinPlayers ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
+          {roundState.round.closed_at !== null ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
         </p>
       )}
 

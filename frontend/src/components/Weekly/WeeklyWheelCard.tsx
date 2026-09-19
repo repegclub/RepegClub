@@ -75,6 +75,18 @@ export function WeeklyWheelCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const [justReclaimed, setJustReclaimed] = useState(false);
   const [justWithdrawn, setJustWithdrawn] = useState(false);
+  // Same best-effort local tracking as Wheel of Repeg's WheelCard, same
+  // reason (the query never exposes expire_requested_at_height) - see its
+  // own comment on this exact declaration.
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
+  // Same Finalize-countdown approximation as Wheel of Repeg's WheelCard -
+  // see its own comment on this exact declaration.
+  const [requestSubmittedAt, setRequestSubmittedAt] = useState<number | null>(null);
+  const FINALIZE_DELAY_SECONDS = 100 * 6;
+  // Same Claim-countdown approximation as Wheel of Repeg's WheelCard - see
+  // its own comment on this exact declaration.
+  const [finalizeSubmittedAt, setFinalizeSubmittedAt] = useState<number | null>(null);
+  const CLAIM_DELAY_SECONDS = (100 + 20) * 6;
   // Same reasoning as Wheel of Repeg's WheelCard: Redeem opens as a popup
   // instead of inline, so it can't grow this card vertically and distort
   // the wheel-status lab-screen sitting next to the action buttons.
@@ -101,6 +113,15 @@ export function WeeklyWheelCard({
     setJustWithdrawn(false);
     setJustReclaimed(false);
   }, [purchaseVersion, connectedAddress]);
+
+  // A new week means any earlier rescue attempt was for a different week
+  // entirely - same reset as Wheel of Repeg's WheelCard, see its comment.
+  const currentWeekId = weekState.status === "loaded" ? weekState.week.week_id : null;
+  useEffect(() => {
+    setRequestSubmitted(false);
+    setRequestSubmittedAt(null);
+    setFinalizeSubmittedAt(null);
+  }, [currentWeekId]);
 
   const maxPlayers = weekState.status === "loaded" ? weekState.config.max_players : 10;
   const arcs = useMemo(
@@ -165,25 +186,33 @@ export function WeeklyWheelCard({
   // 3-phase outage safety net, same as Wheel of Repeg's WheelCard - see its
   // own comment on handleRequestExpireClosed for the full reasoning.
   async function handleRequestExpireClosed() {
-    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    if (walletState.status !== "connected" || weekState.status !== "loaded" || !stuckEligible) return;
     setActionBusy("requestingRescue");
     setActionError(null);
     try {
       await requestExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
+      setRequestSubmitted(true);
+      setRequestSubmittedAt(Math.floor(Date.now() / 1000));
       weekState.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
+      const message = err instanceof Error ? err.message : "";
+      if (/expiration request .* is already pending/i.test(message)) setRequestSubmitted(true);
+      setActionError(message ? friendlyRoundError(message) : t("wheel.actionFailed"));
     } finally {
       setActionBusy("idle");
     }
   }
 
   async function handleFinalizeExpireClosed() {
-    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    // Same extra finalizeLocked guard as Wheel of Repeg's WheelCard - see
+    // its own comment on this exact check.
+    const finalizeLocked = secondsToFinalizeEligible !== null && secondsToFinalizeEligible > 0;
+    if (walletState.status !== "connected" || weekState.status !== "loaded" || !stuckEligible || finalizeLocked) return;
     setActionBusy("finalizingRescue");
     setActionError(null);
     try {
       await finalizeExpireClosedWeek(walletState.wallet, weekState.week.week_id, contractAddress);
+      setFinalizeSubmittedAt(Math.floor(Date.now() / 1000));
       weekState.refetch();
     } catch (err) {
       setActionError(err instanceof Error ? friendlyRoundError(err.message) : t("wheel.actionFailed"));
@@ -197,7 +226,9 @@ export function WeeklyWheelCard({
   // any Expired week below, is what each entrant then uses to actually get
   // their ticket money back.
   async function handleClaimExpiredClosed() {
-    if (walletState.status !== "connected" || weekState.status !== "loaded") return;
+    // Same visible-but-locked guard as Wheel of Repeg's WheelCard.
+    const claimLocked = secondsToClaimEligible !== null && secondsToClaimEligible > 0;
+    if (walletState.status !== "connected" || weekState.status !== "loaded" || claimLocked) return;
     setActionBusy("claimingRescue");
     setActionError(null);
     try {
@@ -301,6 +332,21 @@ export function WeeklyWheelCard({
     weekState.week.status === "closed" &&
     weekState.week.closed_at !== null &&
     nowSec >= weekState.week.closed_at + weekState.config.max_reveal_age_seconds;
+
+  // Same countdown-instead-of-silence fix as WheelCard.tsx - see its own
+  // comment for why the gap between Closed and stuckEligible needs this.
+  const secondsToRescueEligible =
+    loaded && weekState.week.status === "closed" && weekState.week.closed_at !== null
+      ? Math.ceil(weekState.week.closed_at + weekState.config.max_reveal_age_seconds - nowSec)
+      : null;
+
+  // Same Finalize-countdown as WheelCard.tsx - see its own comment.
+  const secondsToFinalizeEligible =
+    requestSubmittedAt !== null ? Math.ceil(requestSubmittedAt + FINALIZE_DELAY_SECONDS - nowSec) : null;
+
+  // Same Claim-countdown as WheelCard.tsx - see its own comment.
+  const secondsToClaimEligible =
+    finalizeSubmittedAt !== null ? Math.ceil(finalizeSubmittedAt + CLAIM_DELAY_SECONDS - nowSec) : null;
 
   // Same showExpireRound/showWithdrawTicket pattern as WheelCard.tsx -
   // computed once so .weekly-actions-row only renders when it will actually
@@ -549,33 +595,51 @@ export function WeeklyWheelCard({
         </div>
       )}
 
-      {stuckEligible && walletState.status === "connected" && (
-        <div className="weekly-actions-row">
-          <button
-            className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
-            onClick={handleRequestExpireClosed}
-            disabled={actionBusy !== "idle"}
-          >
-            {actionBusy === "requestingRescue" ? t("wheel.rescuing") : t("wheel.rescueRequest")}
-          </button>
-          <button
-            className="round-action-btn round-action-btn-secondary weekly-actions-row-btn"
-            onClick={handleFinalizeExpireClosed}
-            disabled={actionBusy !== "idle"}
-          >
-            {actionBusy === "finalizingRescue" ? t("wheel.rescuing") : t("wheel.rescueFinalize")}
-          </button>
-        </div>
-      )}
-      {loaded && weekState.week.status === "expiry_pending" && walletState.status === "connected" && (
-        <button
-          className="round-action-btn"
-          onClick={handleClaimExpiredClosed}
-          disabled={actionBusy !== "idle"}
-        >
-          {actionBusy === "claimingRescue" ? t("wheel.rescuing") : t("wheel.rescueClaim")}
-        </button>
-      )}
+      {/* Same merged Request/Finalize button as Wheel of Repeg's WheelCard -
+          see its own comment on this exact block. */}
+      {loaded &&
+        weekState.week.status === "closed" &&
+        walletState.status === "connected" &&
+        (() => {
+          const finalizeLocked = requestSubmitted && secondsToFinalizeEligible !== null && secondsToFinalizeEligible > 0;
+          const locked = !stuckEligible || finalizeLocked;
+          return (
+            <button
+              className={`round-action-btn round-action-btn-secondary${locked ? " round-action-btn-locked" : ""}`}
+              onClick={requestSubmitted ? handleFinalizeExpireClosed : handleRequestExpireClosed}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "requestingRescue" || actionBusy === "finalizingRescue"
+                ? t("wheel.rescuing")
+                : !stuckEligible
+                  ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToRescueEligible ?? 0) })
+                  : finalizeLocked
+                    ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToFinalizeEligible ?? 0) })
+                    : requestSubmitted
+                      ? t("wheel.rescueFinalize")
+                      : t("wheel.rescueRequest")}
+            </button>
+          );
+        })()}
+      {loaded &&
+        weekState.week.status === "expiry_pending" &&
+        walletState.status === "connected" &&
+        (() => {
+          const claimLocked = secondsToClaimEligible !== null && secondsToClaimEligible > 0;
+          return (
+            <button
+              className={`round-action-btn${claimLocked ? " round-action-btn-locked" : ""}`}
+              onClick={handleClaimExpiredClosed}
+              disabled={actionBusy !== "idle"}
+            >
+              {actionBusy === "claimingRescue"
+                ? t("wheel.rescuing")
+                : claimLocked
+                  ? t("wheel.rescueRequestLocked", { time: formatCountdown(secondsToClaimEligible ?? 0) })
+                  : t("wheel.rescueClaim")}
+            </button>
+          );
+        })()}
 
       {loaded && weekState.week.status === "expired" && (
         <>
@@ -689,11 +753,42 @@ export function WeeklyWheelCard({
           <p className="withdraw-lockin-note">{t("wheel.withdrawLockInNote")}</p>
         )}
 
+      {/* Same countdown-instead-of-silence fix as Wheel of Repeg's
+          WheelCard - see its own comment on this exact block, and on the
+          !requestSubmitted guard here (a stale phase-1 message otherwise
+          outlives Request actually landing). */}
+      {!requestSubmitted && secondsToRescueEligible !== null && (
+        <p className="round-status-note">
+          {secondsToRescueEligible > 0
+            ? t("wheel.rescueCountdownLabel", { time: formatCountdown(secondsToRescueEligible) })
+            : t("wheel.rescueAvailableLabel")}
+        </p>
+      )}
+      {requestSubmitted && (
+        <p className="round-status-note">
+          {secondsToFinalizeEligible === null
+            ? t("wheel.rescueFinalizeUnknownLabel")
+            : secondsToFinalizeEligible > 0
+              ? t("wheel.rescueFinalizeCountdownLabel", { time: formatCountdown(secondsToFinalizeEligible) })
+              : t("wheel.rescueFinalizeAvailableLabel")}
+        </p>
+      )}
+      {loaded && weekState.week.status === "expiry_pending" && (
+        <p className="round-status-note">
+          {secondsToClaimEligible === null
+            ? t("wheel.rescueClaimUnknownLabel")
+            : secondsToClaimEligible > 0
+              ? t("wheel.rescueClaimCountdownLabel", { time: formatCountdown(secondsToClaimEligible) })
+              : t("wheel.rescueClaimAvailableLabel")}
+        </p>
+      )}
+
       {/* Same 2-cause distinction as Wheel of Repeg's WheelCard - see its
-          own comment on this exact check. */}
+          own comment on this exact check for why closed_at, not
+          hasMinPlayers, is what actually survives every reclaim intact. */}
       {loaded && weekState.week.status === "expired" && (
         <p className="round-status-note">
-          {hasMinPlayers ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
+          {weekState.week.closed_at !== null ? t("wheel.expiredNoteRescued") : t("wheel.expiredNote")}
         </p>
       )}
 

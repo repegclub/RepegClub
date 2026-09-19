@@ -2127,6 +2127,23 @@
     cursor: default;
     box-shadow: none;
   }
+  /* "Armed, just not clickable yet" (the rescue button before its
+     countdown clears) - deliberately NOT :disabled above, which flattens
+     the pixel bevel to nothing and reads as broken rather than waiting.
+     Dims like :disabled but keeps the same box-shadow/border every other
+     button has (2026-09-18, direct request after the drill showed the
+     flattened version looked inconsistent with the rest of the cabinet). */
+  .round-action-btn-locked {
+    opacity: 0.6;
+    cursor: default;
+  }
+  /* Matches .round-action-btn-secondary:active:not(:disabled)'s own
+     specificity (3 classes/pseudo-classes) - a plain .round-action-btn-
+     locked:active would silently lose that fight, since this button is
+     never actually :disabled while locked. */
+  .round-action-btn-secondary.round-action-btn-locked:active {
+    transform: none;
+  }
   .round-action-btn-compact {
     font-size: 1.12rem;
     text-transform: none;
