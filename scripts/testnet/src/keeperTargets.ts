@@ -23,7 +23,14 @@ export function discoverTargets(): Target[] {
       const { contractAddress } = JSON.parse(readFileSync(path.join(SCRIPTS_DIR, file), "utf8"));
       targets.push({ type: "wheel-manager", label: wheelMatch[1], address: contractAddress });
     }
-    if (file === "deployment-weekly-round.json") {
+    // Two possible exact filenames, not one: testnet's fixed name
+    // (deployment-weekly-round.json) and mainnet's own
+    // (deployment-weekly-round-mainnet.json, deliberately different so
+    // deployWeeklyRoundMainnet.ts never overwrites testnet's file when both
+    // live in the same directory - see that file's own comment). Missing
+    // either one here means the matching keeper/commit-generator process
+    // never discovers its Weekly Round contract at all.
+    if (file === "deployment-weekly-round.json" || file === "deployment-weekly-round-mainnet.json") {
       const { contractAddress } = JSON.parse(readFileSync(path.join(SCRIPTS_DIR, file), "utf8"));
       targets.push({ type: "weekly-round", label: "weekly-round", address: contractAddress });
     }

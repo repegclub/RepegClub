@@ -9,7 +9,7 @@
 // Not part of the deployed frontend.
 
 import { fromBase64, toBase64 } from "@cosmjs/encoding";
-import { makeSignDoc, type AminoMsg, type StdFee } from "@cosmjs/amino";
+import { makeSignDoc, type AminoMsg, type StdFee, type StdSignDoc } from "@cosmjs/amino";
 import { makeMultisignedTxBytes } from "@cosmjs/stargate";
 import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx";
 import { TxBody } from "cosmjs-types/cosmos/tx/v1beta1/tx";
@@ -24,8 +24,8 @@ declare global {
       signAmino(
         chainId: string,
         signer: string,
-        signDoc: unknown
-      ): Promise<{ signed: unknown; signature: { pub_key: unknown; signature: string } }>;
+        signDoc: StdSignDoc
+      ): Promise<{ signed: StdSignDoc; signature: { pub_key: unknown; signature: string } }>;
     };
   }
 }
@@ -120,17 +120,23 @@ async function proposeAndSign() {
   const fee: StdFee = { amount: [{ denom: chain.gasPrice.denom, amount: feeAmount.toString() }], gas: gas.toString() };
 
   const signDoc = makeSignDoc(msgs, fee, chain.chainId, memo, accountNumber, sequence);
-  const { signature } = await window.keplr.signAmino(chain.chainId, key.bech32Address, signDoc);
+  // Keplr may override fee/memo when preferNoSetFee/preferNoSetMemo aren't
+  // set (CodeRabbit finding, 2026-09-19 review) - `signed` is the document
+  // the signature actually covers, which can differ from the `signDoc` we
+  // requested. Persist `signed`'s own fee/memo, not our original request, or
+  // the signature combineAndBroadcast() later verifies against won't match
+  // what's broadcast.
+  const { signed, signature } = await window.keplr.signAmino(chain.chainId, key.bech32Address, signDoc);
 
   const sigFile: SigFile = {
     chainKey,
     recipient,
     amount,
     denom: chain.gasPrice.denom,
-    memo,
+    memo: signed.memo,
     accountNumber,
     sequence,
-    fee,
+    fee: signed.fee,
     signerAddressOnChain: key.bech32Address,
     signatureBase64: signature.signature,
   };
@@ -156,6 +162,27 @@ function downloadSigFile() {
   URL.revokeObjectURL(url);
 }
 
+// BROADCAST_MODE_SYNC's code===0 only means CheckTx accepted the tx into the
+// mempool, not that it executed successfully in a block (CodeRabbit finding,
+// 2026-09-19 review) - poll the tx hash until it's actually included and
+// report the real DeliverTx/block execution code.
+async function pollTxResult(
+  lcd: string,
+  txhash: string,
+  maxAttempts = 15,
+  intervalMs = 2000
+): Promise<{ code: number; rawLog?: string }> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const res = await fetch(`${lcd}/cosmos/tx/v1beta1/txs/${txhash}`);
+    if (res.status === 200) {
+      const body = await res.json();
+      if (body.tx_response) return { code: body.tx_response.code, rawLog: body.tx_response.raw_log };
+    }
+  }
+  throw new Error(`Timed out waiting for txhash ${txhash} to land in a block - check it manually.`);
+}
+
 // ---- Mode 2: combine + broadcast ----
 
 async function combineAndBroadcast() {
@@ -166,7 +193,7 @@ async function combineAndBroadcast() {
   const sig1 = JSON.parse(raw1) as SigFile;
   const sig2 = JSON.parse(raw2) as SigFile;
 
-  for (const key of ["chainKey", "recipient", "amount", "denom", "memo", "accountNumber", "sequence"] as const) {
+  for (const key of ["chainKey", "recipient", "amount", "denom", "memo", "accountNumber", "sequence", "fee"] as const) {
     if (JSON.stringify(sig1[key]) !== JSON.stringify(sig2[key])) {
       throw new Error(`Mismatch on "${key}" between the two signatures - they weren't signing the same transaction.`);
     }
@@ -218,15 +245,45 @@ async function combineAndBroadcast() {
   const body = await res.json();
   el<HTMLTextAreaElement>("broadcastOutput").value = JSON.stringify(body, null, 2);
   const code = body.tx_response?.code;
-  if (code === 0) {
-    setStatus("broadcastStatus", `Broadcast succeeded. txhash: ${body.tx_response.txhash}`);
-  } else {
+  if (code !== 0) {
     setStatus("broadcastStatus", `Broadcast returned code ${code} - see the raw response below.`, true);
+    return;
+  }
+
+  const txhash = body.tx_response.txhash;
+  setStatus("broadcastStatus", `Accepted into mempool (txhash: ${txhash}). Waiting for it to land in a block...`);
+  try {
+    const finalResult = await pollTxResult(chain.lcd, txhash);
+    if (finalResult.code === 0) {
+      setStatus("broadcastStatus", `Broadcast succeeded. txhash: ${txhash}`);
+    } else {
+      setStatus(
+        "broadcastStatus",
+        `Accepted into mempool but FAILED on-chain (code ${finalResult.code}): ${finalResult.rawLog ?? "see raw response above"}. txhash: ${txhash}`,
+        true
+      );
+    }
+  } catch (err) {
+    setStatus(
+      "broadcastStatus",
+      `Accepted into mempool (txhash: ${txhash}) but couldn't confirm block inclusion: ${(err as Error).message ?? String(err)}`,
+      true
+    );
   }
 }
 
-el<HTMLButtonElement>("signButton").addEventListener("click", () => {
-  proposeAndSign().catch((err) => setStatus("signStatus", err.message ?? String(err), true));
+const signButton = el<HTMLButtonElement>("signButton");
+signButton.addEventListener("click", () => {
+  // Without this lock, a second click while Keplr/the network call is still
+  // pending starts a second proposeAndSign() that overwrites the same
+  // sigOutput/signStatus mid-flight (CodeRabbit finding, 2026-09-19 review).
+  signButton.disabled = true;
+  setStatus("signStatus", "Waiting for Keplr to complete signing...");
+  proposeAndSign()
+    .catch((err) => setStatus("signStatus", err.message ?? String(err), true))
+    .finally(() => {
+      signButton.disabled = false;
+    });
 });
 el<HTMLButtonElement>("downloadSigButton").addEventListener("click", downloadSigFile);
 el<HTMLButtonElement>("broadcastButton").addEventListener("click", () => {

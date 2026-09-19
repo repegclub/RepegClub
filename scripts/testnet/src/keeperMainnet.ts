@@ -338,16 +338,23 @@ async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
   }
 }
 
-// Round-review fix (Fable, commit_pusher audit round, 2026-08-30): the
-// KEEPER_MNEMONIC->ADMIN_MNEMONIC fallback above (kept for local-testing
-// convenience) used to be silent - a production deploy that forgot to set
-// KEEPER_MNEMONIC would start this always-on, internet-exposed process with
-// the real admin key with no error and no warning, defeating the exact
-// keeper/admin separation this project's commit_pusher role split exists to
-// model. Confirm the loaded wallet isn't actually admin (or commit_pusher)
-// on any watched contract before starting the poll loop - covers all 3
-// target types (the CYOL factory's GetConfig didn't expose admin/
-// commit_pusher until this same round, see its query.rs).
+// Round-review fix (Fable, commit_pusher audit round, 2026-08-30): this used
+// to silently fall back to ADMIN_MNEMONIC when KEEPER_MNEMONIC wasn't set -
+// a production deploy that forgot to set it would start this always-on,
+// internet-exposed process with the real admin key with no error and no
+// warning, defeating the exact keeper/admin separation this project's
+// commit_pusher role split exists to model. Confirm the loaded wallet isn't
+// actually admin (or commit_pusher) on any watched contract before starting
+// the poll loop - covers all 3 target types (the CYOL factory's GetConfig
+// didn't expose admin/commit_pusher until this same round, see its
+// query.rs). Kept as defense-in-depth below even though loadWallet's own
+// requireEnv (see keeperMainnet.ts's CodeRabbit round, 2026-09-19) now
+// refuses to start at all without KEEPER_MNEMONIC explicitly set - this
+// assertion still matters if KEEPER_MNEMONIC is ever set to the wrong
+// wallet by mistake, and it's the reason discoverTargets() returning an
+// incomplete target list (e.g. a deployment file it doesn't recognize) is
+// itself dangerous: a target this loop never sees is a target this
+// assertion never checks either.
 async function assertKeeperIsNotAPrivilegedWallet(keeperAddress: string, targets: Target[]) {
   for (const target of targets) {
     const config = await queryContract<{ admin: string; commit_pusher: string }>(RPC, {
@@ -368,7 +375,7 @@ async function assertKeeperIsNotAPrivilegedWallet(keeperAddress: string, targets
 }
 
 async function main() {
-  const keeper = loadWallet(process.env.KEEPER_MNEMONIC ? "KEEPER_MNEMONIC" : "ADMIN_MNEMONIC");
+  const keeper = loadWallet("KEEPER_MNEMONIC");
   console.log("Keeper address:", keeper.address);
 
   const targets = discoverTargets();
