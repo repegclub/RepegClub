@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { useWallet } from "../../contexts/WalletContext";
+import { ackJurisdictionGate, hasAckedJurisdictionGate } from "../../lib/jurisdictionGateCache";
 import { buyTickets } from "../../lib/roundActions";
+import { JurisdictionGateModal } from "../Shared/JurisdictionGateModal";
 import { HostGuide } from "./HostGuide";
 
 type TicketBoothProps = {
@@ -59,6 +61,7 @@ export function TicketBooth({
   const { state: walletState } = useWallet();
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showJurisdictionGate, setShowJurisdictionGate] = useState(false);
 
   // How many tickets THIS purchase will buy - defaults to 1, capped to
   // availableTickets (already personalized per wallet, see the prop's own
@@ -101,6 +104,14 @@ export function TicketBooth({
 
   async function handleBuy() {
     if (walletState.status !== "connected" || !ticketDenom || !ticketPriceAmount) return;
+    // Shown once per browser, not once per purchase - see
+    // jurisdictionGateCache.ts. Re-calling handleBuy() itself from the
+    // modal's confirm handler (below) re-enters here past this check
+    // instead of needing a second copy of the buy logic.
+    if (!hasAckedJurisdictionGate()) {
+      setShowJurisdictionGate(true);
+      return;
+    }
     setBuying(true);
     setError(null);
     try {
@@ -131,6 +142,7 @@ export function TicketBooth({
   }
 
   return (
+    <>
     <div className="ticket-booth-border pixel-stepped-corners">
     <div className="ticket-booth-highlight pixel-stepped-corners">
     <div className="ticket-booth pixel-stepped-corners">
@@ -220,5 +232,16 @@ export function TicketBooth({
     </div>
     </div>
     </div>
+    {showJurisdictionGate && (
+      <JurisdictionGateModal
+        onCancel={() => setShowJurisdictionGate(false)}
+        onConfirm={() => {
+          ackJurisdictionGate();
+          setShowJurisdictionGate(false);
+          handleBuy();
+        }}
+      />
+    )}
+    </>
   );
 }

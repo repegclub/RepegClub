@@ -25,7 +25,8 @@
 
 import { randomBytes, createHash } from "crypto";
 
-import { MsgExecuteContract, queryContract, RpcClient } from "@goblinhunt/cosmes/client";
+import { base16, base64 } from "@goblinhunt/cosmes/codec";
+import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 import { CosmwasmWasmV1QueryRawContractStateService as RawContractStateService } from "@goblinhunt/cosmes/protobufs";
 
 import { RPC, loadWallet } from "./config";
@@ -95,12 +96,55 @@ function dequeMetaKey(metaByte: "h" | "t"): Uint8Array {
   return out;
 }
 
+// Plain Tendermint RPC abci_query POST - the same JSON-RPC shape
+// RpcClient.doRequest uses internally (a private method, not part of the
+// library's public API), reimplemented here rather than reached into.
+async function abciQuery(path: string, dataHex: string): Promise<{ value: string; log: string }> {
+  const res = await fetch(RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: Date.now(), jsonrpc: "2.0", method: "abci_query", params: { path, data: dataHex } }),
+  });
+  const { result, error } = await res.json();
+  if (error) throw new Error(error.data);
+  // A nonzero ABCI response `code` (an application-level query error - e.g.
+  // a malformed request, or the node rejecting the query for some other
+  // reason) is a separate failure channel from the JSON-RPC `error` above,
+  // and CometBFT returns it with an empty `value` - readDequeMeta's own
+  // "empty value means an untouched key" fallback can't tell that apart
+  // from a genuine error without this check, and would silently read it as
+  // 0 commits queued instead of failing loudly (CodeRabbit, PR #53).
+  if (result.response.code) throw new Error(`abci_query failed (code ${result.response.code}): ${result.response.log}`);
+  return result.response;
+}
+
 async function readDequeMeta(address: string, metaByte: "h" | "t"): Promise<number> {
-  const res = await RpcClient.query(RPC, RawContractStateService, { address, queryData: dequeMetaKey(metaByte) });
-  // Absent key means the Deque has never been touched (defaults to 0 - see
-  // cw-storage-plus's read_meta_key, which does the same on a missing key).
-  if (res.data.length === 0) return 0;
-  return new DataView(res.data.buffer, res.data.byteOffset, res.data.byteLength).getUint32(0, false);
+  // Deliberately NOT RpcClient.query() (the generic wrapper used everywhere
+  // else in this project) - it treats an empty `value` in the abci_query
+  // response as an error and throws, which is wrong here: an absent key
+  // (empty value) is the correct, expected response for a Deque that's
+  // never been touched, not a failure. Found live, 2026-09-10, on the
+  // mainnet variant of this script seeding a freshly deployed contract
+  // whose commit_queue had never been written to even once - mirrored here
+  // since this file has the identical latent bug (it just never triggered:
+  // every real testnet contract this script ran against already had a
+  // touched queue by the time it ran).
+  const { typeName, method, Request, Response } = RawContractStateService;
+  const data = base16.encode(new Request({ address, queryData: dequeMetaKey(metaByte) }).toBinary());
+  const response = await abciQuery(`/${typeName}/${method}`, data);
+  if (!response.value) return 0;
+  // response.value is a serialized QueryRawContractStateResponse, not the
+  // raw storage bytes directly - its `data` field is. Reading getUint32
+  // straight off response.value (as a previous version of this function
+  // did) picks up that message's own protobuf tag+length header (0x0a 0x04)
+  // as the top 2 bytes, always producing the same wrong constant (168034304)
+  // whenever the key has any value at all - which made every already-seeded
+  // queue look empty to the LOW_WATER_MARK check below, defeating it
+  // silently (found live, 2026-09-18, chasing an unexplained gas spend on
+  // the mainnet variant of this script - identical bug here).
+  const raw = Response.fromBinary(base64.decode(response.value)).data;
+  if (raw.length === 0) return 0;
+  return new DataView(raw.buffer, raw.byteOffset, raw.byteLength).getUint32(0, false);
 }
 
 async function commitQueueLen(address: string): Promise<number> {

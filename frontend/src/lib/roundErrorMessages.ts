@@ -11,7 +11,10 @@
 const RULES: { test: RegExp; friendly: string }[] = [
   { test: /reveal is not overdue yet/i, friendly: "This isn't stuck long enough yet to rescue — check back later." },
   { test: /is not next in the reveal queue/i, friendly: "An earlier round/week is still waiting to be resolved first — try that one instead." },
-  { test: /expiration request is already pending/i, friendly: "A rescue request is already in progress." },
+  // .* for the interpolated "for round {round_id}"/"for week {week_id}" -
+  // without it this never matched the real message text at all (found live,
+  // 2026-09-18, watching a raw rpc error surface instead of this).
+  { test: /expiration request .* is already pending/i, friendly: "A rescue request is already in progress." },
   { test: /no expiration request is pending/i, friendly: "Request the rescue first, before trying to finalize it." },
   { test: /expiration request .* has expired/i, friendly: "The rescue request expired — request it again." },
   { test: /expiration request has not cleared its finalize delay yet/i, friendly: "Not ready to finalize yet — try again in a few minutes." },

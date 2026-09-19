@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { TreasuryPanel } from "./TreasuryPanel";
 
 // Explicit filename, not "/whitepaper/" - Vite's dev-server SPA history
@@ -58,6 +59,12 @@ export function SocialLinks() {
         </svg>
         <span className="social-links-tooltip" aria-hidden="true">{t("socialLinks.repo")}</span>
       </a>
+      <Link to="/legal" className="social-links-icon" aria-label={t("socialLinks.legal")}>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path d="M12 2 4 5v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V5l-8-3Zm0 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm-4 10.2c.3-2 2.2-3.4 4-3.4s3.7 1.4 4 3.4c-1.1.9-2.5 1.5-4 1.8-1.5-.3-2.9-.9-4-1.8Z" />
+        </svg>
+        <span className="social-links-tooltip" aria-hidden="true">{t("socialLinks.legal")}</span>
+      </Link>
     </div>
   );
 }

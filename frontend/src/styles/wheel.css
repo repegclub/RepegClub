@@ -2127,6 +2127,23 @@
     cursor: default;
     box-shadow: none;
   }
+  /* "Armed, just not clickable yet" (the rescue button before its
+     countdown clears) - deliberately NOT :disabled above, which flattens
+     the pixel bevel to nothing and reads as broken rather than waiting.
+     Dims like :disabled but keeps the same box-shadow/border every other
+     button has (2026-09-18, direct request after the drill showed the
+     flattened version looked inconsistent with the rest of the cabinet). */
+  .round-action-btn-locked {
+    opacity: 0.6;
+    cursor: default;
+  }
+  /* Matches .round-action-btn-secondary:active:not(:disabled)'s own
+     specificity (3 classes/pseudo-classes) - a plain .round-action-btn-
+     locked:active would silently lose that fight, since this button is
+     never actually :disabled while locked. */
+  .round-action-btn-secondary.round-action-btn-locked:active {
+    transform: none;
+  }
   .round-action-btn-compact {
     font-size: 1.12rem;
     text-transform: none;
@@ -2515,6 +2532,71 @@
   }
   .history-outcome {
     color: var(--text-dim);
+  }
+
+  .jurisdiction-gate-body {
+    color: var(--text-dim);
+    font-size: 0.943rem;
+    line-height: 1.5;
+    margin: 0 0 0.9rem;
+  }
+  .jurisdiction-gate-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.897rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .jurisdiction-gate-link {
+    display: inline-block;
+    margin-top: 0.6rem;
+    color: var(--gold);
+    font-size: 0.897rem;
+  }
+  .jurisdiction-gate-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+
+  .legal-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 2rem 1.2rem 3rem;
+  }
+  .legal-back-link {
+    display: inline-block;
+    color: var(--gold);
+    font-size: 0.897rem;
+    margin-bottom: 1.2rem;
+  }
+  .legal-title {
+    font-family: var(--display);
+    font-weight: 400;
+    color: var(--gold);
+    font-size: 1.6rem;
+    margin: 0 0 0.9rem;
+  }
+  .legal-intro {
+    color: var(--text);
+    line-height: 1.6;
+    margin: 0 0 1.6rem;
+  }
+  .legal-section {
+    margin-bottom: 1.3rem;
+  }
+  .legal-section-heading {
+    font-family: var(--display);
+    font-weight: 400;
+    color: var(--text);
+    font-size: 1.1rem;
+    margin: 0 0 0.4rem;
+  }
+  .legal-section-body {
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin: 0;
   }
 
   .redeem-balance-note {

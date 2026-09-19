@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import "../../styles/wheel.css";
 import "../../styles/cyol.css";
 import { GameNav } from "../Shared/GameNav";
+import { JurisdictionGateModal } from "../Shared/JurisdictionGateModal";
 import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { NetworkBadge } from "../Wallet/NetworkBadge";
 import { WalletBalance } from "../Wallet/WalletBalance";
@@ -19,6 +20,7 @@ import { priceForDenom, priceForAsset } from "../../lib/tokenPrices";
 import { participantsWord, statusLabelKey } from "../../lib/cyolTerminology";
 import { PRIZE_ASSET_LABELS } from "../../lib/cyolPrizeDenoms";
 import { getCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
+import { ackJurisdictionGate, hasAckedJurisdictionGate } from "../../lib/jurisdictionGateCache";
 import { getCw20Blacklisted, getCw20Whitelisted } from "../../lib/queryFactory";
 import { CyolSafetyChecklist } from "./CyolSafetyChecklist";
 import {
@@ -174,6 +176,7 @@ export function RaffleDetailPage() {
   const [actionBusy, setActionBusy] = useState<ActionKey | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
+  const [showJurisdictionGate, setShowJurisdictionGate] = useState(false);
   const [showSelfBuyWarning, setShowSelfBuyWarning] = useState(false);
   const [showBuyValueWarning, setShowBuyValueWarning] = useState(false);
   const [showSingleWinnerPrizeWarning, setShowSingleWinnerPrizeWarning] = useState(false);
@@ -504,6 +507,14 @@ export function RaffleDetailPage() {
   // - so this warns and lets them confirm, it never disables the button.
   function handleBuyTicket() {
     if (walletState.status !== "connected") return;
+    // Shown once per browser, not once per purchase - see
+    // jurisdictionGateCache.ts. Re-calling handleBuyTicket() itself from the
+    // modal's confirm handler (below) re-enters here past this check and
+    // into the rest of the existing warning chain unchanged.
+    if (!hasAckedJurisdictionGate()) {
+      setShowJurisdictionGate(true);
+      return;
+    }
     if (isCreator) {
       setShowSelfBuyWarning(true);
       return;
@@ -1053,6 +1064,17 @@ export function RaffleDetailPage() {
         </button>
       )}
     </div>
+
+    {showJurisdictionGate && (
+      <JurisdictionGateModal
+        onCancel={() => setShowJurisdictionGate(false)}
+        onConfirm={() => {
+          ackJurisdictionGate();
+          setShowJurisdictionGate(false);
+          handleBuyTicket();
+        }}
+      />
+    )}
 
     {showSelfBuyWarning && (
       <div className="history-overlay" onClick={() => setShowSelfBuyWarning(false)}>
