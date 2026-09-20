@@ -20,7 +20,7 @@ export const WHEEL_MANAGER_ADDRESS =
 // - same wheel_timeout/max_round_age/weekly-round-stub wiring, just
 // different ticket_price - re-enable by uncommenting when ready to add them.
 export const WHEEL_MANAGER_ADDRESSES = [
-  WHEEL_MANAGER_ADDRESS, // frontenddev7, 1 USDC ticket (moves as uluna on this testnet) - the only active tier
+  WHEEL_MANAGER_ADDRESS, // mainnet (columbus-5), 1 USDC ticket (real IBC denom via Noble) - the only active tier
   // "terra1elewq608x55qquvxst6ezft0005vd9e2rknl6dxe82fm44tk3tfsdp0zj6", // tier-lo, 0.5 USDC ticket
   // "terra1844a2nv4z2n6q22n0ejuu7u5fzkryfn5974um5w5nsvqhq35wmxqgcdsyp", // tier-hi, 5 USDC ticket
   // "terra1fjj6kt8ylmmdy5em0ex5ge84ptnyrv2emfqk7gcj54752z6atcqq32f65j", // tier-10, 10 USDC ticket
