@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { loadWallet } from "./configMainnet";
+import { commitPusherAddress as getCommitPusherAddress, loadWallet } from "./configMainnet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 
 // Real mainnet deploy - see deployCreateYourOwnLuckFactory.ts (testnet) for
@@ -26,13 +26,21 @@ if (!label) {
   console.error("Usage: tsx src/deployCreateYourOwnLuckFactoryMainnet.ts <label>");
   process.exit(1);
 }
+// A label containing path separators/`..` (e.g. "x/../../package") could
+// make path.resolve below leave scripts/testnet and overwrite an arbitrary
+// .json file elsewhere on disk (CodeRabbit finding, 2026-09-20 review,
+// eighth round).
+if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
+  console.error("label may contain only letters, digits, dots, underscores, and hyphens.");
+  process.exit(1);
+}
 const deploymentPath = path.resolve(__dirname, `../deployment-cyol-factory-${label}.json`);
 
 async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin (creator) address:", admin.address);
 
-  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  const commitPusherAddress = getCommitPusherAddress();
   console.log("commit_pusher address:", commitPusherAddress);
 
   const raffleWasmByteCode = new Uint8Array(readFileSync(RAFFLE_WASM_PATH));

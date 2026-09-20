@@ -4,7 +4,14 @@ import { fileURLToPath } from "url";
 
 import { fromBech32 } from "@cosmjs/encoding";
 
-import { ADMIN_FEE_ADDRESS, REDEMPTION_DENOM, TICKET_DENOM, TREASURY_ADDRESS, loadWallet } from "./configMainnet";
+import {
+  ADMIN_FEE_ADDRESS,
+  REDEMPTION_DENOM,
+  TICKET_DENOM,
+  TREASURY_ADDRESS,
+  commitPusherAddress as getCommitPusherAddress,
+  loadWallet,
+} from "./configMainnet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 
 // Real mainnet deploy - see deployWheelManager.ts (testnet) for the tested
@@ -41,6 +48,14 @@ if (!label || !maxPlayersArg || !minPlayersArg) {
   console.error(
     "Usage: tsx src/deployWheelManagerMainnet.ts <label> <maxPlayers> <minPlayers> [roundTimeoutSeconds] [maxRoundAgeSeconds] [ticketPrice] [maxRevealAgeSeconds] [unclaimedDeadlineDays] [weeklyRoundDeploymentFile]"
   );
+  process.exit(1);
+}
+// A label containing path separators/`..` (e.g. "x/../../package") could
+// make path.resolve below leave scripts/testnet and overwrite an arbitrary
+// .json file elsewhere on disk (CodeRabbit finding, 2026-09-20 review,
+// eighth round).
+if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
+  console.error("label may contain only letters, digits, dots, underscores, and hyphens.");
   process.exit(1);
 }
 const maxPlayers = Number(maxPlayersArg);
@@ -116,7 +131,7 @@ async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin address:", admin.address);
 
-  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  const commitPusherAddress = getCommitPusherAddress();
   console.log("commit_pusher address:", commitPusherAddress);
 
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));

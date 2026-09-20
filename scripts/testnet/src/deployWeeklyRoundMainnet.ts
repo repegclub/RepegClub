@@ -2,7 +2,14 @@ import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { ADMIN_FEE_ADDRESS, REDEMPTION_DENOM, TICKET_DENOM, TREASURY_ADDRESS, loadWallet } from "./configMainnet";
+import {
+  ADMIN_FEE_ADDRESS,
+  REDEMPTION_DENOM,
+  TICKET_DENOM,
+  TREASURY_ADDRESS,
+  commitPusherAddress as getCommitPusherAddress,
+  loadWallet,
+} from "./configMainnet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 
 // Real mainnet deploy - see deployWeeklyRound.ts (testnet) for the tested
@@ -61,7 +68,7 @@ async function main() {
   const admin = loadWallet("ADMIN_MNEMONIC");
   console.log("Admin address:", admin.address);
 
-  const commitPusherAddress = loadWallet("COMMIT_PUSHER_MNEMONIC").address;
+  const commitPusherAddress = getCommitPusherAddress();
   console.log("commit_pusher address:", commitPusherAddress);
 
   const wasmByteCode = new Uint8Array(readFileSync(WASM_PATH));

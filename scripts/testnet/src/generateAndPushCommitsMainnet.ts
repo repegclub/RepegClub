@@ -172,12 +172,20 @@ async function main() {
   }
   console.log(`Found ${targets.length} target(s):`, targets.map((t) => `${t.type}:${t.label}`).join(", "));
 
+  // If every target's queue-length read fails, this run pushes nothing and
+  // used to still exit 0 - the scheduled timer running this would look
+  // healthy forever while silently never seeding (CodeRabbit finding,
+  // 2026-09-20 review, eighth round). A single target failing among others
+  // that succeed stays non-fatal (logged, skipped) - only "the whole run
+  // accomplished nothing" throws.
+  let queueLenFailures = 0;
   for (const target of targets) {
     let currentLen: number;
     try {
       currentLen = await commitQueueLen(target.address);
     } catch (err) {
       console.error(`[${target.label}] queue length read error: ${(err as Error).message}`);
+      queueLenFailures++;
       continue;
     }
     if (currentLen >= LOW_WATER_MARK) {
@@ -277,6 +285,12 @@ async function main() {
     } catch (err) {
       console.error(`[${target.label}] assign_commit error: ${(err as Error).message}`);
     }
+  }
+
+  if (queueLenFailures === targets.length) {
+    throw new Error(
+      `Queue-length read failed for all ${targets.length} target(s) - this run pushed nothing. See the errors above.`
+    );
   }
 }
 

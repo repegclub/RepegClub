@@ -4,6 +4,7 @@
 // ADMIN_MNEMONIC/COMMIT_PUSHER_MNEMONIC/KEEPER_MNEMONIC, contradicting
 // requireEnv()'s own stated rule below ("never in .env for mainnet").
 // Mainnet credentials must come only from a real shell env var export.
+import { fromBech32 } from "@cosmjs/encoding";
 import { setChainSdkVersion, useChainSdkVersion } from "@goblinhunt/cosmes/protobufs";
 import { MnemonicWallet } from "@goblinhunt/cosmes/wallet";
 
@@ -51,4 +52,23 @@ export function loadWallet(envVar: string): MnemonicWallet {
     gasPrice: GAS_PRICE,
     coinType: 330,
   });
+}
+
+// The 3 mainnet deploy scripts only ever need the commit_pusher wallet's
+// ADDRESS (to set as instantiate's commit_pusher field) - they never sign
+// as it. Loading COMMIT_PUSHER_MNEMONIC via loadWallet() just to read
+// .address puts real signing material into a short-lived admin process that
+// never needs it (CodeRabbit finding, 2026-09-20 review, eighth round,
+// CWE-522). Prefer an address-only COMMIT_PUSHER_ADDRESS env var; fall back
+// to deriving it from the mnemonic only if that isn't set, so existing
+// setups keep working.
+export function commitPusherAddress(): string {
+  const explicit = process.env.COMMIT_PUSHER_ADDRESS;
+  if (explicit) {
+    if (fromBech32(explicit).prefix !== BECH32_PREFIX) {
+      throw new Error(`COMMIT_PUSHER_ADDRESS "${explicit}" isn't a "${BECH32_PREFIX}1..." address.`);
+    }
+    return explicit;
+  }
+  return loadWallet("COMMIT_PUSHER_MNEMONIC").address;
 }

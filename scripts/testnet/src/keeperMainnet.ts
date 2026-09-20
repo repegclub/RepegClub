@@ -84,6 +84,24 @@ async function currentBlockStatus(): Promise<{ seconds: number; height: number }
 // (imported below) - not here, since this file's unconditional main() call
 // at the bottom means it can never be imported by a test.
 
+// Known, accepted limitation (CodeRabbit finding, 2026-09-20 review, eighth
+// round, "heavy lift" - documented rather than implemented, same as the 2
+// other heavy-lift findings from earlier rounds): a confirmed rejection
+// (code !== 0) and a transport-level failure (network error/timeout -
+// outcome unknown, the tx may have actually landed) both return `undefined`
+// here, so recordExpireAttempt's `succeeded` flag treats them the same. If a
+// request_expire attempt's true outcome was success but the response never
+// reached this process, requestSucceededHeight never gets set, so the
+// keeper retries request_expire against an already-live request - always
+// rejected (ExpireAlreadyRequested), never learning the truth from that
+// either. This self-heals once the real request's own REQUEST_EXPIRE_TTL_BLOCKS
+// (200 blocks, ~20 min at LUNC's block time) elapses on-chain, at which
+// point a fresh request_expire genuinely succeeds - bounded extra delay on
+// an already-rare outage-recovery path, not a fund-safety issue or a
+// permanently stuck state. A full fix would reconcile an ambiguous outcome
+// by polling the chain for the tx's real result (same pattern as
+// treasuryMultisigUiApp.ts's pollTxResult) - not done here to avoid scope
+// creep into the broadcast layer this late in the review cycle.
 async function sendExecute(
   keeper: ReturnType<typeof loadWallet>,
   contract: string,
