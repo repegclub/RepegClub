@@ -32,7 +32,7 @@ import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 import { CosmwasmWasmV1QueryRawContractStateService as RawContractStateService } from "@goblinhunt/cosmes/protobufs";
 
 import { RPC, loadWallet } from "./configMainnet";
-import { discoverTargets } from "./keeperTargets";
+import { discoverTargets, SCRIPTS_DIR } from "./keeperTargets";
 import { addSecrets, findPreimage } from "./keeperSecrets";
 
 const DEFAULT_COUNT = 20;
@@ -102,10 +102,16 @@ function dequeMetaKey(metaByte: "h" | "t"): Uint8Array {
 // RpcClient.doRequest uses internally (a private method, not part of the
 // library's public API), reimplemented here rather than reached into.
 async function abciQuery(path: string, dataHex: string): Promise<{ value: string; log: string }> {
+  // Bounded deadline so a stalled RPC can't hang this indefinitely -
+  // commitQueueLen() is awaited inside main()'s per-target loop, so a stall
+  // here would block every later target from running (CodeRabbit finding,
+  // 2026-09-19 review, fourth round). The timeout rejection is caught by
+  // that loop's existing try/catch same as any other fetch failure.
   const res = await fetch(RPC, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: Date.now(), jsonrpc: "2.0", method: "abci_query", params: { path, data: dataHex } }),
+    signal: AbortSignal.timeout(10_000),
   });
   const { result, error } = await res.json();
   if (error) throw new Error(error.data);
@@ -155,6 +161,15 @@ async function main() {
   console.log("commit_pusher address:", pusher.address);
 
   const targets = discoverTargets();
+  // A missing/misplaced deployment file used to make this exit successfully
+  // having pushed nothing, instead of a clear failure (CodeRabbit finding,
+  // 2026-09-19 review, fourth round) - the seed timer that runs this on a
+  // schedule would just look "green" forever while silently never seeding.
+  if (targets.length === 0) {
+    throw new Error(
+      `discoverTargets() found 0 contracts in ${SCRIPTS_DIR} - refusing to report success without pushing any commits. Check the deployment-*.json files are in this directory.`
+    );
+  }
   console.log(`Found ${targets.length} target(s):`, targets.map((t) => `${t.type}:${t.label}`).join(", "));
 
   for (const target of targets) {

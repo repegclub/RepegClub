@@ -29,7 +29,7 @@
 import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 
 import { RPC, loadWallet } from "./configMainnet";
-import { discoverTargets, Target } from "./keeperTargets";
+import { discoverTargets, SCRIPTS_DIR, Target } from "./keeperTargets";
 import { findPreimage, consumeSecret } from "./keeperSecrets";
 import { getCursor, setCursor, isRaffleTerminal, markRaffleTerminal } from "./keeperState";
 
@@ -53,7 +53,12 @@ const CYOL_RAFFLES_PAGE_LIMIT = 100;
 // make the keeper submit close_round/close_week slightly early and burn gas
 // on an avoidable rejection.
 async function currentBlockTimeSeconds(): Promise<number> {
-  const res = await fetch(`${RPC}/status`);
+  // Without a bounded deadline, a stalled RPC could leave this promise
+  // pending indefinitely - tick() awaits it before processing any target,
+  // so a stall silently blocks every future poll (CodeRabbit finding,
+  // 2026-09-19 review, fourth round). The timeout rejection is caught by
+  // tick()'s existing try/catch same as any other fetch failure.
+  const res = await fetch(`${RPC}/status`, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`/status returned HTTP ${res.status}`);
   const body = await res.json();
   const raw = body.result?.sync_info?.latest_block_time;
@@ -388,6 +393,16 @@ async function main() {
   console.log("Keeper address:", keeper.address);
 
   const targets = discoverTargets();
+  // A missing/misplaced deployment file (wrong directory, typo) used to
+  // start this always-on process successfully with nothing to actually
+  // watch - it would look like it's running fine forever while silently
+  // never processing anything (CodeRabbit finding, 2026-09-19 review,
+  // fourth round). Refuse to start instead.
+  if (targets.length === 0) {
+    throw new Error(
+      `discoverTargets() found 0 contracts in ${SCRIPTS_DIR} - refusing to start an always-on process that would watch nothing. Check the deployment-*.json files are in this directory.`
+    );
+  }
   console.log(
     `Watching ${targets.length} contract(s):`,
     targets.map((t) => `${t.type}:${t.label}`).join(", ")

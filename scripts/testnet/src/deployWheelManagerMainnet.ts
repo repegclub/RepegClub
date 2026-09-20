@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { fromBech32 } from "@cosmjs/encoding";
+
 import { ADMIN_FEE_ADDRESS, REDEMPTION_DENOM, TICKET_DENOM, TREASURY_ADDRESS, loadWallet } from "./configMainnet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 
@@ -60,6 +62,20 @@ async function main() {
   const { contractAddress: weeklyRoundAddress } = JSON.parse(
     readFileSync(weeklyRoundDeploymentPath, "utf8")
   );
+  // Without this, a missing/malformed contractAddress in the deployment
+  // file only surfaces at instantiate() - by then MsgStoreCode already
+  // spent real gas (CodeRabbit finding, 2026-09-19 review, fourth round).
+  let weeklyRoundPrefix: string | undefined;
+  try {
+    weeklyRoundPrefix = typeof weeklyRoundAddress === "string" ? fromBech32(weeklyRoundAddress).prefix : undefined;
+  } catch {
+    weeklyRoundPrefix = undefined;
+  }
+  if (weeklyRoundPrefix !== "terra") {
+    throw new Error(
+      `"${weeklyRoundDeploymentPath}" has no valid Weekly Round contractAddress (got ${JSON.stringify(weeklyRoundAddress)}).`
+    );
+  }
   console.log("Weekly Round address:", weeklyRoundAddress);
 
   const admin = loadWallet("ADMIN_MNEMONIC");

@@ -277,34 +277,27 @@ async function deployWheelManager() {
   setStatus("wheelStatus", `Done. Address: ${inst.contractAddress} (gasUsed ${inst.gasUsed}).`);
 }
 
-// Without disabling the button, a second click while a deploy is still
-// pending starts a second concurrent MsgStoreCode/MsgInstantiateContract
-// flow - duplicate or partial mainnet deploys, wasted irreversible fees
-// (CodeRabbit finding, 2026-09-19 review).
+// One shared lock across all 3 buttons, not 3 independent ones - all 3
+// flows sign with the same admin wallet, so 2 running concurrently (e.g.
+// clicking "weekly" while "cyol" is still storing/instantiating) can race
+// on the account sequence, failing one flow after the other already spent
+// real gas on MsgStoreCode (CodeRabbit finding, 2026-09-19 review, fourth
+// round - the first round's per-button lock only stopped double-clicking
+// the SAME button).
 const cyolButton = el<HTMLButtonElement>("cyolButton");
-cyolButton.addEventListener("click", () => {
-  cyolButton.disabled = true;
-  deployCyolFactory()
-    .catch((err) => setStatus("cyolStatus", err.message ?? String(err), true))
-    .finally(() => {
-      cyolButton.disabled = false;
-    });
-});
 const weeklyButton = el<HTMLButtonElement>("weeklyButton");
-weeklyButton.addEventListener("click", () => {
-  weeklyButton.disabled = true;
-  deployWeeklyRound()
-    .catch((err) => setStatus("weeklyStatus", err.message ?? String(err), true))
-    .finally(() => {
-      weeklyButton.disabled = false;
-    });
-});
 const wheelButton = el<HTMLButtonElement>("wheelButton");
-wheelButton.addEventListener("click", () => {
-  wheelButton.disabled = true;
-  deployWheelManager()
-    .catch((err) => setStatus("wheelStatus", err.message ?? String(err), true))
+const deployButtons = [cyolButton, weeklyButton, wheelButton];
+
+function runDeploy(deploy: () => Promise<void>, statusId: string) {
+  for (const button of deployButtons) button.disabled = true;
+  deploy()
+    .catch((err) => setStatus(statusId, err.message ?? String(err), true))
     .finally(() => {
-      wheelButton.disabled = false;
+      for (const button of deployButtons) button.disabled = false;
     });
-});
+}
+
+cyolButton.addEventListener("click", () => runDeploy(deployCyolFactory, "cyolStatus"));
+weeklyButton.addEventListener("click", () => runDeploy(deployWeeklyRound, "weeklyStatus"));
+wheelButton.addEventListener("click", () => runDeploy(deployWheelManager, "wheelStatus"));
