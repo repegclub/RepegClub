@@ -31,7 +31,8 @@ import { MsgExecuteContract, queryContract } from "@goblinhunt/cosmes/client";
 import { RPC, loadWallet } from "./configMainnet";
 import { discoverTargets, SCRIPTS_DIR, Target } from "./keeperTargets";
 import { findPreimage, consumeSecret } from "./keeperSecrets";
-import { getCursor, setCursor, isRaffleTerminal, markRaffleTerminal } from "./keeperState";
+import { getCursor, setCursor, isRaffleTerminal, markRaffleTerminal, getExpirePhase, recordExpireAttempt } from "./keeperState";
+import { nextExpireAction, type ExpireAction } from "./keeperExpireLogic";
 
 const POLL_INTERVAL_MS = 15_000;
 // Round-history walk: bounds how many already-resolved rounds/weeks a single
@@ -40,19 +41,23 @@ const MAX_CURSOR_ADVANCE_PER_TICK = 30;
 // Mirrors create-your-own-luck's own `MAX_RAFFLE_AGE_SECONDS` (contract.rs) -
 // fixed platform-wide there, not queryable via any QueryMsg, so it has to be
 // mirrored here to avoid spamming ExpireRaffle attempts on every open raffle
-// that simply hasn't reached min_players yet (the common, long-lived case -
-// unlike the Closed/ExpiryPending branches below, which are rare enough that
-// optimistic per-tick attempts are cheap even without precise gating). Keep
-// in sync with contracts/create-your-own-luck/src/contract.rs.
+// that simply hasn't reached min_players yet. Keep in sync with
+// contracts/create-your-own-luck/src/contract.rs.
 const CYOL_MAX_RAFFLE_AGE_SECONDS_MIRROR = 5_184_000; // 60 days
+// Same reasoning, mirrors contract.rs's MAX_REVEAL_AGE_SECONDS (fixed for
+// CYOL, unlike wheel-manager/weekly-round where it's per-contract config) -
+// used by nextExpireAction's request_expire gate for CYOL raffles below.
+const CYOL_MAX_REVEAL_AGE_SECONDS_MIRROR = 3_600; // 1 hour
 const CYOL_RAFFLES_PAGE_LIMIT = 100;
 
 // Block time, not Date.now() - the contracts' deadline/duration checks
 // compare against block.time, and this machine's clock can drift from it -
 // CodeRabbit review (2026-07-15) flagged that a drifted local clock could
 // make the keeper submit close_round/close_week slightly early and burn gas
-// on an avoidable rejection.
-async function currentBlockTimeSeconds(): Promise<number> {
+// on an avoidable rejection. Also returns block height, needed by the
+// expiration-phase height gates below (nextExpireAction) - one /status call
+// covers both instead of two.
+async function currentBlockStatus(): Promise<{ seconds: number; height: number }> {
   // Without a bounded deadline, a stalled RPC could leave this promise
   // pending indefinitely - tick() awaits it before processing any target,
   // so a stall silently blocks every future poll (CodeRabbit finding,
@@ -61,45 +66,23 @@ async function currentBlockTimeSeconds(): Promise<number> {
   const res = await fetch(`${RPC}/status`, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`/status returned HTTP ${res.status}`);
   const body = await res.json();
-  const raw = body.result?.sync_info?.latest_block_time;
-  const seconds = Math.floor(new Date(raw).getTime() / 1000);
+  const rawTime = body.result?.sync_info?.latest_block_time;
+  const seconds = Math.floor(new Date(rawTime).getTime() / 1000);
   // A missing/malformed latest_block_time used to silently become NaN here
   // instead of throwing (CodeRabbit finding, 2026-09-19 review) - every
   // deadline comparison downstream in tick() evaluates false against NaN,
   // so the keeper would just skip every target that tick instead of
   // retrying next tick via the try/catch tick() already has for this.
-  if (!Number.isFinite(seconds)) throw new Error(`/status returned an unusable latest_block_time: ${JSON.stringify(raw)}`);
-  return seconds;
+  if (!Number.isFinite(seconds)) throw new Error(`/status returned an unusable latest_block_time: ${JSON.stringify(rawTime)}`);
+  const rawHeight = body.result?.sync_info?.latest_block_height;
+  const height = Number(rawHeight);
+  if (!Number.isFinite(height)) throw new Error(`/status returned an unusable latest_block_height: ${JSON.stringify(rawHeight)}`);
+  return { seconds, height };
 }
 
-type CloseOrRevealAction = "reveal" | "request_expire" | "finalize_expire" | "claim_expire";
-
-/**
- * What to do with a round/week/raffle that's already Closed or ExpiryPending.
- * Shared across wheel-manager/weekly-round/CYOL since `RevealDraw`'s own
- * status guard (Closed or ExpiryPending) and the 3-phase expiration cascade
- * are identical in all 3 contracts (see wheel-manager's `execute_reveal_draw`/
- * `execute_request_expire_closed_round`/etc. and their CYOL/weekly-round
- * doc-comment cross-references).
- *
- * Deliberately does NOT try to replicate the contracts' own block-height
- * gating for the expiration cascade (`EXPIRE_FINALIZE_DELAY_BLOCKS`/
- * `EXPIRE_CHALLENGE_BLOCKS`/etc.) - none of those intermediate timestamps
- * (`expire_requested_at_height`/`expiry_pending_since_height`) are exposed
- * by any query, and this whole cascade only activates during an outage (a
- * reveal that didn't happen in time), which is rare enough that an
- * optimistic per-tick attempt - quietly ignored if the contract says it's
- * too early - is cheap and simpler than trying to reconstruct the timing.
- */
-function pickActions(status: string, commitUsed: string | null): CloseOrRevealAction[] {
-  if (commitUsed) {
-    const preimage = findPreimage(commitUsed);
-    if (preimage) return ["reveal"];
-  }
-  if (status === "closed") return ["request_expire", "finalize_expire"];
-  if (status === "expiry_pending") return ["claim_expire"];
-  return [];
-}
+// nextExpireAction and its ExpireAction type live in keeperExpireLogic.ts
+// (imported below) - not here, since this file's unconditional main() call
+// at the bottom means it can never be imported by a test.
 
 async function sendExecute(
   keeper: ReturnType<typeof loadWallet>,
@@ -124,51 +107,81 @@ async function sendExecute(
   }
 }
 
-/**
- * Executes whichever action(s) `pickActions` returned for a Closed/
- * ExpiryPending round/week/raffle. `idField` is `{round_id}`/`{week_id}`/`{}`
- * (CYOL has no id - one raffle per instance). `label` is for logging only.
- */
-async function executeCloseOrRevealActions(
-  keeper: ReturnType<typeof loadWallet>,
-  contract: string,
-  label: string,
-  actions: CloseOrRevealAction[],
-  idField: Record<string, unknown>,
-  commitUsed: string | null
-) {
-  for (const action of actions) {
-    if (action === "reveal") {
-      const preimage = findPreimage(commitUsed!)!;
-      console.log(`[${label}] revealing with the matching preimage`);
-      const res = await sendExecute(keeper, contract, { reveal_draw: { ...idField, preimage } });
-      if (res && res.txResponse.code === 0) consumeSecret(commitUsed!);
-      return; // reveal supersedes any expiration step - nothing else to try this tick
-    }
-    if (action === "request_expire") {
-      console.warn(`[${label}] closed with no local preimage for its commit - trying the expiration safety net`);
-      await sendExecute(keeper, contract, { [`request_expire_closed_${idKind(idField)}`]: { ...idField } }, { quiet: true });
-    }
-    if (action === "finalize_expire") {
-      await sendExecute(keeper, contract, { [`finalize_expire_closed_${idKind(idField)}`]: { ...idField } }, { quiet: true });
-    }
-    if (action === "claim_expire") {
-      await sendExecute(keeper, contract, { [`claim_expired_${idKind(idField)}`]: { ...idField } }, { quiet: true });
-    }
-  }
-}
-
-// The 3-phase expiration messages are named *_round/*_week/*_raffle - this
-// picks the right suffix from which id field (if any) a target uses, so
-// `executeCloseOrRevealActions` above can stay shared instead of duplicated
-// 3 times with only the message names different.
+// The 3-phase expiration messages are named *_round/*_week/*_raffle (except
+// claim, named *_expired_* not *_expire_closed_*) - this picks the right
+// suffix from which id field (if any) a target uses, so the function below
+// can stay shared instead of duplicated 3 times with only the message names
+// different.
 function idKind(idField: Record<string, unknown>): "round" | "week" | "raffle" {
   if ("round_id" in idField) return "round";
   if ("week_id" in idField) return "week";
   return "raffle";
 }
 
-async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: Target, nowSeconds: number) {
+const EXPIRE_MSG_PREFIX: Record<ExpireAction, string> = {
+  request_expire: "request_expire_closed",
+  finalize_expire: "finalize_expire_closed",
+  claim_expire: "claim_expired",
+};
+
+/**
+ * Handles a Closed/ExpiryPending round/week/raffle: reveals immediately if
+ * the keeper holds the matching preimage (unrelated to the expiration
+ * cascade - always tried first, every tick, no gating needed), otherwise
+ * consults `nextExpireAction` and attempts at most one expiration step this
+ * tick, recording the attempt height so future ticks gate correctly.
+ * `idField` is `{round_id}`/`{week_id}`/`{}` (CYOL has no id - one raffle
+ * per instance). `phaseKey` must be unique per round/week/raffle (not just
+ * per target) - see the call sites.
+ */
+async function handleClosedOrExpiryPending(
+  keeper: ReturnType<typeof loadWallet>,
+  contract: string,
+  label: string,
+  phaseKey: string,
+  idField: Record<string, unknown>,
+  item: { status: "closed" | "expiry_pending"; commit_used: string | null; closed_at: number | null },
+  maxRevealAgeSeconds: number,
+  chainTime: { seconds: number; height: number }
+) {
+  if (item.commit_used) {
+    const preimage = findPreimage(item.commit_used);
+    if (preimage) {
+      console.log(`[${label}] revealing with the matching preimage`);
+      const res = await sendExecute(keeper, contract, { reveal_draw: { ...idField, preimage } });
+      if (res && res.txResponse.code === 0) consumeSecret(item.commit_used);
+      return;
+    }
+  }
+
+  const phase = getExpirePhase(phaseKey);
+  const action = nextExpireAction({
+    status: item.status,
+    closedAtSeconds: item.closed_at,
+    nowSeconds: chainTime.seconds,
+    maxRevealAgeSeconds,
+    currentHeight: chainTime.height,
+    phase,
+  });
+  if (!action) return;
+
+  if (action === "request_expire") {
+    console.warn(`[${label}] closed with no local preimage for its commit - trying the expiration safety net`);
+  }
+  await sendExecute(
+    keeper,
+    contract,
+    { [`${EXPIRE_MSG_PREFIX[action]}_${idKind(idField)}`]: { ...idField } },
+    { quiet: true }
+  );
+  recordExpireAttempt(phaseKey, action, chainTime.height);
+}
+
+async function tickWheelManager(
+  keeper: ReturnType<typeof loadWallet>,
+  target: Target,
+  chainTime: { seconds: number; height: number }
+) {
   const cursorKey = `wheel-manager:${target.label}`;
   let roundId = getCursor(cursorKey);
   const config = await queryContract<any>(RPC, { address: target.address, query: { get_config: {} } });
@@ -194,8 +207,8 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
       // hit, so status never sits "open" with reached_max true waiting on
       // this poll.
       const hasMin = round.unique_player_count >= config.min_players;
-      const deadlinePassed = round.deadline !== null && nowSeconds >= round.deadline;
-      const hardCapPassed = nowSeconds >= round.opened_at + config.max_round_age_seconds;
+      const deadlinePassed = round.deadline !== null && chainTime.seconds >= round.deadline;
+      const hardCapPassed = chainTime.seconds >= round.opened_at + config.max_round_age_seconds;
       if (deadlinePassed || (hasMin && hardCapPassed)) {
         const reason = deadlinePassed ? "rolling deadline passed" : "hard cap reached with min players";
         console.log(`[${target.label}] round ${roundId} eligible to close (${reason}) - closing`);
@@ -212,16 +225,29 @@ async function tickWheelManager(keeper: ReturnType<typeof loadWallet>, target: T
       break;
     }
 
+    if (round.status !== "closed" && round.status !== "expiry_pending") break;
     // closed or expiry_pending - front of REVEAL_QUEUE, needs action.
-    const actions = pickActions(round.status, round.commit_used);
-    await executeCloseOrRevealActions(keeper, target.address, target.label, actions, { round_id: roundId }, round.commit_used);
+    await handleClosedOrExpiryPending(
+      keeper,
+      target.address,
+      target.label,
+      `wheel-manager:${target.label}:${roundId}`,
+      { round_id: roundId },
+      round,
+      config.max_reveal_age_seconds,
+      chainTime
+    );
     break;
   }
 
   setCursor(cursorKey, roundId);
 }
 
-async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Target, nowSeconds: number) {
+async function tickWeeklyRound(
+  keeper: ReturnType<typeof loadWallet>,
+  target: Target,
+  chainTime: { seconds: number; height: number }
+) {
   const cursorKey = `weekly-round:${target.label}`;
   let weekId = getCursor(cursorKey);
   const config = await queryContract<any>(RPC, { address: target.address, query: { get_config: {} } });
@@ -241,7 +267,7 @@ async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Ta
     }
 
     if (week.status === "open") {
-      const durationElapsed = nowSeconds >= week.opened_at + config.round_duration_days * 86400;
+      const durationElapsed = chainTime.seconds >= week.opened_at + config.round_duration_days * 86400;
       const hasMin = week.unique_player_count >= config.min_players;
       if (durationElapsed && hasMin) {
         console.log(`[${target.label}] week ${weekId} reached its full duration with enough players - closing`);
@@ -255,8 +281,17 @@ async function tickWeeklyRound(keeper: ReturnType<typeof loadWallet>, target: Ta
       break;
     }
 
-    const actions = pickActions(week.status, week.commit_used);
-    await executeCloseOrRevealActions(keeper, target.address, target.label, actions, { week_id: weekId }, week.commit_used);
+    if (week.status !== "closed" && week.status !== "expiry_pending") break;
+    await handleClosedOrExpiryPending(
+      keeper,
+      target.address,
+      target.label,
+      `weekly-round:${target.label}:${weekId}`,
+      { week_id: weekId },
+      week,
+      config.max_reveal_age_seconds,
+      chainTime
+    );
     break;
   }
 
@@ -281,7 +316,11 @@ async function discoverCyolRaffles(factoryAddress: string): Promise<string[]> {
   return addresses;
 }
 
-async function tickCyolRaffle(keeper: ReturnType<typeof loadWallet>, raffleAddress: string, nowSeconds: number) {
+async function tickCyolRaffle(
+  keeper: ReturnType<typeof loadWallet>,
+  raffleAddress: string,
+  chainTime: { seconds: number; height: number }
+) {
   let status: any;
   try {
     status = await queryContract<any>(RPC, { address: raffleAddress, query: { get_raffle_status: {} } });
@@ -303,8 +342,8 @@ async function tickCyolRaffle(keeper: ReturnType<typeof loadWallet>, raffleAddre
     }
     // Safety net for a raffle that never reached min_players - see
     // CYOL_MAX_RAFFLE_AGE_SECONDS_MIRROR's own doc comment for why this is
-    // hardcoded and gated (unlike the Closed/ExpiryPending branch below).
-    if (status.opened_at !== null && nowSeconds >= status.opened_at + CYOL_MAX_RAFFLE_AGE_SECONDS_MIRROR) {
+    // hardcoded and gated.
+    if (status.opened_at !== null && chainTime.seconds >= status.opened_at + CYOL_MAX_RAFFLE_AGE_SECONDS_MIRROR) {
       await sendExecute(keeper, raffleAddress, { expire_raffle: {} }, { quiet: true });
     }
     return;
@@ -315,9 +354,17 @@ async function tickCyolRaffle(keeper: ReturnType<typeof loadWallet>, raffleAddre
   // never actually observable at rest - see RaffleStatus's own doc comment).
   if (status.status === "funding" || status.status === "awaiting_commit") return;
 
-  // closed or expiry_pending.
-  const actions = pickActions(status.status, status.commit_used);
-  await executeCloseOrRevealActions(keeper, raffleAddress, `cyol:${raffleAddress}`, actions, {}, status.commit_used);
+  if (status.status !== "closed" && status.status !== "expiry_pending") return;
+  await handleClosedOrExpiryPending(
+    keeper,
+    raffleAddress,
+    `cyol:${raffleAddress}`,
+    `cyol:${raffleAddress}`,
+    {},
+    status,
+    CYOL_MAX_REVEAL_AGE_SECONDS_MIRROR,
+    chainTime
+  );
 }
 
 async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
@@ -327,23 +374,23 @@ async function tick(keeper: ReturnType<typeof loadWallet>, targets: Target[]) {
   // whole keeper over a single failed request - systemd restarts it, but
   // that costs a ~20-30s reconnect and, during a longer RPC outage, means
   // the process is crash-looping instead of just retrying next tick.
-  let nowSeconds: number;
+  let chainTime: { seconds: number; height: number };
   try {
-    nowSeconds = await currentBlockTimeSeconds();
+    chainTime = await currentBlockStatus();
   } catch (err) {
-    console.error(`tick error: failed to fetch current block time: ${(err as Error).message}`);
+    console.error(`tick error: failed to fetch current block status: ${(err as Error).message}`);
     return;
   }
   for (const target of targets) {
     try {
       if (target.type === "wheel-manager") {
-        await tickWheelManager(keeper, target, nowSeconds);
+        await tickWheelManager(keeper, target, chainTime);
       } else if (target.type === "weekly-round") {
-        await tickWeeklyRound(keeper, target, nowSeconds);
+        await tickWeeklyRound(keeper, target, chainTime);
       } else {
         const raffles = await discoverCyolRaffles(target.address);
         for (const raffleAddress of raffles) {
-          await tickCyolRaffle(keeper, raffleAddress, nowSeconds);
+          await tickCyolRaffle(keeper, raffleAddress, chainTime);
         }
       }
     } catch (err) {

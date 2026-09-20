@@ -199,6 +199,19 @@ async function deployWeeklyRound() {
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
   requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
+  // Same bounds as deployWeeklyRoundMainnet.ts (the CLI twin) - this
+  // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
+  // fifth round; bounds verified against contracts/weekly-round/src/
+  // contract.rs's real instantiate validation).
+  if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+    throw new Error(`minPlayers must be an integer >= 2, got "${minPlayers}".`);
+  }
+  if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+    throw new Error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayers}".`);
+  }
+  if (!Number.isInteger(roundDurationDays) || roundDurationDays < 1 || roundDurationDays > 365) {
+    throw new Error(`roundDurationDays must be an integer between 1 and 365, got "${roundDurationDays}".`);
+  }
 
   const wasm = await readWasmFile("weeklyWasm");
   const net = currentNetwork();
@@ -245,6 +258,19 @@ async function deployWheelManager() {
   if (!weeklyRoundAddress) throw new Error("Fill in Weekly Round's address (deploy step 2 first).");
   requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
   requireValidTerraAddress(weeklyRoundAddress, "Weekly Round address");
+  // Same bounds as deployWheelManagerMainnet.ts (the CLI twin) - this
+  // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
+  // fifth round; bounds verified against contracts/wheel-manager/src/
+  // contract.rs's real instantiate validation).
+  if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+    throw new Error(`minPlayers must be an integer >= 2, got "${minPlayers}".`);
+  }
+  if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+    throw new Error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayers}".`);
+  }
+  if (!/^[1-9]\d*$/.test(ticketPrice)) {
+    throw new Error(`ticketPrice must be a positive integer string (micro-units), got "${ticketPrice}".`);
+  }
 
   const wasm = await readWasmFile("wheelWasm");
   const net = currentNetwork();
