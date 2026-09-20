@@ -50,6 +50,41 @@ const ticketPrice = ticketPriceArg ?? "1000000";
 const maxRoundAgeSeconds = maxAgeArg ? Number(maxAgeArg) : 172_800;
 const maxRevealAgeSeconds = maxRevealAgeArg ? Number(maxRevealAgeArg) : 3600;
 const unclaimedDeadlineDays = unclaimedDeadlineArg ? Number(unclaimedDeadlineArg) : 90;
+
+// Same gap as deployWeeklyRoundMainnet.ts had (CodeRabbit finding,
+// 2026-09-19 review, second round) - applied here proactively instead of
+// waiting for a future round to flag this sibling script too. Bounds
+// verified against contracts/wheel-manager/src/contract.rs's real
+// instantiate validation, not guessed.
+if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+  console.error(`minPlayers must be an integer >= 2, got "${minPlayersArg}".`);
+  process.exit(1);
+}
+if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+  console.error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayersArg}".`);
+  process.exit(1);
+}
+if (!/^[1-9]\d*$/.test(ticketPrice)) {
+  console.error(`ticketPrice must be a positive integer string (micro-units), got "${ticketPrice}".`);
+  process.exit(1);
+}
+if (!Number.isInteger(roundTimeoutSeconds) || roundTimeoutSeconds <= 0) {
+  console.error(`roundTimeoutSeconds must be a positive integer, got "${timeoutArg}".`);
+  process.exit(1);
+}
+if (!Number.isInteger(maxRoundAgeSeconds) || maxRoundAgeSeconds <= 0) {
+  console.error(`maxRoundAgeSeconds must be a positive integer, got "${maxAgeArg}".`);
+  process.exit(1);
+}
+if (!Number.isInteger(maxRevealAgeSeconds) || maxRevealAgeSeconds < 1800 || maxRevealAgeSeconds > 604_800) {
+  console.error(`maxRevealAgeSeconds must be an integer between 1800 and 604800, got "${maxRevealAgeArg}".`);
+  process.exit(1);
+}
+if (!Number.isInteger(unclaimedDeadlineDays) || unclaimedDeadlineDays < 1 || unclaimedDeadlineDays > 365) {
+  console.error(`unclaimedDeadlineDays must be an integer between 1 and 365, got "${unclaimedDeadlineArg}".`);
+  process.exit(1);
+}
+
 const deploymentPath = path.resolve(__dirname, `../deployment-wheelmanager-${label}.json`);
 // Defaults to weekly-round's real mainnet deployment file (see
 // deployWeeklyRoundMainnet.ts) - run that script first.

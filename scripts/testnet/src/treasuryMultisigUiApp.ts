@@ -116,7 +116,14 @@ async function proposeAndSign() {
   }
 
   const multisigAddr = multisigAddress(chain.bech32Prefix);
-  const accountRes = await fetch(`${chain.lcd}/cosmos/auth/v1beta1/accounts/${multisigAddr}`).then((r) => r.json());
+  // Bounded deadline so a stalled LCD can't hang this indefinitely - without
+  // it, signButton (locked while this is pending, see below) would stay
+  // disabled forever with no error shown (same class of gap CodeRabbit
+  // found twice already in keeperMainnet.ts/generateAndPushCommitsMainnet.ts,
+  // 2026-09-19 review - applied here proactively).
+  const accountRes = await fetch(`${chain.lcd}/cosmos/auth/v1beta1/accounts/${multisigAddr}`, {
+    signal: AbortSignal.timeout(10_000),
+  }).then((r) => r.json());
   const baseAccount = accountRes.account?.base_account ?? accountRes.account;
   if (!baseAccount) throw new Error(`Couldn't find the treasury multisig account on ${chainKey} - has it ever received funds there?`);
   const accountNumber = Number(baseAccount.account_number);
@@ -189,10 +196,21 @@ async function pollTxResult(
 ): Promise<{ code: number; rawLog?: string }> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    const res = await fetch(`${lcd}/cosmos/tx/v1beta1/txs/${txhash}`);
-    if (res.status === 200) {
-      const body = await res.json();
-      if (body.tx_response) return { code: body.tx_response.code, rawLog: body.tx_response.raw_log };
+    try {
+      // A stalled request here would defeat maxAttempts entirely without a
+      // bounded deadline - one hung fetch could block the whole retry loop
+      // forever instead of just costing one attempt. Wrapped in try/catch
+      // (added alongside the timeout, noticed while fixing it) so a single
+      // transient network error/timeout costs one attempt, not the whole
+      // poll - a plain network error here used to abort pollTxResult
+      // immediately instead of retrying.
+      const res = await fetch(`${lcd}/cosmos/tx/v1beta1/txs/${txhash}`, { signal: AbortSignal.timeout(10_000) });
+      if (res.status === 200) {
+        const body = await res.json();
+        if (body.tx_response) return { code: body.tx_response.code, rawLog: body.tx_response.raw_log };
+      }
+    } catch {
+      // Transient - fall through to the next attempt.
     }
   }
   throw new Error(`Timed out waiting for txhash ${txhash} to land in a block - check it manually.`);
@@ -252,10 +270,16 @@ async function combineAndBroadcast() {
   const txBytes = makeMultisignedTxBytes(MULTISIG_PUBKEY, sig1.sequence, sig1.fee, bodyBytes, signatures);
 
   setStatus("broadcastStatus", `Broadcasting on ${sig1.chainKey}: ${sig1.amount}${sig1.denom} from ${multisigAddr} to ${sig1.recipient}...`);
+  // Bounded deadline, same reasoning as the fetches above - if this hangs,
+  // broadcastButton (locked while pending) would stay disabled forever
+  // with no error. A signed tx is safe to resubmit if a timeout fires
+  // before a response arrives - the chain rejects an already-seen tx
+  // rather than double-spending it.
   const res = await fetch(`${chain.lcd}/cosmos/tx/v1beta1/txs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tx_bytes: toBase64(txBytes), mode: "BROADCAST_MODE_SYNC" }),
+    signal: AbortSignal.timeout(10_000),
   });
   const body = await res.json();
   el<HTMLTextAreaElement>("broadcastOutput").value = JSON.stringify(body, null, 2);
