@@ -1,4 +1,9 @@
-import "dotenv/config";
+// Deliberately no `import "dotenv/config"` here (CodeRabbit finding,
+// 2026-09-19 review, third round) - a stray .env in the working directory
+// (e.g. left over from testnet setup) could otherwise silently supply
+// ADMIN_MNEMONIC/COMMIT_PUSHER_MNEMONIC/KEEPER_MNEMONIC, contradicting
+// requireEnv()'s own stated rule below ("never in .env for mainnet").
+// Mainnet credentials must come only from a real shell env var export.
 import { setChainSdkVersion, useChainSdkVersion } from "@goblinhunt/cosmes/protobufs";
 import { MnemonicWallet } from "@goblinhunt/cosmes/wallet";
 

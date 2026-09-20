@@ -15,6 +15,7 @@
 
 import { Buffer } from "buffer";
 
+import { fromBech32 } from "@cosmjs/encoding";
 import { KeplrController, WalletType, type ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 
@@ -135,6 +136,22 @@ async function instantiate<T>(wallet: ConnectedWallet, codeId: bigint, label: st
   return { contractAddress: addrAttr.value, gasUsed: res.txResponse.gasUsed, txhash: res.txResponse.txhash };
 }
 
+// A malformed address (typo, wrong chain's prefix) used to only surface at
+// instantiate() - by then storeCode() already spent real gas (CodeRabbit
+// finding, 2026-09-19 review, third round). Both testnet and mainnet use the
+// "terra" Bech32 prefix, so this is safe to check for either network.
+function requireValidTerraAddress(address: string, fieldLabel: string): void {
+  let prefix: string;
+  try {
+    prefix = fromBech32(address).prefix;
+  } catch {
+    throw new Error(`${fieldLabel} "${address}" isn't a valid Bech32 address.`);
+  }
+  if (prefix !== "terra") {
+    throw new Error(`${fieldLabel} "${address}" has prefix "${prefix}", expected "terra1...".`);
+  }
+}
+
 // ---- 1. Create Your Own Luck (raffle code) + its factory ----
 
 async function deployCyolFactory() {
@@ -142,6 +159,7 @@ async function deployCyolFactory() {
   const commitPusherAddress = el<HTMLInputElement>("cyolCommitPusher").value.trim();
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
+  requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
 
   const raffleWasm = await readWasmFile("cyolRaffleWasm");
   const factoryWasm = await readWasmFile("cyolFactoryWasm");
@@ -180,6 +198,7 @@ async function deployWeeklyRound() {
   const roundDurationDays = Number(el<HTMLInputElement>("weeklyDuration").value || "7");
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
+  requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
 
   const wasm = await readWasmFile("weeklyWasm");
   const net = currentNetwork();
@@ -224,6 +243,8 @@ async function deployWheelManager() {
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
   if (!weeklyRoundAddress) throw new Error("Fill in Weekly Round's address (deploy step 2 first).");
+  requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
+  requireValidTerraAddress(weeklyRoundAddress, "Weekly Round address");
 
   const wasm = await readWasmFile("wheelWasm");
   const net = currentNetwork();
