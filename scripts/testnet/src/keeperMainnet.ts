@@ -226,6 +226,14 @@ async function tickWheelManager(
       // BuyTicket already auto-closes the round the instant max_players is
       // hit, so status never sits "open" with reached_max true waiting on
       // this poll.
+      //
+      // deadlinePassed alone (no explicit hasMin check) is deliberate, not a
+      // gap - CodeRabbit flagged this (2026-09-20 review, tenth round), but
+      // the contract's own execute_close_round has: "deadline is only ever
+      // set once min_players is reached... so checking it alone already
+      // implies has_min" (execute.rs). Verified against that comment before
+      // skipping this one - adding a redundant `hasMin &&` here would change
+      // nothing, since deadlinePassed can't be true without it.
       const hasMin = round.unique_player_count >= config.min_players;
       const deadlinePassed = round.deadline !== null && chainTime.seconds >= round.deadline;
       const hardCapPassed = chainTime.seconds >= round.opened_at + config.max_round_age_seconds;

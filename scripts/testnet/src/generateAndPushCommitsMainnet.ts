@@ -179,6 +179,14 @@ async function main() {
   // that succeed stays non-fatal (logged, skipped) - only "the whole run
   // accomplished nothing" throws.
   let queueLenFailures = 0;
+  // Same reasoning as queueLenFailures above, one level deeper: if every
+  // target that actually NEEDED a push had that push fail, the run still
+  // exited 0 (logged only) - the scheduled timer would look healthy while
+  // genuinely replenishing nothing (CodeRabbit finding, 2026-09-20 review,
+  // tenth round). A target that didn't need a push (queue already full)
+  // never touches these counters, so a quiet no-op run stays non-fatal.
+  let pushesRequired = 0;
+  let pushesSucceeded = 0;
   for (const target of targets) {
     let currentLen: number;
     try {
@@ -191,6 +199,7 @@ async function main() {
     if (currentLen >= LOW_WATER_MARK) {
       console.log(`[${target.label}] queue already has ${currentLen} commits queued (>= ${LOW_WATER_MARK}) - skipping push.`);
     } else {
+      pushesRequired++;
       const pairs = generateCommits(count);
       // cosmwasm_std::HexBinary (de)serializes as a plain hex string, not
       // base64 (see cosmwasm-std's hex_binary.rs Serialize impl) - unlike
@@ -223,6 +232,7 @@ async function main() {
           console.error(`[${target.label}] push_commits failed: ${res.txResponse.rawLog}`);
         } else {
           console.log(`[${target.label}] pushed ${pairs.length} commits, tx: ${res.txResponse.txhash}`);
+          pushesSucceeded++;
         }
       } catch (err) {
         console.error(`[${target.label}] broadcast error: ${(err as Error).message}`);
@@ -290,6 +300,11 @@ async function main() {
   if (queueLenFailures === targets.length) {
     throw new Error(
       `Queue-length read failed for all ${targets.length} target(s) - this run pushed nothing. See the errors above.`
+    );
+  }
+  if (pushesRequired > 0 && pushesSucceeded === 0) {
+    throw new Error(
+      `${pushesRequired} target(s) needed a commit push and none succeeded - this run replenished nothing. See the errors above.`
     );
   }
 }

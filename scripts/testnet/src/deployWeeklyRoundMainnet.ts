@@ -42,6 +42,15 @@ if (!label) {
   console.error("Usage: tsx src/deployWeeklyRoundMainnet.ts <label> [maxPlayers] [minPlayers] [roundDurationDays]");
   process.exit(1);
 }
+const WEEKLY_ROUND_INSTANTIATE_LABEL = `weekly-round-${label}`;
+// Terra Classic's wasmd (v0.61.8) rejects an instantiate label over its
+// configured MaxLabelSize (128 UTF-8 bytes by default) - checked on the
+// complete prefixed label, not just the user-supplied suffix, before
+// storeCode spends gas (CodeRabbit finding, 2026-09-20 review, tenth round).
+if (new TextEncoder().encode(WEEKLY_ROUND_INSTANTIATE_LABEL).length > 128) {
+  console.error(`Instantiate label "${WEEKLY_ROUND_INSTANTIATE_LABEL}" is over wasmd's 128-byte MaxLabelSize.`);
+  process.exit(1);
+}
 const maxPlayers = maxPlayersArg ? Number(maxPlayersArg) : 10;
 const minPlayers = minPlayersArg ? Number(minPlayersArg) : 2;
 const roundDurationDays = durationArg ? Number(durationArg) : 7;
@@ -92,7 +101,7 @@ async function main() {
       new MsgInstantiateContract({
         sender: admin.address,
         codeId,
-        label: `weekly-round-${label}`,
+        label: WEEKLY_ROUND_INSTANTIATE_LABEL,
         msg: {
           base_ticket_price: "10000000",
           price_increment_per_day: "1000000",

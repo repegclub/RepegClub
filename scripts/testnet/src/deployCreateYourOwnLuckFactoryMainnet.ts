@@ -34,6 +34,15 @@ if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
   console.error("label may contain only letters, digits, dots, underscores, and hyphens.");
   process.exit(1);
 }
+const FACTORY_INSTANTIATE_LABEL = `create-your-own-luck-factory-${label}`;
+// Terra Classic's wasmd (v0.61.8) rejects an instantiate label over its
+// configured MaxLabelSize (128 UTF-8 bytes by default) - checked on the
+// complete prefixed label, not just the user-supplied suffix, before
+// storeCode spends gas (CodeRabbit finding, 2026-09-20 review, tenth round).
+if (new TextEncoder().encode(FACTORY_INSTANTIATE_LABEL).length > 128) {
+  console.error(`Instantiate label "${FACTORY_INSTANTIATE_LABEL}" is over wasmd's 128-byte MaxLabelSize.`);
+  process.exit(1);
+}
 const deploymentPath = path.resolve(__dirname, `../deployment-cyol-factory-${label}.json`);
 
 async function main() {
@@ -78,7 +87,7 @@ async function main() {
       new MsgInstantiateContract({
         sender: admin.address,
         codeId: factoryCodeId,
-        label: `create-your-own-luck-factory-${label}`,
+        label: FACTORY_INSTANTIATE_LABEL,
         msg: { raffle_code_id: Number(raffleCodeId), commit_pusher: commitPusherAddress },
         funds: [],
       }),

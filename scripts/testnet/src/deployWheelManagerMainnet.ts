@@ -58,6 +58,15 @@ if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
   console.error("label may contain only letters, digits, dots, underscores, and hyphens.");
   process.exit(1);
 }
+const WHEEL_MANAGER_INSTANTIATE_LABEL = `wheel-manager-${label}`;
+// Terra Classic's wasmd (v0.61.8) rejects an instantiate label over its
+// configured MaxLabelSize (128 UTF-8 bytes by default) - checked on the
+// complete prefixed label, not just the user-supplied suffix, before
+// storeCode spends gas (CodeRabbit finding, 2026-09-20 review, tenth round).
+if (new TextEncoder().encode(WHEEL_MANAGER_INSTANTIATE_LABEL).length > 128) {
+  console.error(`Instantiate label "${WHEEL_MANAGER_INSTANTIATE_LABEL}" is over wasmd's 128-byte MaxLabelSize.`);
+  process.exit(1);
+}
 const maxPlayers = Number(maxPlayersArg);
 const minPlayers = Number(minPlayersArg);
 const roundTimeoutSeconds = timeoutArg ? Number(timeoutArg) : 3600;
@@ -155,7 +164,7 @@ async function main() {
       new MsgInstantiateContract({
         sender: admin.address,
         codeId,
-        label: `wheel-manager-${label}`,
+        label: WHEEL_MANAGER_INSTANTIATE_LABEL,
         msg: {
           ticket_price: ticketPrice,
           ticket_denom: TICKET_DENOM,

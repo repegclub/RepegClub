@@ -157,6 +157,16 @@ function requireValidTerraAddress(address: string, fieldLabel: string): void {
   }
 }
 
+// Terra Classic's wasmd (v0.61.8) rejects an instantiate label over its
+// configured MaxLabelSize (128 UTF-8 bytes by default) - checked on the
+// complete prefixed label, not just the user-supplied suffix, before
+// storeCode spends gas (CodeRabbit finding, 2026-09-20 review, tenth round).
+function requireLabelFitsWasmd(fullLabel: string): void {
+  if (new TextEncoder().encode(fullLabel).length > 128) {
+    throw new Error(`Instantiate label "${fullLabel}" is over wasmd's 128-byte MaxLabelSize.`);
+  }
+}
+
 // ---- 1. Create Your Own Luck (raffle code) + its factory ----
 
 async function deployCyolFactory() {
@@ -165,6 +175,7 @@ async function deployCyolFactory() {
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
   requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
+  requireLabelFitsWasmd(`create-your-own-luck-factory-${label}`);
 
   const raffleWasm = await readWasmFile("cyolRaffleWasm");
   const factoryWasm = await readWasmFile("cyolFactoryWasm");
@@ -204,6 +215,7 @@ async function deployWeeklyRound() {
   if (!label) throw new Error("Fill in a label.");
   if (!commitPusherAddress) throw new Error("Fill in the commit_pusher address.");
   requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
+  requireLabelFitsWasmd(`weekly-round-${label}`);
   // Same bounds as deployWeeklyRoundMainnet.ts (the CLI twin) - this
   // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
   // fifth round; bounds verified against contracts/weekly-round/src/
@@ -263,6 +275,7 @@ async function deployWheelManager() {
   if (!weeklyRoundAddress) throw new Error("Fill in Weekly Round's address (deploy step 2 first).");
   requireValidTerraAddress(commitPusherAddress, "commit_pusher address");
   requireValidTerraAddress(weeklyRoundAddress, "Weekly Round address");
+  requireLabelFitsWasmd(`wheel-manager-${label}`);
   // Same bounds as deployWheelManagerMainnet.ts (the CLI twin) - this
   // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
   // fifth round; bounds verified against contracts/wheel-manager/src/
