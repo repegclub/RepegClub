@@ -11,6 +11,7 @@ import { useWallet } from "../../contexts/WalletContext";
 import { useCyolRaffles } from "../../hooks/useCyolRaffles";
 import { useCyolRaffleSummaries, type CyolRaffleListEntry } from "../../hooks/useCyolRaffleSummaries";
 import type { RaffleRecordResponse } from "../../lib/queryFactory";
+import { CyolFAQSection } from "./CyolFAQSection";
 import { RaffleCard } from "./RaffleCard";
 
 type StatusFilter = "all" | "open" | "funding" | "closed" | "drawn" | "cancelled" | "mine";
@@ -210,6 +211,8 @@ export function CreateYourOwnLuckPage() {
           )}
         </>
       )}
+
+      <CyolFAQSection />
     </main>
   );
 }
