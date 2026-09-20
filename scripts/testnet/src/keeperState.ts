@@ -81,9 +81,10 @@ export function getExpirePhase(key: string): ExpirePhaseState {
 }
 
 // `succeeded` must reflect the real on-chain tx result, not just that a
-// broadcast was attempted - see ExpirePhaseState's own comment on
-// requestSucceededHeight for why this distinction matters for request_expire
-// specifically (CodeRabbit finding, 2026-09-20 review, sixth round).
+// broadcast was attempted - see ExpirePhaseState's own comments on
+// requestSucceededHeight/finalizeSucceededHeight for why this distinction
+// matters (CodeRabbit findings, 2026-09-20 review, sixth and eleventh
+// rounds - request_expire and finalize_expire respectively).
 export function recordExpireAttempt(key: string, action: ExpireAction, height: number, succeeded: boolean) {
   const state = load();
   const phase = state.expirePhases[key] ?? {};
@@ -91,7 +92,10 @@ export function recordExpireAttempt(key: string, action: ExpireAction, height: n
     phase.lastRequestAttemptHeight = height;
     if (succeeded) phase.requestSucceededHeight = height;
   }
-  if (action === "finalize_expire") phase.finalizeAttemptHeight = height;
+  if (action === "finalize_expire") {
+    phase.lastFinalizeAttemptHeight = height;
+    if (succeeded) phase.finalizeSucceededHeight = height;
+  }
   if (action === "claim_expire") phase.claimAttemptHeight = height;
   state.expirePhases[key] = phase;
   save(state);

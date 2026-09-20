@@ -173,6 +173,17 @@ async function handleClosedOrExpiryPending(
   }
 
   const phase = getExpirePhase(phaseKey);
+  if (item.status === "expiry_pending" && phase.finalizeSucceededHeight === undefined) {
+    // No local record of finalize_expire succeeding (keeper restarted, or
+    // another caller/process drove the closed->expiry_pending transition) -
+    // status itself is ground truth that it DID succeed, just not when.
+    // Anchor claim's gate on THIS tick's height instead of trying
+    // claim_expire immediately (CodeRabbit finding, 2026-09-20 review,
+    // eleventh round) - the real transition may have happened earlier, so
+    // this waits at least the full challenge window from now, never less.
+    recordExpireAttempt(phaseKey, "finalize_expire", chainTime.height, true);
+    phase.finalizeSucceededHeight = chainTime.height;
+  }
   const action = nextExpireAction({
     status: item.status,
     closedAtSeconds: item.closed_at,

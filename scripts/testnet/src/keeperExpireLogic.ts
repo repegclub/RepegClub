@@ -20,11 +20,22 @@ export interface ExpirePhaseState {
   // cooldown only, so a repeatedly-failing attempt doesn't hammer every
   // ~15s tick either.
   lastRequestAttemptHeight?: number;
-  // finalize_expire's success IS observable independent of this field (it
-  // flips status to expiry_pending), and no further finalize_expire calls
-  // happen once that occurs - so unlike request, the plain last-attempt
-  // height here is always safe to use as claim's gate anchor too.
-  finalizeAttemptHeight?: number;
+  // Same request/finalize split, applied to finalize_expire too
+  // (CodeRabbit finding, 2026-09-20 review, eleventh round) - the previous
+  // version reasoned finalize's success was safely observable via the
+  // status field alone, which is true for THIS tick's decision, but not for
+  // the value persisted for claim's gate: a failed finalize attempt's
+  // height could still get read as the anchor if the keeper never observes
+  // a later successful attempt cleanly (process restart, or a rejected
+  // retry landing right before the real one that finally succeeds).
+  // finalizeSucceededHeight is the real anchor for claim's gate; the caller
+  // (keeperMainnet.ts) also sets it conservatively from the first tick it
+  // observes expiry_pending with no local record, instead of trying
+  // claim_expire immediately.
+  finalizeSucceededHeight?: number;
+  // Set on every finalize_expire attempt regardless of outcome - retry
+  // cooldown only, same reasoning as lastRequestAttemptHeight.
+  lastFinalizeAttemptHeight?: number;
   claimAttemptHeight?: number;
 }
 
@@ -75,8 +86,8 @@ export function nextExpireAction(input: {
         // Gate open, request still live - but don't hammer finalize every
         // tick either if it keeps failing for some other reason.
         if (
-          phase.finalizeAttemptHeight !== undefined &&
-          currentHeight - phase.finalizeAttemptHeight < EXPIRE_FINALIZE_DELAY_BLOCKS
+          phase.lastFinalizeAttemptHeight !== undefined &&
+          currentHeight - phase.lastFinalizeAttemptHeight < EXPIRE_FINALIZE_DELAY_BLOCKS
         ) {
           return null;
         }
@@ -101,15 +112,24 @@ export function nextExpireAction(input: {
     return "request_expire";
   }
 
-  // expiry_pending
-  if (phase.finalizeAttemptHeight !== undefined) {
-    const sinceFinalize = currentHeight - phase.finalizeAttemptHeight;
+  // expiry_pending - by the time status genuinely shows this (a live query,
+  // not our own bookkeeping), finalize_expire really did succeed on-chain.
+  // The caller sets finalizeSucceededHeight conservatively (to the current
+  // height) the first tick it observes this status with no local record, so
+  // this should never actually be undefined here in practice - the
+  // fallback below is defense-in-depth, not the expected path.
+  if (phase.finalizeSucceededHeight !== undefined) {
+    const sinceFinalize = currentHeight - phase.finalizeSucceededHeight;
     if (sinceFinalize < EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS) return null;
   }
-  // A missing finalizeAttemptHeight means the local record is missing
-  // (keeper restart, or another caller triggered the transition) - try
-  // once, gated only by claim's own retry cooldown below.
-  if (phase.claimAttemptHeight !== undefined && currentHeight - phase.claimAttemptHeight < EXPIRE_CHALLENGE_BLOCKS) {
+  // Retry cooldown uses the same full window as the gate above (CodeRabbit
+  // finding, 2026-09-20 review, eleventh round - this used to be just
+  // EXPIRE_CHALLENGE_BLOCKS, shorter than the real contract requirement),
+  // so a retry never fires before the genuine on-chain window has elapsed.
+  if (
+    phase.claimAttemptHeight !== undefined &&
+    currentHeight - phase.claimAttemptHeight < EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS
+  ) {
     return null;
   }
   return "claim_expire";

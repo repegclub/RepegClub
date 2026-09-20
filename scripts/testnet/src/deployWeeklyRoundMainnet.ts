@@ -42,6 +42,16 @@ if (!label) {
   console.error("Usage: tsx src/deployWeeklyRoundMainnet.ts <label> [maxPlayers] [minPlayers] [roundDurationDays]");
   process.exit(1);
 }
+// Same rule as deployCreateYourOwnLuckFactoryMainnet.ts/
+// deployWheelManagerMainnet.ts (CodeRabbit finding, 2026-09-20 review,
+// eleventh round) - this script's own deployment path isn't label-derived
+// (see comment above), so it was skipped in the eighth round's path-
+// traversal fix, but the instantiate label itself should stay consistent
+// with the other 2 mainnet deploy scripts regardless.
+if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
+  console.error("label may contain only letters, digits, dots, underscores, and hyphens.");
+  process.exit(1);
+}
 const WEEKLY_ROUND_INSTANTIATE_LABEL = `weekly-round-${label}`;
 // Terra Classic's wasmd (v0.61.8) rejects an instantiate label over its
 // configured MaxLabelSize (128 UTF-8 bytes by default) - checked on the

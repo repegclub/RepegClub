@@ -131,7 +131,7 @@ test("closed, finalize gate open but finalize was already retried recently -> wa
     currentHeight: BASE_HEIGHT,
     phase: {
       requestSucceededHeight: BASE_HEIGHT - 150,
-      finalizeAttemptHeight: BASE_HEIGHT - 5, // retried very recently
+      lastFinalizeAttemptHeight: BASE_HEIGHT - 5, // retried very recently
     },
   });
   assert.equal(action, null);
@@ -146,7 +146,7 @@ test("closed, finalize gate open (request still within TTL) and finalize retry c
     currentHeight: BASE_HEIGHT,
     phase: {
       requestSucceededHeight: BASE_HEIGHT - 150, // sinceRequest=150: >=100, <200 TTL - still live
-      finalizeAttemptHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS, // sinceFinalize=100: cooldown elapsed
+      lastFinalizeAttemptHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS, // sinceFinalize=100: cooldown elapsed
     },
   });
   assert.equal(action, "finalize_expire");
@@ -162,6 +162,26 @@ test("closed, request succeeded but went stale (TTL elapsed) without finalize ev
     phase: { requestSucceededHeight: BASE_HEIGHT - REQUEST_EXPIRE_TTL_BLOCKS }, // exactly at TTL boundary
   });
   assert.equal(action, "request_expire");
+});
+
+// --- closed: finalize_expire's OWN retry cooldown, failed attempts don't
+// corrupt the SUCCESS anchor used later for claim's gate (CodeRabbit
+// finding, 2026-09-20 review, eleventh round - same class of fix as
+// request_expire above, applied to finalize_expire's own success tracking).
+
+test("closed, finalize FAILED (no finalizeSucceededHeight) recently -> waits, doesn't leak into claim's anchor", () => {
+  const action = nextExpireAction({
+    status: "closed",
+    closedAtSeconds: CLOSED_AT,
+    nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
+    maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
+    currentHeight: BASE_HEIGHT,
+    phase: {
+      requestSucceededHeight: BASE_HEIGHT - 150,
+      lastFinalizeAttemptHeight: BASE_HEIGHT - 1, // failed 1 block ago
+    },
+  });
+  assert.equal(action, null);
 });
 
 // --- expiry_pending: claim_expire gate ---
@@ -185,7 +205,7 @@ test("expiry_pending, challenge window still open -> waits", () => {
     nowSeconds: CLOSED_AT + 999_999,
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
-    phase: { finalizeAttemptHeight: BASE_HEIGHT - 1 },
+    phase: { finalizeSucceededHeight: BASE_HEIGHT - 1 },
   });
   assert.equal(action, null);
 });
@@ -197,7 +217,7 @@ test("expiry_pending, challenge window exactly elapsed, no claim attempt yet -> 
     nowSeconds: CLOSED_AT + 999_999,
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
-    phase: { finalizeAttemptHeight: BASE_HEIGHT - (EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS) },
+    phase: { finalizeSucceededHeight: BASE_HEIGHT - (EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS) },
   });
   assert.equal(action, "claim_expire");
 });
@@ -210,14 +230,21 @@ test("expiry_pending, challenge window elapsed but claim was already retried rec
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
     phase: {
-      finalizeAttemptHeight: BASE_HEIGHT - 500,
+      finalizeSucceededHeight: BASE_HEIGHT - 500,
       claimAttemptHeight: BASE_HEIGHT - 5,
     },
   });
   assert.equal(action, null);
 });
 
-test("expiry_pending, claim retry cooldown elapsed -> claim_expire again", () => {
+// The next 2 tests are exactly the boundary CodeRabbit's eleventh-round
+// finding corrected: the claim retry cooldown used to be just
+// EXPIRE_CHALLENGE_BLOCKS (100), shorter than the real contract requirement
+// of EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS (120) - a retry
+// at exactly 100 blocks used to fire, which this test would have caught as
+// a regression if the fix had been reverted.
+
+test("expiry_pending, claim retried exactly EXPIRE_CHALLENGE_BLOCKS (100) ago -> still waits (not the full window yet)", () => {
   const action = nextExpireAction({
     status: "expiry_pending",
     closedAtSeconds: CLOSED_AT,
@@ -225,8 +252,23 @@ test("expiry_pending, claim retry cooldown elapsed -> claim_expire again", () =>
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
     phase: {
-      finalizeAttemptHeight: BASE_HEIGHT - 500,
+      finalizeSucceededHeight: BASE_HEIGHT - 500,
       claimAttemptHeight: BASE_HEIGHT - EXPIRE_CHALLENGE_BLOCKS,
+    },
+  });
+  assert.equal(action, null);
+});
+
+test("expiry_pending, claim retry cooldown (full 120-block window) elapsed -> claim_expire again", () => {
+  const action = nextExpireAction({
+    status: "expiry_pending",
+    closedAtSeconds: CLOSED_AT,
+    nowSeconds: CLOSED_AT + 999_999,
+    maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
+    currentHeight: BASE_HEIGHT,
+    phase: {
+      finalizeSucceededHeight: BASE_HEIGHT - 500,
+      claimAttemptHeight: BASE_HEIGHT - (EXPIRE_CHALLENGE_BLOCKS + REVEAL_PRIORITY_MARGIN_BLOCKS),
     },
   });
   assert.equal(action, "claim_expire");

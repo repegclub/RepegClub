@@ -187,6 +187,13 @@ async function main() {
   // never touches these counters, so a quiet no-op run stays non-fatal.
   let pushesRequired = 0;
   let pushesSucceeded = 0;
+  // Same pattern, one step further (CodeRabbit finding, 2026-09-20 review,
+  // eleventh round): commit_used === null means an assignment is required
+  // for that round/week - if every required assignment fails, this run
+  // looked healthy while leaving every eligible round/week without a
+  // commit, same silent-failure risk as the push step above.
+  let assignmentsRequired = 0;
+  let assignmentsSucceeded = 0;
   for (const target of targets) {
     let currentLen: number;
     try {
@@ -257,6 +264,7 @@ async function main() {
               query: { get_current_week: {} },
             });
       if (current.commit_used) continue;
+      assignmentsRequired++;
       const assignRes = await pusher.broadcastTxSync({
         msgs: [
           new MsgExecuteContract({ sender: pusher.address, contract: target.address, msg: { assign_commit: {} }, funds: [] }),
@@ -267,6 +275,7 @@ async function main() {
         console.error(`[${target.label}] assign_commit failed: ${assignRes.txResponse.rawLog}`);
         continue;
       }
+      assignmentsSucceeded++;
       console.log(`[${target.label}] assigned a commit to the current round/week, tx: ${assignRes.txResponse.txhash}`);
       // The FIFO queue could have handed out a commit pushed earlier by a
       // different machine/session than this one (round-review fix,
@@ -305,6 +314,11 @@ async function main() {
   if (pushesRequired > 0 && pushesSucceeded === 0) {
     throw new Error(
       `${pushesRequired} target(s) needed a commit push and none succeeded - this run replenished nothing. See the errors above.`
+    );
+  }
+  if (assignmentsRequired > 0 && assignmentsSucceeded === 0) {
+    throw new Error(
+      `${assignmentsRequired} target(s) needed a commit assignment and none succeeded - this run assigned nothing. See the errors above.`
     );
   }
 }

@@ -150,14 +150,29 @@ async function proposeAndSign() {
   // what's broadcast.
   const { signed, signature } = await window.keplr.signAmino(chain.chainId, key.bech32Address, signDoc);
 
+  // Persist the COMPLETE signed document Keplr actually covered with its
+  // signature, not just fee/memo (CodeRabbit finding, 2026-09-20 review,
+  // eleventh round, extending the fix above) - msgs/account_number/sequence
+  // are amino fields Keplr is technically free to alter too (see
+  // AminoSignResponse's own doc comment: "This may differ from the input
+  // signDoc"), even though its default UI only ever exposes fee/memo for
+  // editing. Building the multisig tx from anything other than exactly what
+  // was signed risks a signature that doesn't verify against the broadcast
+  // transaction.
+  const signedMsg = signed.msgs[0]?.value as { to_address?: string; amount?: { denom: string; amount: string }[] } | undefined;
+  const signedAmountEntry = signedMsg?.amount?.[0];
+  if (!signedMsg?.to_address || !signedAmountEntry) {
+    throw new Error("Keplr returned a signed document with an unexpected message shape - refusing to sign.");
+  }
+
   const sigFile: SigFile = {
     chainKey,
-    recipient,
-    amount,
-    denom: chain.gasPrice.denom,
+    recipient: signedMsg.to_address,
+    amount: signedAmountEntry.amount,
+    denom: signedAmountEntry.denom,
     memo: signed.memo,
-    accountNumber,
-    sequence,
+    accountNumber: Number(signed.account_number),
+    sequence: Number(signed.sequence),
     fee: signed.fee,
     signerAddressOnChain: key.bech32Address,
     signatureBase64: signature.signature,
