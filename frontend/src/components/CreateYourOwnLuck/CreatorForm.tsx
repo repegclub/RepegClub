@@ -472,14 +472,6 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
               ))}
             </div>
             <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetHint")}</span>
-            {prizeAssetChoice === "lunc" && (
-              // CodeRabbit finding (2026-07-26): LUNC and USDC serialize to
-              // the exact same testnet denom (see cyolPrizeDenoms.ts) - a
-              // creator picking LUNC deserves to know it won't actually
-              // behave any differently from USDC until mainnet, rather than
-              // silently getting USDC's behavior.
-              <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetLuncTestnetHint")}</span>
-            )}
           </label>
 
           <label className="cyol-field">

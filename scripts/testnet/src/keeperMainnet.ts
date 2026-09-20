@@ -168,13 +168,15 @@ async function handleClosedOrExpiryPending(
   if (action === "request_expire") {
     console.warn(`[${label}] closed with no local preimage for its commit - trying the expiration safety net`);
   }
-  await sendExecute(
+  const res = await sendExecute(
     keeper,
     contract,
     { [`${EXPIRE_MSG_PREFIX[action]}_${idKind(idField)}`]: { ...idField } },
     { quiet: true }
   );
-  recordExpireAttempt(phaseKey, action, chainTime.height);
+  // sendExecute returns undefined for both a rejected tx (code !== 0) and a
+  // broadcast error - either way, this attempt did not land on-chain.
+  recordExpireAttempt(phaseKey, action, chainTime.height, res !== undefined);
 }
 
 async function tickWheelManager(

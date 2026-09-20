@@ -44,15 +44,15 @@ const roundDurationDays = durationArg ? Number(durationArg) : 7;
 // the stored code is wasted (CodeRabbit finding, 2026-09-19 review). Bounds
 // mirror the contract's own limits (see wheel-manager/weekly-round
 // instantiate validation).
-if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+if (!Number.isSafeInteger(minPlayers) || minPlayers < 2) {
   console.error(`minPlayers must be an integer >= 2, got "${minPlayersArg}".`);
   process.exit(1);
 }
-if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+if (!Number.isSafeInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
   console.error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayersArg}".`);
   process.exit(1);
 }
-if (!Number.isInteger(roundDurationDays) || roundDurationDays < 1 || roundDurationDays > 365) {
+if (!Number.isSafeInteger(roundDurationDays) || roundDurationDays < 1 || roundDurationDays > 365) {
   console.error(`roundDurationDays must be an integer between 1 and 365, got "${durationArg}".`);
   process.exit(1);
 }

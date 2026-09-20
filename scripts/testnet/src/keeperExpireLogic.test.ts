@@ -63,28 +63,61 @@ test("closed, closedAtSeconds null (defensive) -> waits, never throws", () => {
   assert.equal(action, null);
 });
 
-// --- closed: finalize_expire gate (height-based, after a request attempt) ---
+// --- closed: request_expire's OWN retry cooldown (failed/errored attempts) ---
+// This is exactly the bug CodeRabbit found (2026-09-20 review, sixth round)
+// in the first version of this file: it recorded requestAttemptHeight after
+// EVERY attempt, success or failure, so a single failed request made the
+// keeper wait out the full finalize-delay window and then try
+// finalize_expire against a request that never actually landed on-chain -
+// which the contract always rejects, since no expiration request exists.
 
-test("closed, requested < EXPIRE_FINALIZE_DELAY_BLOCKS ago -> waits (this was the real bug: old code tried finalize the same tick as request)", () => {
+test("closed, request FAILED (no requestSucceededHeight) recently -> waits, does not try finalize_expire", () => {
   const action = nextExpireAction({
     status: "closed",
     closedAtSeconds: CLOSED_AT,
     nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
-    phase: { requestAttemptHeight: BASE_HEIGHT - 1 }, // 1 block ago
+    phase: { lastRequestAttemptHeight: BASE_HEIGHT - 1 }, // failed 1 block ago, no success recorded
+  });
+  assert.notEqual(action, "finalize_expire");
+  assert.equal(action, null);
+});
+
+test("closed, request FAILED, retry cooldown elapsed -> tries request_expire again (not finalize_expire)", () => {
+  const action = nextExpireAction({
+    status: "closed",
+    closedAtSeconds: CLOSED_AT,
+    nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
+    maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
+    currentHeight: BASE_HEIGHT,
+    phase: { lastRequestAttemptHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS },
+  });
+  assert.equal(action, "request_expire");
+});
+
+// --- closed: finalize_expire gate (height-based, after a SUCCESSFUL request) ---
+
+test("closed, requested succeeded < EXPIRE_FINALIZE_DELAY_BLOCKS ago -> waits (finalize gate not open yet)", () => {
+  const action = nextExpireAction({
+    status: "closed",
+    closedAtSeconds: CLOSED_AT,
+    nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
+    maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
+    currentHeight: BASE_HEIGHT,
+    phase: { requestSucceededHeight: BASE_HEIGHT - 1 }, // 1 block ago
   });
   assert.equal(action, null);
 });
 
-test("closed, requested exactly EXPIRE_FINALIZE_DELAY_BLOCKS ago, no finalize attempt yet -> finalize_expire", () => {
+test("closed, requested succeeded exactly EXPIRE_FINALIZE_DELAY_BLOCKS ago, no finalize attempt yet -> finalize_expire", () => {
   const action = nextExpireAction({
     status: "closed",
     closedAtSeconds: CLOSED_AT,
     nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
-    phase: { requestAttemptHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS },
+    phase: { requestSucceededHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS },
   });
   assert.equal(action, "finalize_expire");
 });
@@ -97,7 +130,7 @@ test("closed, finalize gate open but finalize was already retried recently -> wa
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
     phase: {
-      requestAttemptHeight: BASE_HEIGHT - 150,
+      requestSucceededHeight: BASE_HEIGHT - 150,
       finalizeAttemptHeight: BASE_HEIGHT - 5, // retried very recently
     },
   });
@@ -112,21 +145,21 @@ test("closed, finalize gate open (request still within TTL) and finalize retry c
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
     phase: {
-      requestAttemptHeight: BASE_HEIGHT - 150, // sinceRequest=150: >=100, <200 TTL - still live
+      requestSucceededHeight: BASE_HEIGHT - 150, // sinceRequest=150: >=100, <200 TTL - still live
       finalizeAttemptHeight: BASE_HEIGHT - EXPIRE_FINALIZE_DELAY_BLOCKS, // sinceFinalize=100: cooldown elapsed
     },
   });
   assert.equal(action, "finalize_expire");
 });
 
-test("closed, request went stale (TTL elapsed) without finalize ever succeeding -> re-request", () => {
+test("closed, request succeeded but went stale (TTL elapsed) without finalize ever succeeding -> re-request", () => {
   const action = nextExpireAction({
     status: "closed",
     closedAtSeconds: CLOSED_AT,
     nowSeconds: CLOSED_AT + MAX_REVEAL_AGE_SECONDS + 999,
     maxRevealAgeSeconds: MAX_REVEAL_AGE_SECONDS,
     currentHeight: BASE_HEIGHT,
-    phase: { requestAttemptHeight: BASE_HEIGHT - REQUEST_EXPIRE_TTL_BLOCKS }, // exactly at TTL boundary
+    phase: { requestSucceededHeight: BASE_HEIGHT - REQUEST_EXPIRE_TTL_BLOCKS }, // exactly at TTL boundary
   });
   assert.equal(action, "request_expire");
 });

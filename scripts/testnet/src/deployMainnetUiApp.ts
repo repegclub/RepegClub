@@ -203,13 +203,13 @@ async function deployWeeklyRound() {
   // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
   // fifth round; bounds verified against contracts/weekly-round/src/
   // contract.rs's real instantiate validation).
-  if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+  if (!Number.isSafeInteger(minPlayers) || minPlayers < 2) {
     throw new Error(`minPlayers must be an integer >= 2, got "${minPlayers}".`);
   }
-  if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+  if (!Number.isSafeInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
     throw new Error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayers}".`);
   }
-  if (!Number.isInteger(roundDurationDays) || roundDurationDays < 1 || roundDurationDays > 365) {
+  if (!Number.isSafeInteger(roundDurationDays) || roundDurationDays < 1 || roundDurationDays > 365) {
     throw new Error(`roundDurationDays must be an integer between 1 and 365, got "${roundDurationDays}".`);
   }
 
@@ -262,10 +262,10 @@ async function deployWheelManager() {
   // browser UI never had them (CodeRabbit finding, 2026-09-19 review,
   // fifth round; bounds verified against contracts/wheel-manager/src/
   // contract.rs's real instantiate validation).
-  if (!Number.isInteger(minPlayers) || minPlayers < 2) {
+  if (!Number.isSafeInteger(minPlayers) || minPlayers < 2) {
     throw new Error(`minPlayers must be an integer >= 2, got "${minPlayers}".`);
   }
-  if (!Number.isInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
+  if (!Number.isSafeInteger(maxPlayers) || maxPlayers < minPlayers || maxPlayers > 100) {
     throw new Error(`maxPlayers must be an integer between minPlayers (${minPlayers}) and 100, got "${maxPlayers}".`);
   }
   if (!/^[1-9]\d*$/.test(ticketPrice)) {

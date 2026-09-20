@@ -7,7 +7,23 @@
 export type ExpireAction = "request_expire" | "finalize_expire" | "claim_expire";
 
 export interface ExpirePhaseState {
-  requestAttemptHeight?: number;
+  // Only set when request_expire actually succeeded on-chain - this is the
+  // real anchor finalize's gate/TTL are computed from. A failed/errored
+  // attempt must NOT set this (CodeRabbit finding, 2026-09-20 review, sixth
+  // round - the first version of this file set it unconditionally after
+  // every attempt, so a single failed request made the keeper wait out the
+  // full finalize-delay window and then try finalize_expire against a
+  // request that never actually landed, which the contract always rejects -
+  // worse than just retrying request_expire).
+  requestSucceededHeight?: number;
+  // Set on every request_expire attempt regardless of outcome - retry
+  // cooldown only, so a repeatedly-failing attempt doesn't hammer every
+  // ~15s tick either.
+  lastRequestAttemptHeight?: number;
+  // finalize_expire's success IS observable independent of this field (it
+  // flips status to expiry_pending), and no further finalize_expire calls
+  // happen once that occurs - so unlike request, the plain last-attempt
+  // height here is always safe to use as claim's gate anchor too.
   finalizeAttemptHeight?: number;
   claimAttemptHeight?: number;
 }
@@ -52,8 +68,8 @@ export function nextExpireAction(input: {
   const { status, closedAtSeconds, nowSeconds, maxRevealAgeSeconds, currentHeight, phase } = input;
 
   if (status === "closed") {
-    if (phase.requestAttemptHeight !== undefined) {
-      const sinceRequest = currentHeight - phase.requestAttemptHeight;
+    if (phase.requestSucceededHeight !== undefined) {
+      const sinceRequest = currentHeight - phase.requestSucceededHeight;
       if (sinceRequest < EXPIRE_FINALIZE_DELAY_BLOCKS) return null; // finalize gate not open yet
       if (sinceRequest < REQUEST_EXPIRE_TTL_BLOCKS) {
         // Gate open, request still live - but don't hammer finalize every
@@ -72,7 +88,17 @@ export function nextExpireAction(input: {
     }
     if (closedAtSeconds === null) return null; // defensive - shouldn't happen for a genuinely Closed item
     const timeGateOpen = nowSeconds >= closedAtSeconds + maxRevealAgeSeconds;
-    return timeGateOpen ? "request_expire" : null;
+    if (!timeGateOpen) return null;
+    // Don't hammer request_expire every tick if it keeps failing (e.g. a
+    // transient RPC error) - same retry-cooldown reasoning as finalize/claim
+    // below.
+    if (
+      phase.lastRequestAttemptHeight !== undefined &&
+      currentHeight - phase.lastRequestAttemptHeight < EXPIRE_FINALIZE_DELAY_BLOCKS
+    ) {
+      return null;
+    }
+    return "request_expire";
   }
 
   // expiry_pending
