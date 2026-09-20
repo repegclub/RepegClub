@@ -204,6 +204,10 @@
         "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
       },
       {
+        "q": "What happens if the round closes but the winner is never revealed?",
+        "a": "This is different from a round that never fills up — this covers a round that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and mark the round expired, letting everyone who bought a ticket reclaim their own money through the exact same self-service button used for a round that never filled up. Nobody is penalized for an outage that wasn't their fault."
+      },
+      {
         "q": "Why does the countdown keep resetting?",
         "a": "Once the minimum number of players joins, every new ticket purchase extends the countdown a bit — like a live auction, so nobody gets shut out by a split-second timer. It can't extend forever though; there's a hard cap."
       },
@@ -646,6 +650,10 @@
       {
         "q": "What happens if a week never fills up?",
         "a": "If the minimum number of players is never reached in time, the week expires and everyone who bought a ticket that week can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired week's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+      },
+      {
+        "q": "What happens if the week closes but the winner is never revealed?",
+        "a": "This is different from a week that never fills up — this covers a week that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and mark the week expired, letting everyone who bought a ticket that week reclaim their own money through the exact same self-service button used for a week that never filled up. Nobody is penalized for an outage that wasn't their fault."
       },
       {
         "q": "Why doesn't the countdown reset the way Wheel of Repeg's does?",
