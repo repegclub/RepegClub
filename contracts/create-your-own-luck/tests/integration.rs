@@ -25,7 +25,9 @@ const TICKET_DENOM: &str = USDC_DENOM;
 // comment in contract.rs) - kept distinct here on purpose so this suite still
 // exercises both funding paths, not just the same-denom one.
 const PRIZE_DENOM: &str = "uusd";
-const USDC_DENOM: &str = "uluna"; // must match the hardcoded USDC_DENOM constant in contract.rs
+// Must match the hardcoded USDC_DENOM constant in contract.rs - real USDC
+// IBC denom via Noble as of the 2026-09-10 mainnet redeploy.
+const USDC_DENOM: &str = "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5";
 const FEE_AMOUNT_USDC: u128 = 3_000_000; // "$3", charged directly - no oracle conversion anymore
 /// Stand-in `create-your-own-luck-factory` address - every `InstantiateMsg`
 /// in this suite points at it, and `mock_deps_with_factory` below answers
@@ -1942,10 +1944,10 @@ fn instantiate_rejects_non_whitelisted_native_prize_for_a_paid_raffle() {
 
 #[test]
 fn instantiate_allows_all_three_whitelisted_native_prizes_for_a_paid_raffle() {
-    // "LUNC" and USDC_DENOM are both "uluna" on this testnet (2026-07-23,
-    // see USDC_DENOM's comment in contract.rs) - this loop deliberately still
-    // lists both symbolically rather than hardcoding literals, so it stays
-    // correct if that ever changes back to a distinct value.
+    // Lists all 3 symbolically rather than hardcoding literals, so it stays
+    // correct regardless of whether LUNC/USDC_DENOM happen to be the same
+    // value (true on testnet before the 2026-09-10 mainnet redeploy) or
+    // distinct (true since).
     for denom in ["uluna", USDC_DENOM, "uusd"] {
         let mut deps = mock_deps_with_factory();
         let env = mock_env();

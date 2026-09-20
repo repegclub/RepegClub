@@ -203,23 +203,21 @@ const USDC_CENT_MICROS: u128 = 10_000; // "$0.01"
 /// Same addresses used platform-wide for Wheel Manager/Weekly Round's
 /// admin_fee_address/treasury_address (see scripts/testnet/src/config.ts) -
 /// one founder-fee wallet for the whole platform, not one per product.
-/// Testnet values today; swap for the real mainnet addresses (and
-/// USDC_DENOM below) in the final production redeploy, same as every other
-/// contract in this project.
-const FOUNDER_FEE_ADDRESS: &str = "terra15dv0f2rykyp6gyvuhawk8qgfd7ypm4lgkm4z39";
-const TREASURY_ADDRESS: &str = "terra1juzyema7r4gvrrvrkkznceyeyhfkdj6zvz20fd";
+/// Real mainnet values (2026-09-10) - same addresses as Wheel Manager/
+/// Weekly Round's admin_fee_address/treasury_address (see the Obsidian
+/// mainnet deploy plan): the fee-keeper wallet already receiving real
+/// onramp fees, and the real 2-of-3 treasury multisig (already tested with
+/// a real signed transfer).
+const FOUNDER_FEE_ADDRESS: &str = "terra1h3898lq8fyspnlvpwknl9ffu8pttyjvxl7kran";
+const TREASURY_ADDRESS: &str = "terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z";
 /// Hardcoded for the same reason - a creator-chosen denom could be a
 /// worthless token dressed up as "USDC", satisfying the fee amount check
 /// without paying anything of real value.
 ///
-/// Set to LUNC's own denom for now (2026-07-23), same testnet stand-in
-/// convention Wheel Manager/Weekly Round already use for "USDC" (real USDC
-/// has no liquidity on rebel-2) - found live: the originally chosen
-/// "utestusdc" placeholder had zero total supply anywhere on this chain,
-/// so no wallet, including test scripts, could ever actually pay the
-/// service fee or buy a paid ticket. Swap for the real USDC IBC denom
-/// before mainnet, same as every other testnet placeholder in this file.
-const USDC_DENOM: &str = "uluna";
+/// Real USDC IBC denom via Noble (2026-09-10) - same denom Wheel Manager/
+/// Weekly Round use as ticket_denom, verified live against Noble's own LCD
+/// (6 decimals, GET /cosmos/bank/v1beta1/denoms_metadata/uusdc).
+const USDC_DENOM: &str = "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5";
 /// LUNC's denom is the same on every network - it's the chain's own
 /// staking/gas token, not an IBC asset with a network-specific hash.
 const LUNC_DENOM: &str = "uluna";

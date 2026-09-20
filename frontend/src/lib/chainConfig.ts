@@ -1,15 +1,14 @@
 import { setChainSdkVersion, useChainSdkVersion } from "@goblinhunt/cosmes/protobufs";
 
-// Testnet for now - matches scripts/testnet/src/config.ts. Switch to mainnet
-// (columbus-5) once the product actually launches; RPC/LCD are both from the
-// same provider (hexxagon.dev) for this chain, but that isn't a requirement -
-// any live, in-sync rebel-2 node works for either.
-export const CHAIN_ID: string = "rebel-2";
-export const RPC = "https://rpc.terra-classic.hexxagon.dev";
+// Mainnet (columbus-5) - matches scripts/testnet/src/configMainnet.ts.
+// RPC/LCD from publicnode.com, same provider used for every real mainnet tx
+// in this project so far (treasury multisig test, mainnet redeploy).
+export const CHAIN_ID: string = "columbus-5";
+export const RPC = "https://terra-classic-rpc.publicnode.com";
 // REST/LCD endpoint - used only for building a plain-URL "check this
 // yourself" link in the round-verification panel (see verifyRound.ts); all
 // real contract reads/writes go through RPC via cosmes above.
-export const LCD = "https://lcd.terra-classic.hexxagon.dev";
+export const LCD = "https://terra-classic-fcd.publicnode.com";
 export const BECH32_PREFIX = "terra";
 export const GAS_PRICE = { amount: "28.325", denom: "uluna" };
 // Drives the always-visible network badge in the wallet bar (see

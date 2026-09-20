@@ -1,4 +1,4 @@
-import type { PrizeAssetChoice } from "./cyolPrizeDenoms";
+import { PRIZE_ASSET_DENOMS, type PrizeAssetChoice } from "./cyolPrizeDenoms";
 
 // Real-world USD prices for the raffle prize denoms this app supports,
 // purely to inform a human before they sign - never gates a transaction's
@@ -68,34 +68,21 @@ export function priceForSymbol(symbol: string, prices: TokenPrices): number | nu
   }
 }
 
-// See cyolFormat.ts's prizeCurrencyLabel for the same testnet-only
-// ambiguity this mirrors: USDC_DENOM and LUNC_DENOM are both literally
-// "uluna" on this testnet (contracts/create-your-own-luck/src/contract.rs) -
-// LUNC_DENOM is genuinely "uluna" on every network (it's the chain's own
-// staking/gas token), but USDC_DENOM is a testnet-only placeholder there,
-// explicitly commented as "swap for the real USDC IBC denom before
-// mainnet". Until that swap happens, a denom string alone can't
-// distinguish real LUNC from real USDC, so "uluna" is priced as USDC ($1)
-// here - consistent with how it's already displayed - which under-prices
-// a LUNC-labeled prize on testnet specifically.
-//
-// MAINNET TODO (found live-testing 2026-07-26, not yet reachable so not
-// fixed here): once contract.rs's USDC_DENOM becomes the real IBC hash,
-// this function's "uluna" branch must change from `prices.usdc` to
-// `prices.lunc` (uluna will only ever mean LUNC once USDC has its own real
-// denom), and a new branch must map that real USDC IBC denom to
-// `prices.usdc`. Left as-is until that constant actually changes - fixing
-// it early would just break testnet, where the collision is real.
+// Real mainnet denoms (2026-09-19) - see cyolPrizeDenoms.ts's own comment,
+// fixed in the same pass. "uluna" now only ever means real LUNC (USDC has
+// its own real IBC denom since the mainnet redeploy), and that IBC denom
+// gets its own branch mapping to prices.usdc.
 //
 // Returns null for any other denom (CodeRabbit finding, 2026-07-26): a paid
-// raffle's prize is always uluna/uusd (contract-enforced), but a *free*
-// raffle's prize denom isn't restricted at all, and this reads whatever
-// raffle is on-chain, not just ones created through this exact form - an
-// unrecognized denom must show "can't calculate" to its callers, never
-// silently get treated as $1.
+// raffle's prize is always uluna/uusd/the real USDC denom (contract-
+// enforced), but a *free* raffle's prize denom isn't restricted at all, and
+// this reads whatever raffle is on-chain, not just ones created through
+// this exact form - an unrecognized denom must show "can't calculate" to
+// its callers, never silently get treated as $1.
 export function priceForDenom(denom: string, prices: TokenPrices): number | null {
   if (denom === "uusd") return prices.ustc;
-  if (denom === "uluna") return prices.usdc;
+  if (denom === "uluna") return prices.lunc;
+  if (denom === PRIZE_ASSET_DENOMS.usdc) return prices.usdc;
   return null;
 }
 

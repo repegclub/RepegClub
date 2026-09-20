@@ -21,13 +21,12 @@ import { setCachedPrizeAssetChoice } from "../../lib/cyolPrizeAssetCache";
 
 // The contract hardcodes USDC_DENOM (contracts/create-your-own-luck/src/
 // contract.rs) as the only denom it accepts for any paid raffle's
-// ticket_price and service fee. Set to "uluna" for now (2026-07-23) - same
-// testnet stand-in convention Wheel Manager/Weekly Round already use for
-// "USDC" (real USDC has no liquidity on rebel-2; an earlier "utestusdc"
-// placeholder turned out to have zero supply anywhere on chain, so nobody
-// could ever actually pay it) - swap for the real USDC IBC denom before
-// mainnet, same as every other testnet placeholder in this app.
-const TICKET_DENOM = "uluna";
+// ticket_price and service fee. Reuses cyolPrizeDenoms.ts's own usdc entry
+// (real mainnet IBC denom as of 2026-09-19) instead of a second hardcoded
+// constant here - found live-testing 2026-09-19, watching a new raffle get
+// created with the wrong ticket denom because this one still had the old
+// testnet "uluna" placeholder after the mainnet flip.
+const TICKET_DENOM = PRIZE_ASSET_DENOMS.usdc;
 
 // Podium is deliberately not offered here yet (2026-07-23): a creator with
 // 3+ wallets can sweep multiple podium places, a known-open finding (#4 in
@@ -473,14 +472,6 @@ export function CreatorForm({ mode, onCreated }: { mode: "raffle" | "airdrop"; o
               ))}
             </div>
             <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetHint")}</span>
-            {prizeAssetChoice === "lunc" && (
-              // CodeRabbit finding (2026-07-26): LUNC and USDC serialize to
-              // the exact same testnet denom (see cyolPrizeDenoms.ts) - a
-              // creator picking LUNC deserves to know it won't actually
-              // behave any differently from USDC until mainnet, rather than
-              // silently getting USDC's behavior.
-              <span className="cyol-hint">{t("createYourOwnLuck.form.prizeAssetLuncTestnetHint")}</span>
-            )}
           </label>
 
           <label className="cyol-field">

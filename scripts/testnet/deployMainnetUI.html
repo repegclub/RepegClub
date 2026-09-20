@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Repeg Club - Mainnet deploy (Keplr)</title>
+<style>
+  body { font-family: monospace; max-width: 780px; margin: 40px auto; padding: 0 16px; background: #1a1a1a; color: #e0e0e0; }
+  h2 { margin-bottom: 4px; color: #f0f0f0; }
+  h3 { color: #f0f0f0; }
+  p { color: #b0b0b0; }
+  .warning { background: #3a3315; border: 1px solid #7a6a20; color: #f0e0a0; padding: 10px 14px; border-radius: 4px; margin: 16px 0; }
+  section { border: 1px solid #3a3a3a; border-radius: 6px; padding: 16px; margin: 24px 0; background: #222; }
+  label { display: block; margin: 12px 0 4px; font-size: 13px; color: #a0a0a0; }
+  input, select, textarea { background: #111; color: #e0e0e0; border: 1px solid #444; }
+  input, select { width: 100%; box-sizing: border-box; padding: 6px 8px; font-family: monospace; font-size: 14px; }
+  input[type="file"] { padding: 4px 0; }
+  textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; padding: 6px 8px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button { font-size: 15px; padding: 8px 16px; cursor: pointer; margin-top: 14px; background: #333; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; }
+  button:hover { background: #3d3d3d; }
+  .status { margin-top: 10px; font-size: 13px; word-break: break-word; }
+  .status.error { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<h2>Repeg Club — Mainnet deploy (Keplr)</h2>
+<div class="warning">
+  Local tool only, not deployed anywhere. Every store/instantiate transaction is signed through
+  your own Keplr extension — this page never asks for or touches a mnemonic. Real, irreversible
+  transactions (contracts are immutable, no <code>migrate</code>) — double-check the network below
+  and every value before approving in Keplr.
+</div>
+
+<label for="network">Network</label>
+<select id="network">
+  <option value="testnet">Testnet (rebel-2) — validate here first</option>
+  <option value="mainnet">Mainnet (columbus-5) — real funds</option>
+</select>
+
+<section>
+  <h3>1. Create Your Own Luck + Factory</h3>
+  <p>Uploads create-your-own-luck's code fresh, then stores + instantiates the factory pointing at it.</p>
+  <label for="cyolLabel">Label</label>
+  <input id="cyolLabel" placeholder="mainnet" />
+  <label for="cyolCommitPusher">commit_pusher address</label>
+  <input id="cyolCommitPusher" value="terra1jev5eunatmvj8vz7j6r50ewyxycz5mcgdxjmva" />
+  <div class="row">
+    <div>
+      <label for="cyolRaffleWasm">create_your_own_luck.wasm</label>
+      <input id="cyolRaffleWasm" type="file" accept=".wasm" />
+    </div>
+    <div>
+      <label for="cyolFactoryWasm">create_your_own_luck_factory.wasm</label>
+      <input id="cyolFactoryWasm" type="file" accept=".wasm" />
+    </div>
+  </div>
+  <button id="cyolButton">Connect Keplr &amp; deploy</button>
+  <div id="cyolStatus" class="status"></div>
+  <textarea id="cyolOutput" rows="4" readonly></textarea>
+</section>
+
+<section>
+  <h3>2. Weekly Round</h3>
+  <p>Run this before step 3 - Wheel Manager needs its address.</p>
+  <label for="weeklyLabel">Label</label>
+  <input id="weeklyLabel" placeholder="mainnet" />
+  <label for="weeklyCommitPusher">commit_pusher address</label>
+  <input id="weeklyCommitPusher" value="terra1jev5eunatmvj8vz7j6r50ewyxycz5mcgdxjmva" />
+  <div class="row">
+    <div>
+      <label for="weeklyMaxPlayers">Max players</label>
+      <input id="weeklyMaxPlayers" value="10" />
+    </div>
+    <div>
+      <label for="weeklyMinPlayers">Min players</label>
+      <input id="weeklyMinPlayers" value="2" />
+    </div>
+    <div>
+      <label for="weeklyDuration">Round duration (days)</label>
+      <input id="weeklyDuration" value="7" />
+    </div>
+  </div>
+  <label for="weeklyWasm">weekly_round.wasm</label>
+  <input id="weeklyWasm" type="file" accept=".wasm" />
+  <button id="weeklyButton">Connect Keplr &amp; deploy</button>
+  <div id="weeklyStatus" class="status"></div>
+  <textarea id="weeklyOutput" rows="3" readonly></textarea>
+</section>
+
+<section>
+  <h3>3. Wheel Manager</h3>
+  <p>Needs Weekly Round's address - auto-filled after step 2, or paste it manually.</p>
+  <label for="wheelLabel">Label</label>
+  <input id="wheelLabel" placeholder="mainnet" />
+  <label for="wheelCommitPusher">commit_pusher address</label>
+  <input id="wheelCommitPusher" value="terra1jev5eunatmvj8vz7j6r50ewyxycz5mcgdxjmva" />
+  <label for="wheelWeeklyAddress">Weekly Round address</label>
+  <input id="wheelWeeklyAddress" placeholder="terra1..." />
+  <div class="row">
+    <div>
+      <label for="wheelMaxPlayers">Max players</label>
+      <input id="wheelMaxPlayers" value="10" />
+    </div>
+    <div>
+      <label for="wheelMinPlayers">Min players</label>
+      <input id="wheelMinPlayers" value="2" />
+    </div>
+    <div>
+      <label for="wheelTicketPrice">Ticket price (uUSDC, 6 decimals)</label>
+      <input id="wheelTicketPrice" value="1000000" />
+    </div>
+  </div>
+  <label for="wheelWasm">wheel_manager.wasm</label>
+  <input id="wheelWasm" type="file" accept=".wasm" />
+  <button id="wheelButton">Connect Keplr &amp; deploy</button>
+  <div id="wheelStatus" class="status"></div>
+  <textarea id="wheelOutput" rows="4" readonly></textarea>
+</section>
+
+<script type="module" src="/src/deployMainnetUiApp.ts"></script>
+</body>
+</html>

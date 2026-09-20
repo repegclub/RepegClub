@@ -13,20 +13,16 @@ export type PrizeAssetChoice = "usdc" | "lunc" | "ustc";
 // confirming no malicious transfer logic) - see the "whitelisting manual"
 // pendiente in the project notes.
 //
-// usdc and lunc both map to "uluna" on this testnet (contract.rs's
-// USDC_DENOM/LUNC_DENOM) - a real, testnet-only ambiguity (see
-// cyolFormat.ts's prizeCurrencyLabel and tokenPrices.ts's priceForDenom for
-// the same limitation elsewhere): once a raffle is created there's no way
-// to recover which of the two the creator meant from the denom string
-// alone.
-//
-// MAINNET TODO: only `usdc` changes here, to the real USDC IBC denom
-// (contract.rs's USDC_DENOM comment already flags this swap) - `lunc` stays
-// "uluna" (LUNC's real denom on every network) and `ustc` stays "uusd"
-// (also real everywhere). Do this at the same time as tokenPrices.ts's
-// priceForDenom MAINNET TODO - both assume today's testnet collision.
+// Real mainnet denoms (2026-09-19) - usdc and lunc used to both map to
+// "uluna" on testnet (a real, testnet-only ambiguity - see cyolFormat.ts's
+// prizeCurrencyLabel and tokenPrices.ts's priceForDenom for the same
+// limitation, fixed there in the same pass) now that contract.rs's
+// USDC_DENOM is the real IBC hash. Found live (2026-09-19): "My Bag" was
+// still showing LUNC's balance under the USDC row, since this was the one
+// place that ambiguity was never just a display quirk - it read the wrong
+// wallet balance outright.
 export const PRIZE_ASSET_DENOMS: Record<PrizeAssetChoice, string> = {
-  usdc: "uluna",
+  usdc: "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5",
   lunc: "uluna",
   ustc: "uusd",
 };
