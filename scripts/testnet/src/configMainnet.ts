@@ -12,23 +12,23 @@ import { MnemonicWallet } from "@goblinhunt/cosmes/wallet";
 // separate from ./config (rebel-2 testnet) and ./configMainnetTest (the
 // discardable 2026-07 burn-tax test) so the mnemonics/addresses of the 3
 // networks can never get mixed up by accident (same reasoning documented in
-// those 2 files).
-export const CHAIN_ID = "columbus-5";
-export const RPC = "https://terra-classic-rpc.publicnode.com";
-export const BECH32_PREFIX = "terra";
-export const DENOM = "uluna";
-// Checked live against https://terra-classic-fcd.publicnode.com/v1/txs/gas_prices
-// on 2026-07-13 - same value used for every real mainnet tx in this project
-// since (the treasury multisig test, the July burn-tax test).
-export const GAS_PRICE = { amount: "28.325", denom: DENOM };
-
-// Real ticket/redemption denoms for wheel-manager and weekly-round, decided
-// with the user 2026-09-10 (see the Obsidian mainnet deploy plan): buy in
-// USDC, redeem USTC 1:1. Both 6 decimals - verified live against Noble's own
-// LCD (GET /cosmos/bank/v1beta1/denoms_metadata/uusdc), same as uluna.
-export const TICKET_DENOM =
-  "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5"; // USDC via Noble
-export const REDEMPTION_DENOM = "uusd"; // USTC, native
+// those 2 files). Chain/denom/gas/treasury/fee constants live in
+// mainnetConstants.ts (re-exported below) so deployMainnetUiApp.ts - a
+// browser tool that can't import this file's wallet logic - can share them
+// instead of duplicating (CodeRabbit finding, 2026-09-20 review, seventh
+// round).
+export {
+  CHAIN_ID,
+  RPC,
+  BECH32_PREFIX,
+  DENOM,
+  GAS_PRICE,
+  TICKET_DENOM,
+  REDEMPTION_DENOM,
+  TREASURY_ADDRESS,
+  ADMIN_FEE_ADDRESS,
+} from "./mainnetConstants";
+import { CHAIN_ID, BECH32_PREFIX, RPC, GAS_PRICE } from "./mainnetConstants";
 
 export const CHAIN_ID_SDK_VERSION = "sdk53" as const;
 setChainSdkVersion(CHAIN_ID, CHAIN_ID_SDK_VERSION);
@@ -41,13 +41,6 @@ function requireEnv(name: string): string {
   }
   return value;
 }
-
-// Real addresses, decided with the user 2026-09-10 (see the Obsidian mainnet
-// deploy plan). TREASURY_ADDRESS is the 2-of-3 multisig, already tested with
-// a real signed transfer. ADMIN_FEE_ADDRESS is the existing "fee keeper"
-// wallet, already receiving real onramp fees.
-export const TREASURY_ADDRESS = "terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z";
-export const ADMIN_FEE_ADDRESS = "terra1h3898lq8fyspnlvpwknl9ffu8pttyjvxl7kran";
 
 export function loadWallet(envVar: string): MnemonicWallet {
   return new MnemonicWallet({

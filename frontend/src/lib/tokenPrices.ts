@@ -1,4 +1,4 @@
-import type { PrizeAssetChoice } from "./cyolPrizeDenoms";
+import { PRIZE_ASSET_DENOMS, type PrizeAssetChoice } from "./cyolPrizeDenoms";
 
 // Real-world USD prices for the raffle prize denoms this app supports,
 // purely to inform a human before they sign - never gates a transaction's
@@ -79,11 +79,10 @@ export function priceForSymbol(symbol: string, prices: TokenPrices): number | nu
 // this reads whatever raffle is on-chain, not just ones created through
 // this exact form - an unrecognized denom must show "can't calculate" to
 // its callers, never silently get treated as $1.
-const USDC_IBC_DENOM = "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5";
 export function priceForDenom(denom: string, prices: TokenPrices): number | null {
   if (denom === "uusd") return prices.ustc;
   if (denom === "uluna") return prices.lunc;
-  if (denom === USDC_IBC_DENOM) return prices.usdc;
+  if (denom === PRIZE_ASSET_DENOMS.usdc) return prices.usdc;
   return null;
 }
 

@@ -18,6 +18,7 @@ import { Buffer } from "buffer";
 import { fromBech32 } from "@cosmjs/encoding";
 import { KeplrController, WalletType, type ConnectedWallet } from "@goblinhunt/cosmes/wallet";
 import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
+import * as mainnetConstants from "./mainnetConstants";
 
 // msgs.ts's toAmino() uses Node's Buffer, which isn't defined in a browser
 // bundle by default - only exercised if Keplr signs via amino (Ledger
@@ -26,13 +27,17 @@ import { MsgInstantiateContract, MsgStoreCode } from "./msgs";
 // so this page doesn't silently break for a Ledger-connected admin wallet.
 (globalThis as { Buffer?: typeof Buffer }).Buffer ??= Buffer;
 
-// Mirrors scripts/testnet/src/config.ts and configMainnet.ts - duplicated
-// here (rather than imported) because those files do `import "dotenv/config"`,
-// which touches Node's fs/path at import time and breaks when bundled for
-// the browser. Keep these in sync with config.ts/configMainnet.ts by hand.
-// Testnet is here so this tool can be validated end-to-end (a real deploy,
-// zero real-money stakes) before ever pointing it at mainnet - same caution
-// already applied to the treasury multisig UI.
+// Mainnet values come from mainnetConstants.ts (shared with configMainnet.ts
+// - see that file's own comment) instead of being duplicated here by hand,
+// now that configMainnet.ts no longer does `import "dotenv/config"`
+// (CodeRabbit finding, 2026-09-20 review, seventh round - that dotenv import
+// was the original reason this file couldn't just import configMainnet.ts's
+// constants directly, and it was removed in an earlier round). Testnet has
+// no such shared module yet (scripts/testnet/src/config.ts still does
+// `import "dotenv/config"`, out of scope here) - kept hardcoded below, same
+// as before. Testnet is here so this tool can be validated end-to-end (a
+// real deploy, zero real-money stakes) before ever pointing it at mainnet -
+// same caution already applied to the treasury multisig UI.
 type NetworkConfig = {
   chainId: string;
   rpc: string;
@@ -60,13 +65,13 @@ const NETWORKS: Record<"testnet" | "mainnet", NetworkConfig> = {
     adminFeeAddress: "terra15dv0f2rykyp6gyvuhawk8qgfd7ypm4lgkm4z39",
   },
   mainnet: {
-    chainId: "columbus-5",
-    rpc: "https://terra-classic-rpc.publicnode.com",
-    gasPrice: { amount: "28.325", denom: "uluna" },
-    ticketDenom: "ibc/0BB9D8513E8E8E9AE6A9D211D9136E6DA42288DDE6CFAA453A150A4566054DC5", // USDC via Noble
-    redemptionDenom: "uusd", // USTC, native
-    treasuryAddress: "terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z",
-    adminFeeAddress: "terra1h3898lq8fyspnlvpwknl9ffu8pttyjvxl7kran",
+    chainId: mainnetConstants.CHAIN_ID,
+    rpc: mainnetConstants.RPC,
+    gasPrice: mainnetConstants.GAS_PRICE,
+    ticketDenom: mainnetConstants.TICKET_DENOM,
+    redemptionDenom: mainnetConstants.REDEMPTION_DENOM,
+    treasuryAddress: mainnetConstants.TREASURY_ADDRESS,
+    adminFeeAddress: mainnetConstants.ADMIN_FEE_ADDRESS,
   },
 };
 function currentNetwork(): NetworkConfig {
