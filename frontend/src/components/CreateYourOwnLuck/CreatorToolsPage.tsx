@@ -6,6 +6,7 @@ import { ConnectWalletButton } from "../Wallet/ConnectWalletButton";
 import { NetworkBadge } from "../Wallet/NetworkBadge";
 import { WalletBalance } from "../Wallet/WalletBalance";
 import { CreatorForm } from "./CreatorForm";
+import { CyolFAQSection } from "./CyolFAQSection";
 import { CyolOptionsPanel } from "./CyolOptionsPanel";
 
 // Split off CreateYourOwnLuckPage (2026-08-20, direct request) - that page
@@ -60,6 +61,8 @@ export function CreatorToolsPage() {
 
       <h2 className="cyol-list-title">{t("creatorTools.airdropFormTitle")}</h2>
       <CreatorForm mode="airdrop" />
+
+      <CyolFAQSection />
     </main>
   );
 }

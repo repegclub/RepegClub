@@ -697,6 +697,58 @@
       }
     ]
   },
+  "faqCyol": {
+    "title": "F.A.Q. - How does Galactic Raffles & Airdrops work?",
+    "screenPrompt": "Ask away",
+    "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
+    "screenAnswerLabel": "Answer",
+    "items": [
+      {
+        "q": "How does it work?",
+        "a": "Anyone can launch their own raffle: fund a prize, set a ticket price (or make it free to enter), and open it up. Once enough players join (or time runs out), it closes and a winner is drawn on-chain — the exact same permissionless, verifiable mechanism as Wheel of Repeg and Weekly Round, just pointed at a prize and rules the creator chose instead of ours."
+      },
+      {
+        "q": "What are the three raffle types?",
+        "a": "Single Winner takes the whole prize. Podium splits it between several winners, in shares the creator sets when they launch it (say, 60/30/10 for 1st/2nd/3rd). Airdrop isn't really a \"winner\" raffle at all — everyone who entered gets an equal share of the prize, split among up to 1,000 wallets, and it can be free to enter since nobody's ticket money is ever at risk."
+      },
+      {
+        "q": "Who funds the prize, and can it be anything?",
+        "a": "The raffle's creator funds the prize upfront, before anyone can buy a ticket — never the ticket buyers. For a paid Single Winner or Podium raffle, the prize has to be LUNC, USTC, or USDC — never a token the creator picks that can't be independently verified. Reputable CW20 tokens will be allowed there too once they've gone through the same manual review the native assets already have. A free-to-enter Airdrop is the one exception today: since nobody has to trust the token to enter for free, it can hand out any CW20."
+      },
+      {
+        "q": "What does the platform charge, and who pays it?",
+        "a": "A flat USDC fee, paid by the creator when they launch the raffle — never deducted from the prize, and never a cut of ticket sales. It's split 50/50 between the founder and the treasury, same as everywhere else on the platform, and it scales with how many players the raffle allows, not with how much the prize is worth."
+      },
+      {
+        "q": "Can one wallet buy all the tickets?",
+        "a": "For Single Winner and Podium, the same rule as Wheel of Repeg and Weekly Round applies: a hard cap of half the raffle's maximum player capacity per wallet. Airdrop is different — since every entrant gets an equal share regardless of how many tickets they hold, every wallet is capped at exactly one ticket there; buying more would never buy anything extra."
+      },
+      {
+        "q": "What happens if a raffle never fills up?",
+        "a": "If the minimum number of players is never reached in time, the raffle expires and everyone gets their own money back directly, no one has to ask for it — the creator gets their prize and fee back, and every ticket buyer gets their ticket cost back. Same self-service pattern as the other games."
+      },
+      {
+        "q": "What happens if the raffle closes but the winner is never revealed?",
+        "a": "This is different from a raffle that never fills up — this covers one that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and refund everyone: the creator gets their prize and fee back, and every ticket buyer gets their ticket cost back. Nobody is penalized for an outage that wasn't their fault."
+      },
+      {
+        "q": "Can the creator cancel a raffle after funding it?",
+        "a": "Yes, at any point before it draws — but not for free. Cancelling costs the creator part of their own fee, and that penalty gets bigger the later into the raffle's life they cancel. It exists so launching a raffle is a real commitment, not something to abandon on a whim once real people have already bought tickets hoping to win. Ticket buyers themselves are never penalized either way — a cancelled raffle refunds every ticket in full."
+      },
+      {
+        "q": "Can a raffle be invite-only?",
+        "a": "Yes — a creator can optionally set a fixed wallet allowlist when they launch it, so only those specific addresses can buy a ticket. Leave it unset and anyone can enter, same as Wheel of Repeg and Weekly Round."
+      },
+      {
+        "q": "How is the winner obtained and verified on-chain?",
+        "a": "The same two separately-checkable steps as every other game here. (1) Before the raffle even opens, a secret is locked in and published on-chain as a hash — nobody, including the platform or the raffle's creator, can change it afterward. When the raffle draws, that secret gets revealed, and anyone can check its hash still matches what was published when the raffle opened. (2) The full list of everyone who bought a ticket is also public on-chain data. Every drawn raffle has its own \"Verify this raffle\" panel that recomputes the result live, in your own browser, from these two public inputs — enough for anyone technical, or any AI they paste it to, to redo the whole calculation from scratch."
+      },
+      {
+        "q": "Is this actually decentralized, or could the creator or the team control the outcome?",
+        "a": "Neither can. Every step, from opening to payout, is permissionless — triggerable by any wallet, not just the creator's or ours — and the draw itself is decided by the same locked-in-secret-plus-ticket-list formula as Wheel of Repeg and Weekly Round, recomputable by anyone. The one thing that still involves a team-held key is a narrow admin power to move long-unclaimed prizes or tickets to the treasury after a long timeout, so an abandoned raffle's funds don't sit lost forever — it can never redirect them anywhere else, and it has no say over who wins."
+      }
+    ]
+  },
   "onramp": {
     "mainnetBadge": "Mainnet",
     "loading": "Loading onramp…",
