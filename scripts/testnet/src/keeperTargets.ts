@@ -46,9 +46,19 @@ export function discoverTargets(): Target[] {
     // live in the same directory - see that file's own comment). Missing
     // either one here means the matching keeper/commit-generator process
     // never discovers its Weekly Round contract at all.
+    //
+    // Each gets its OWN label, not a shared "weekly-round" (CodeRabbit
+    // finding, 2026-09-20 review, ninth round) - both files coexist in this
+    // repo's shared scripts/testnet/ directory today, and keeperMainnet.ts
+    // keys its cursor/expiration-phase state by
+    // `weekly-round:${target.label}` - a shared label would mean the 2
+    // contracts silently overwrite each other's progress tracking, unlike
+    // wheel-manager/cyol-factory, whose labels already come from the
+    // filename itself.
     if (file === "deployment-weekly-round.json" || file === "deployment-weekly-round-mainnet.json") {
       const { contractAddress } = JSON.parse(readFileSync(path.join(SCRIPTS_DIR, file), "utf8"));
-      targets.push({ type: "weekly-round", label: "weekly-round", address: contractAddress });
+      const label = file === "deployment-weekly-round.json" ? "weekly-round" : "weekly-round-mainnet";
+      targets.push({ type: "weekly-round", label, address: contractAddress });
     }
     const cyolFactoryMatch = file.match(/^deployment-cyol-factory-(.+)\.json$/);
     if (cyolFactoryMatch) {
