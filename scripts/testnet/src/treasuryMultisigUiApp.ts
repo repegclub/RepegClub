@@ -8,7 +8,7 @@
 // Local-only tool: run `npm run multisig-ui` and open the URL Vite prints.
 // Not part of the deployed frontend.
 
-import { fromBase64, toBase64 } from "@cosmjs/encoding";
+import { fromBase64, fromBech32, toBase64 } from "@cosmjs/encoding";
 import { makeSignDoc, type AminoMsg, type StdFee, type StdSignDoc } from "@cosmjs/amino";
 import { makeMultisignedTxBytes } from "@cosmjs/stargate";
 import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx";
@@ -86,6 +86,21 @@ async function proposeAndSign() {
   const chain = CHAINS[chainKey];
   if (!chain) throw new Error(`Unknown chain "${chainKey}".`);
   if (!recipient) throw new Error("Fill in a recipient address.");
+  // A wrong-prefix address (e.g. a Terra address pasted while "Noble" is
+  // selected) used to only fail at broadcast time, after both signers had
+  // already signed (CodeRabbit finding, 2026-09-19 review) - catch it here
+  // instead.
+  let decodedRecipient: { prefix: string };
+  try {
+    decodedRecipient = fromBech32(recipient);
+  } catch {
+    throw new Error(`"${recipient}" isn't a valid bech32 address.`);
+  }
+  if (decodedRecipient.prefix !== chain.bech32Prefix) {
+    throw new Error(
+      `"${recipient}" has prefix "${decodedRecipient.prefix}", but ${chainKey} addresses start with "${chain.bech32Prefix}1...".`
+    );
+  }
   const amount = toMicroUnits(amountHuman, DENOM_EXPONENT);
   if (amount === "" || amount === "0") throw new Error("Amount must be greater than 0.");
 
@@ -272,6 +287,15 @@ async function combineAndBroadcast() {
   }
 }
 
+const chainKeySelect = el<HTMLSelectElement>("chainKey");
+const recipientInput = el<HTMLInputElement>("recipient");
+function updateRecipientPlaceholder() {
+  const chain = CHAINS[chainKeySelect.value];
+  recipientInput.placeholder = chain ? `${chain.bech32Prefix}1...` : "";
+}
+chainKeySelect.addEventListener("change", updateRecipientPlaceholder);
+updateRecipientPlaceholder();
+
 const signButton = el<HTMLButtonElement>("signButton");
 signButton.addEventListener("click", () => {
   // Without this lock, a second click while Keplr/the network call is still
@@ -286,6 +310,16 @@ signButton.addEventListener("click", () => {
     });
 });
 el<HTMLButtonElement>("downloadSigButton").addEventListener("click", downloadSigFile);
-el<HTMLButtonElement>("broadcastButton").addEventListener("click", () => {
-  combineAndBroadcast().catch((err) => setStatus("broadcastStatus", err.message ?? String(err), true));
+const broadcastButton = el<HTMLButtonElement>("broadcastButton");
+broadcastButton.addEventListener("click", () => {
+  // Same double-click race as signButton above (CodeRabbit finding,
+  // 2026-09-19 review, second round) - a second combineAndBroadcast() call
+  // while the first is still pending can overwrite broadcastStatus/
+  // broadcastOutput with a later CheckTx result.
+  broadcastButton.disabled = true;
+  combineAndBroadcast()
+    .catch((err) => setStatus("broadcastStatus", err.message ?? String(err), true))
+    .finally(() => {
+      broadcastButton.disabled = false;
+    });
 });

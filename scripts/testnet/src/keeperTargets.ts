@@ -15,6 +15,22 @@ export type Target =
   | { type: "weekly-round"; label: string; address: string }
   | { type: "cyol-factory"; label: string; address: string };
 
+// Not network-scoped by design (CodeRabbit flagged this as a "heavy lift"
+// finding, 2026-09-19 review - considered and deliberately not implemented):
+// none of the 3 filename patterns above encode which network they belong
+// to, so if a testnet and a mainnet deployment file ever coexisted in the
+// same SCRIPTS_DIR, this would discover both and a caller could query a
+// testnet address against a mainnet RPC (or vice versa). The real mitigation
+// is operational, not code: keeperMainnet.ts/generateAndPushCommitsMainnet.ts
+// are meant to run from their own directory on the VM containing only
+// mainnet deployment-*.json files (see the Obsidian mainnet deploy plan for
+// the VM layout, and Repeg Club - Infraestructura de despliegue for how the
+// VM's copy is curated separately from this repo's shared scripts/testnet/
+// directory, where both networks' files intentionally coexist for local
+// dev convenience). Scoping this in code would mean redesigning every
+// target type's filename convention at once, not just weekly-round's -
+// not worth that refactor for a risk already closed by how the VM is laid
+// out.
 export function discoverTargets(): Target[] {
   const targets: Target[] = [];
   for (const file of readdirSync(SCRIPTS_DIR)) {

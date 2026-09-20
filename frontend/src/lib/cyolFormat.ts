@@ -15,6 +15,19 @@ export function prizeCurrencyLabel(denom: string): string {
   return denom;
 }
 
+// Assumes 6 decimals for every prize, same as uluna (CodeRabbit flagged this
+// as a "heavy lift" finding, 2026-09-19 review - considered and deliberately
+// not resolved yet). True today because CreatorForm.tsx's prizeAssetChoice
+// only ever offers the 3 known native assets (USDC/LUNC/USTC via
+// PRIZE_ASSET_DENOMS, all genuinely 6 decimals) - prize_cw20_address is
+// hardcoded to null in createRaffle.ts, so a creator can't actually pick a
+// CW20 or an arbitrary native denom yet, even though the contract itself
+// already allows a CW20 prize on a free Airdrop raffle without restriction
+// (no ticket-buyer funds at risk there - confirmed with the user 2026-09-19).
+// Opening that field for Airdrop creators is the next real priority (it's
+// where the tool starts earning fees from creator usage) - when it lands,
+// this needs real per-token decimals (from the CW20's own contract query),
+// not this constant.
 export function formatAmount(amount: string, currency: string): string {
   return `${ulunaToDisplayNumber(amount).toFixed(2)} ${currency}`;
 }

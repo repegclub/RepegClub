@@ -54,8 +54,17 @@ const CYOL_RAFFLES_PAGE_LIMIT = 100;
 // on an avoidable rejection.
 async function currentBlockTimeSeconds(): Promise<number> {
   const res = await fetch(`${RPC}/status`);
+  if (!res.ok) throw new Error(`/status returned HTTP ${res.status}`);
   const body = await res.json();
-  return Math.floor(new Date(body.result.sync_info.latest_block_time).getTime() / 1000);
+  const raw = body.result?.sync_info?.latest_block_time;
+  const seconds = Math.floor(new Date(raw).getTime() / 1000);
+  // A missing/malformed latest_block_time used to silently become NaN here
+  // instead of throwing (CodeRabbit finding, 2026-09-19 review) - every
+  // deadline comparison downstream in tick() evaluates false against NaN,
+  // so the keeper would just skip every target that tick instead of
+  // retrying next tick via the try/catch tick() already has for this.
+  if (!Number.isFinite(seconds)) throw new Error(`/status returned an unusable latest_block_time: ${JSON.stringify(raw)}`);
+  return seconds;
 }
 
 type CloseOrRevealAction = "reveal" | "request_expire" | "finalize_expire" | "claim_expire";

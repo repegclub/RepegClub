@@ -256,12 +256,34 @@ async function deployWheelManager() {
   setStatus("wheelStatus", `Done. Address: ${inst.contractAddress} (gasUsed ${inst.gasUsed}).`);
 }
 
-el<HTMLButtonElement>("cyolButton").addEventListener("click", () => {
-  deployCyolFactory().catch((err) => setStatus("cyolStatus", err.message ?? String(err), true));
+// Without disabling the button, a second click while a deploy is still
+// pending starts a second concurrent MsgStoreCode/MsgInstantiateContract
+// flow - duplicate or partial mainnet deploys, wasted irreversible fees
+// (CodeRabbit finding, 2026-09-19 review).
+const cyolButton = el<HTMLButtonElement>("cyolButton");
+cyolButton.addEventListener("click", () => {
+  cyolButton.disabled = true;
+  deployCyolFactory()
+    .catch((err) => setStatus("cyolStatus", err.message ?? String(err), true))
+    .finally(() => {
+      cyolButton.disabled = false;
+    });
 });
-el<HTMLButtonElement>("weeklyButton").addEventListener("click", () => {
-  deployWeeklyRound().catch((err) => setStatus("weeklyStatus", err.message ?? String(err), true));
+const weeklyButton = el<HTMLButtonElement>("weeklyButton");
+weeklyButton.addEventListener("click", () => {
+  weeklyButton.disabled = true;
+  deployWeeklyRound()
+    .catch((err) => setStatus("weeklyStatus", err.message ?? String(err), true))
+    .finally(() => {
+      weeklyButton.disabled = false;
+    });
 });
-el<HTMLButtonElement>("wheelButton").addEventListener("click", () => {
-  deployWheelManager().catch((err) => setStatus("wheelStatus", err.message ?? String(err), true));
+const wheelButton = el<HTMLButtonElement>("wheelButton");
+wheelButton.addEventListener("click", () => {
+  wheelButton.disabled = true;
+  deployWheelManager()
+    .catch((err) => setStatus("wheelStatus", err.message ?? String(err), true))
+    .finally(() => {
+      wheelButton.disabled = false;
+    });
 });
