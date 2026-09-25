@@ -32,3 +32,7 @@ design-references/
 # not-yet-fixed vulnerabilities. Repo is public; never commit these until
 # the underlying finding is actually resolved and shipped.
 docs/audit-prompts/
+
+# Local monitoring tooling — reveals bot-vs-real-user detection logic
+# (e.g. the KeplrWalletMobile signal) that's better kept off a public repo.
+scripts/cloudflare-report.py
