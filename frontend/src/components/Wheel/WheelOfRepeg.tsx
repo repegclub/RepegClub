@@ -122,7 +122,7 @@ export function WheelOfRepeg() {
   return (
     <main>
       <div className="wallet-bar">
-        <GameNav current="/" />
+        <GameNav current="/wheel" />
         <div className="wallet-bar-right">
           <div className="wallet-status-group">
             <NetworkBadge />

@@ -3768,6 +3768,12 @@
     image-rendering: pixelated;
     flex-shrink: 0;
   }
+  /* Wraps .game-nav-logo so it links back to the landing page - flex so the
+     link box hugs the image instead of adding an inline line-height gap. */
+  .game-nav-logo-link {
+    display: flex;
+    flex-shrink: 0;
+  }
   .game-nav-wrap {
     position: relative;
   }

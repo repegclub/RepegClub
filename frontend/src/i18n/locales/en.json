@@ -943,5 +943,104 @@
     "pricesError": "Couldn't load live prices for the total.",
     "totalIncomplete": "Some chains or assets couldn't be included — actual total may be higher.",
     "close": "Close"
+  },
+  "landing": {
+    "eyebrow": "A galactic fair on Terra Classic",
+    "mainTitle": "The main ride: Wheel of Repeg",
+    "lore": "Somewhere in a forgotten corner of the cosmos, a band of friendly aliens stumbled onto Terra Classic with their traveling fair, plugged the rides into the chain and opened the gates.",
+    "headline": "Win the right to repeg your own USTC 1:1 for USDC",
+    "potLabel": "Wheel of Repeg pot right now",
+    "potLoading": "Checking the pot…",
+    "playersNeeded_one": "{{count}} more player needed to spin!",
+    "playersNeeded_other": "{{count}} more players needed to spin!",
+    "wheelLive": "{{count}} players in. The wheel spins soon!",
+    "wheelDrawing": "Drawing the winner right now…",
+    "ctaPlay": "Spin the Wheel",
+    "ctaExplore": "Explore the fair",
+    "howTitle": "How it works",
+    "howSteps": [
+      {
+        "title": "Grab a ticket",
+        "body": "Buy a ticket in USDC. Every ticket goes straight into the round's pot."
+      },
+      {
+        "title": "The wheel spins",
+        "body": "Once enough players join, the winner is drawn on-chain. Nobody picks it, not even us."
+      },
+      {
+        "title": "Repeg your USTC",
+        "body": "The winner swaps their own USTC for USDC 1:1, up to the whole pot."
+      }
+    ],
+    "trustTitle": "Don't trust. Verify!",
+    "trustItems": [
+      {
+        "title": "Every draw is checkable",
+        "body": "The Verify Lab recomputes any winner in your own browser, straight from public Terra Classic data."
+      },
+      {
+        "title": "Open source",
+        "body": "All the contracts and this site are public on GitHub, for anyone to read."
+      }
+    ],
+    "repoLink": "See the code",
+    "attractionsTitle": "More attractions at the fair",
+    "weekly": {
+      "title": "Weekly Round",
+      "body": "The big one, drawn once a week. Every Wheel played feeds its pot, and tickets get pricier each day.",
+      "live": "This week's pot: {{pot}} · closes in {{time}}",
+      "drawing": "This week is closed. The winner is being drawn!",
+      "cta": "Play the Weekly Round"
+    },
+    "raffles": {
+      "title": "Galactic Raffles",
+      "body": "Community-run raffles, fully on-chain, with real prizes.",
+      "live_one": "{{count}} raffle live right now!",
+      "live_other": "{{count}} raffles live right now!",
+      "none": "No raffles live yet. Launch the first one!",
+      "cta": "See the raffles"
+    },
+    "airdrops": {
+      "title": "Airdrops",
+      "body": "No single winner: everyone who joins gets an equal share of the prize.",
+      "live_one": "{{count}} airdrop live, don't miss it!",
+      "live_other": "{{count}} airdrops live, don't miss them!",
+      "none": "No airdrops live yet. Check back soon!",
+      "cta": "See the airdrops"
+    },
+    "creators": {
+      "title": "Create Your Own Luck",
+      "body": "Bring your own show to the fair: launch a raffle or an airdrop for your community or your fundraiser.",
+      "created": "{{raffles}} raffles & {{airdrops}} airdrops created so far. Launch yours!",
+      "createdTotal": "{{count}} raffles & airdrops created so far. Launch yours!",
+      "none": "Be the first creator at the fair!",
+      "cta": "Open the creator tools"
+    },
+    "onramp": {
+      "title": "No USDC on Terra Classic yet?",
+      "body": "The fair's port brings USDC in from Noble, Cosmos Hub or Osmosis, and sends your assets out to other chains. No account, no sign-up.",
+      "cta": "Go to the Onramp"
+    },
+    "faq": {
+      "title": "F.A.Q. - First time at the fair?",
+      "items": [
+        {
+          "q": "What is Repeg Club?",
+          "a": "A set of on-chain games and tools on Terra Classic. The main ride, Wheel of Repeg, gives its winner the right to redeem their own USTC for USDC 1:1, up to the prize amount. Around it: a Weekly Round, community raffles and airdrops, creator tools and an onramp."
+        },
+        {
+          "q": "What do I need to play?",
+          "a": "A Terra Classic wallet (Keplr or Galaxy Station, on desktop or mobile) with some USDC for the ticket. If you don't have USDC on Terra Classic yet, the Onramp brings it in."
+        },
+        {
+          "q": "What if a round never fills up?",
+          "a": "If the minimum number of players isn't reached in time, the round expires and everyone takes their ticket money back with one click."
+        },
+        {
+          "q": "Can the team pick the winner?",
+          "a": "No. The winner comes from a secret locked on-chain before the round opens plus the public ticket list. Anyone can recompute it with \"Verify this round\"."
+        }
+      ]
+    }
   }
 }

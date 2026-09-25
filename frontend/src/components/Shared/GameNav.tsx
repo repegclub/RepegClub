@@ -15,7 +15,7 @@ import { Link, useLocation } from "react-router-dom";
 // raffle, or using any other creator tool), not a second entry for the same
 // one.
 const GAMES: { path: string; labelKey: string; icon?: string }[] = [
-  { path: "/", labelKey: "gameSwitcher.wheelOfRepeg", icon: "/wheel-pixel/wheel-emoji.png" },
+  { path: "/wheel", labelKey: "gameSwitcher.wheelOfRepeg", icon: "/wheel-pixel/wheel-emoji.png" },
   { path: "/weekly-round", labelKey: "gameSwitcher.weeklyRound", icon: "/wheel-pixel/crown-emoji.png" },
   { path: "/create-your-own-luck", labelKey: "gameSwitcher.raffles", icon: "/wheel-pixel/clover-emoji.png" },
   // Same page as Raffles above, not a separate one - the `view=airdrops`
@@ -58,7 +58,10 @@ export function GameNav({ current }: { current: string }) {
 
   return (
     <nav className="game-nav">
-      <img src="/brand/isotipo-pixel-art.png" alt="Repeg Club" className="game-nav-logo" />
+      {/* Logo doubles as the way back to the landing page at "/". */}
+      <Link to="/" className="game-nav-logo-link">
+        <img src="/brand/isotipo-pixel-art.png" alt="Repeg Club" className="game-nav-logo" />
+      </Link>
       <div className="game-nav-wrap" ref={wrapRef}>
         <button
           type="button"
