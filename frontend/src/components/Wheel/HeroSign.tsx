@@ -7,7 +7,9 @@ import { BulbStrip } from "./BulbStrip";
 // for top-of-page attention instead of framing it. As panels of the same
 // sign, they read as flourish around the title, which is a lot closer to
 // what a real fairground marquee looks like.
-export function HeroSign() {
+// title/eyebrow default to Wheel of Repeg's own - the landing page reuses
+// the same marquee for "Repeg Club" itself.
+export function HeroSign({ title = "Wheel of Repeg", eyebrow }: { title?: string; eyebrow?: string }) {
   const { t } = useTranslation();
   return (
     <div className="hero-sign-outline">
@@ -22,8 +24,8 @@ export function HeroSign() {
                 className="hero-sign-hook hero-sign-hook-left"
               />
               <div className="hero-sign-title">
-                <p className="eyebrow hero-sign-eyebrow">{t("brandPresents")}</p>
-                <h1>Wheel of Repeg</h1>
+                <p className="eyebrow hero-sign-eyebrow">{eyebrow ?? t("brandPresents")}</p>
+                <h1>{title}</h1>
               </div>
               <img
                 src="/wheel-pixel/marquee-right.png"

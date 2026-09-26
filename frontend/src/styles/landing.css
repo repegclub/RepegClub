@@ -1,0 +1,463 @@
+/* ---------- Landing page ("/") ----------
+   Mobile-first: everything stacks in one column by default. From 1100px up
+   it becomes a compact one-screen layout (direct request, 2026-09-25: "de
+   un solo golpe de vista, todo a mi alcance" on a wide desktop browser, no
+   big cards with empty space) - see the media query at the bottom. Reuses
+   wheel.css's tokens, .pixel-stepped-corners and button bevels. */
+
+.landing-page {
+  max-width: 1280px;
+}
+
+/* 4-layer stepped frame, same as .lead-outline/.lead-border/.lead-highlight/
+   .lead in wheel.css: each layer clipped with the same fixed-px polygon, so
+   the gap between layers is a uniform ribbon that follows the staircase. */
+.landing-card-outline {
+  padding: 2px;
+  background: var(--black);
+}
+.landing-card-border {
+  padding: 4px;
+}
+.landing-card-border-gold { background: var(--gold-dim); }
+.landing-card-border-blue { background: var(--blue-deep); }
+.landing-card-border-crimson { background: var(--crimson); }
+.landing-card-highlight {
+  padding: 2px;
+}
+.landing-card-highlight-gold { background: var(--gold); }
+.landing-card-highlight-blue { background: var(--blue); }
+.landing-card-highlight-crimson { background: var(--crimson-bright); }
+.landing-card {
+  padding: 1rem 1.1rem;
+  background: var(--bg-card);
+}
+/* Lets the 3 nested layers fill their grid cell, so neighboring cards in a
+   row end up the same height. */
+.landing-card-outline,
+.landing-card-border,
+.landing-card-highlight,
+.landing-card {
+  height: 100%;
+}
+
+/* Buttons: .booth-buy (green) from wheel.css / .round-action-btn (blue),
+   turned into link-sized inline blocks here. */
+.landing-btn {
+  display: inline-block;
+  width: auto;
+  margin-top: 0;
+  text-align: center;
+  text-decoration: none;
+  font-size: 1.2rem;
+  padding: 0.55rem 1.2rem;
+}
+/* Violet - a color the site doesn't use anywhere else yet, and warmer /
+   more inviting than the neutral gray it replaced (direct request). Same
+   flat-fill/hard-bevel recipe as .booth-buy. */
+.landing-btn-secondary {
+  background: #8b5cf6;
+  color: #fff;
+  font-family: var(--body);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow:
+    inset 3px 3px 0 rgba(196,181,253,0.9),
+    inset -3px -3px 0 rgba(91,33,182,0.9),
+    0 4px 0 #5b21b6;
+}
+.landing-btn-secondary:active {
+  box-shadow:
+    inset 3px 3px 0 rgba(91,33,182,0.9),
+    inset -3px -3px 0 rgba(196,181,253,0.5);
+  transform: translateY(4px);
+}
+
+.landing-top,
+.landing-bottom {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.landing-bottom {
+  margin-bottom: 2rem;
+}
+
+.landing-section-title,
+.landing-card-title {
+  margin: 0 0 0.6rem;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.15rem;
+  color: #fff;
+}
+.landing-section-title {
+  text-align: center;
+}
+
+/* ---------- Hero ---------- */
+/* The fair scene (design-references/characters/Feria3.png, 150px trimmed
+   off each side - which also drops the Gemini watermark near its right
+   edge - saved as JPG for weight) behind the whole card. */
+.landing-hero .landing-card {
+  /* Light veil only (was a uniform 0.62 over the whole card) - the text
+     gets its own darker panel below instead, so the fair shows through
+     everywhere else. */
+  background:
+    linear-gradient(rgba(7,9,17,0.25), rgba(7,9,17,0.25)),
+    url("/characters/landing-fair-bg.jpg") center / cover no-repeat,
+    var(--bg-card);
+}
+.landing-hero-copy {
+  padding: 0.8rem 1rem;
+  background: rgba(7,9,17,0.6);
+}
+.landing-hero .landing-card p,
+.landing-hero .landing-card h2,
+.landing-hero .landing-pot span {
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+.landing-hero-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  text-align: center;
+}
+/* Beside the gold headline, inside the text panel. Exactly a third of the
+   PNG's native 203px width: an even downscale keeps the pixel art crisp,
+   where in-between ratios drop pixels unevenly and show the cutout's rough
+   edges. */
+.landing-headline-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  margin: 0 0 0.8rem;
+}
+.landing-hero-host {
+  width: 67.67px;
+  height: auto;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+/* Intro line under the marquee, outside any card. */
+.landing-lore {
+  max-width: 760px;
+  margin: 0 auto 1.2rem;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text-dim);
+}
+.landing-headline {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(1.25rem, 4.4vw, 1.6rem);
+  line-height: 1.2;
+  color: var(--gold);
+  text-wrap: balance;
+}
+.landing-pot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 0 1rem;
+}
+.landing-pot-label {
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.landing-pot-value {
+  font-family: var(--display);
+  font-size: clamp(1.5rem, 5.5vw, 1.9rem);
+  color: #fff;
+}
+.landing-pot-status {
+  font-size: 1.15rem;
+  color: #6ee7a0;
+}
+.landing-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+/* ---------- Attractions ---------- */
+.landing-attractions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
+}
+/* Column layout so the button always sits at the bottom, whatever the
+   length of the text above it. */
+.landing-attraction .landing-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 0.9rem;
+}
+/* Same wide-strip preview as .landing-onramp-art. */
+.landing-attraction-art {
+  display: block;
+  width: 100%;
+  height: 120px;
+  margin-bottom: 0.6rem;
+  object-fit: cover;
+}
+/* Airdrops has no scene of its own yet - its chest cutout shows whole, on
+   a violet backdrop, instead of being cropped like the scenes. */
+.landing-attraction-art-contain {
+  object-fit: contain;
+  padding: 0.3rem 0;
+  background: radial-gradient(circle, rgba(139,92,246,0.45), rgba(7,9,17,0.9) 75%);
+  image-rendering: pixelated;
+}
+.landing-attraction-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.landing-attraction-icon {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+.landing-attraction-title {
+  margin: 0;
+  font-size: 1.3rem;
+  color: #fff;
+}
+.landing-attraction-body {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  color: var(--text-dim);
+}
+.landing-attraction-status {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+  color: #6ee7a0;
+}
+.landing-attraction-cta {
+  margin-top: auto;
+  align-self: flex-start;
+  font-size: 1.05rem;
+  padding: 0.4rem 0.9rem;
+  text-transform: none;
+}
+
+/* ---------- How it works ---------- */
+.landing-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.landing-steps li {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+.landing-steps li + li {
+  margin-top: 0.55rem;
+}
+.landing-step-number {
+  flex-shrink: 0;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  color: var(--gold);
+}
+.landing-step-title {
+  color: #fff;
+}
+.landing-step-body {
+  color: var(--text-dim);
+}
+
+/* ---------- Trust ---------- */
+.landing-trust-title {
+  color: var(--crimson-bright);
+}
+.landing-trust-list {
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+.landing-trust-list li + li {
+  margin-top: 0.4rem;
+}
+.landing-trust-list strong {
+  color: #fff;
+}
+
+/* ---------- Onramp ---------- */
+/* Trust and Onramp cards: column layout with the button pinned to the
+   bottom, so the two buttons line up side by side in the bottom row. */
+.landing-trust .landing-card,
+.landing-onramp .landing-card {
+  display: flex;
+  flex-direction: column;
+}
+.landing-onramp-art,
+.landing-trust-art,
+.landing-how-art {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  margin-bottom: 0.7rem;
+}
+.landing-trust-art {
+  object-position: center 60%;
+}
+.landing-onramp-art {
+  object-position: center 43%;
+}
+.landing-how-art {
+  object-position: center 67%;
+}
+.landing-onramp-body {
+  margin: 0 0 0.7rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+.landing-card-cta {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+/* ---------- Medium: 2-column attractions ---------- */
+@media (min-width: 640px) {
+  .landing-attractions {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---------- Wide desktop: the whole fair in one screen ---------- */
+@media (min-width: 1100px) {
+  /* Shorter marquee, scoped to this page only - Wheel of Repeg and the
+     other pages keep their full-size sign. */
+  .landing-page .hero-sign-outline {
+    margin-bottom: 1rem;
+  }
+  .landing-page .hero-sign-inner {
+    padding: 0.5rem 1.4rem 0.6rem;
+  }
+  .landing-page .bulb-strip.top { margin-bottom: 0.35rem; }
+  .landing-page .bulb-strip.bottom { margin-top: 0.35rem; }
+  .landing-page .hero-sign-title h1 {
+    font-size: 2.1rem;
+    white-space: nowrap;
+  }
+  .landing-page .hero-sign-eyebrow {
+    margin-bottom: 0.2rem;
+  }
+  .landing-page .hero-sign-hook {
+    max-width: 175px;
+  }
+
+  /* 2x2 layout: both titles on row 1, hero and the attraction cards on
+     row 2 - so the hero stretches to exactly the cards' height, not the
+     cards plus their title above (it used to span both, and ended up
+     taller than the 4 cards beside it). The attractions <section> steps
+     out of the way with display:contents so its title and grid can take
+     their own cells. */
+  .landing-top {
+    grid-template-columns: 1.1fr 1fr;
+    grid-template-rows: auto 1fr;
+    row-gap: 0.5rem;
+    align-items: stretch;
+  }
+  .landing-main-title { grid-column: 1; grid-row: 1; }
+  .landing-hero { grid-column: 1; grid-row: 2; }
+  .landing-attractions-section { display: contents; }
+  .landing-attractions-title { grid-column: 2; grid-row: 1; }
+  .landing-attractions { grid-column: 2; grid-row: 2; }
+  .landing-main-title,
+  .landing-attractions-title {
+    margin: 0;
+  }
+  .landing-bottom {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  /* Text panel (with the host inside it) centered in the card, both ways,
+     instead of stretching to fill it - the fair shows around it. */
+  .landing-hero .landing-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .landing-hero-copy {
+    max-width: 600px;
+    padding: 1rem 1.4rem;
+  }
+  .landing-lore {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .landing-headline {
+    font-size: 1.65rem;
+  }
+  /* Label and amount on one line instead of stacked. */
+  .landing-pot {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    column-gap: 0.6rem;
+    margin-bottom: 0.8rem;
+  }
+  .landing-pot-label {
+    font-size: 1.15rem;
+  }
+  .landing-pot-value {
+    font-size: 1.9rem;
+  }
+  .landing-pot-status {
+    flex-basis: 100%;
+    font-size: 1.3rem;
+  }
+  .landing-hero .landing-btn {
+    font-size: 1.35rem;
+    padding: 0.6rem 1.4rem;
+  }
+  .landing-onramp-art,
+  .landing-trust-art,
+  .landing-how-art,
+  .landing-attraction-art {
+    height: 90px;
+  }
+}
+
+/* ---------- FAQ: classroom image cropped 30% from the bottom ----------
+   Landing page only (Wheel of Repeg/Weekly keep the full image) - the full
+   scene made this card too tall here. Crops by showing only the top 70% of
+   the image (687px * 0.7 ~ 481px), so .faq-screen's insets, measured
+   against the full 717x687 image in wheel.css, are re-derived for the
+   shorter box: top 4.5% of 687 = 30.9px -> 6.43% of 481; the screen's
+   bottom edge sits at 292.7px -> 188.3px above the new bottom -> 39.15%.
+   The logo's 3% top offset scales the same way (-> 4.28%). */
+.landing-page .faq-classroom {
+  aspect-ratio: 717 / 481;
+}
+.landing-page .faq-classroom img {
+  object-fit: cover;
+  object-position: top;
+}
+.landing-page .faq-classroom img.faq-classroom-logo {
+  top: 4.28%;
+}
+.landing-page .faq-screen {
+  top: 6.43%;
+  bottom: 39.15%;
+}
