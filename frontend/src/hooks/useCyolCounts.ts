@@ -9,9 +9,11 @@ export type CyolCounts = {
   createdRaffles: number;
   createdAirdrops: number;
   totalCreated: number;
-  // False when the raffle/airdrop split can't be trusted: more raffles exist
+  // False when these counts can't be trusted as exact: more raffles exist
   // than one factory page returns, or some raffle's own status query failed.
-  // The landing then shows totalCreated alone instead of a wrong split.
+  // The landing then shows totalCreated alone instead of a wrong split, and
+  // qualifies the live counts ("N+") or hides a "none live" claim it can't
+  // back up.
   splitComplete: boolean;
 };
 
@@ -24,7 +26,7 @@ const PAGE_LIMIT = 100;
 // Landing-page teaser counts for Create Your Own Luck. Only needs each
 // raffle's status (which already carries raffle_type), not its full config
 // like useCyolRaffleSummaries does for the list page.
-export function useCyolCounts(): CyolCountsState {
+export function useCyolCounts(): CyolCountsState & { refetch: () => void } {
   const [state, setState] = useState<CyolCountsState>({ status: "loading" });
   const { start, isCurrent } = useLatestRequest();
 
@@ -64,5 +66,5 @@ export function useCyolCounts(): CyolCountsState {
     load();
   }, [load]);
 
-  return state;
+  return { ...state, refetch: load };
 }

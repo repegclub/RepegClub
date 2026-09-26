@@ -997,6 +997,7 @@
       "body": "Community-run raffles, fully on-chain, with real prizes.",
       "live_one": "{{count}} raffle live right now!",
       "live_other": "{{count}} raffles live right now!",
+      "liveAtLeast": "{{count}}+ raffles live right now!",
       "none": "No raffles live yet. Launch the first one!",
       "cta": "See the raffles"
     },
@@ -1005,6 +1006,7 @@
       "body": "No single winner: everyone who joins gets an equal share of the prize.",
       "live_one": "{{count}} airdrop live, don't miss it!",
       "live_other": "{{count}} airdrops live, don't miss them!",
+      "liveAtLeast": "{{count}}+ airdrops live, don't miss them!",
       "none": "No airdrops live yet. Check back soon!",
       "cta": "See the airdrops"
     },

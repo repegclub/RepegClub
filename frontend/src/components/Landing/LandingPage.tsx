@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import "../../styles/wheel.css";
@@ -15,6 +15,23 @@ type StepItem = { title: string; body: string };
 type FaqItem = { q: string; a: string };
 
 const REPO_URL = "https://github.com/repegclub/RepegClub";
+
+// Live data refresh while the page stays open. The wheel/weekly queries are
+// 2 each, so every minute also keeps the Weekly Round's "closes in" moving;
+// the raffle counts cost 1 query per raffle, so they refresh less often.
+const ROUNDS_REFRESH_MS = 60_000;
+const CYOL_REFRESH_MS = 180_000;
+
+// Calls `fn` every `ms` while the tab is visible - no point querying the
+// chain for a page nobody is looking at.
+function useVisibleInterval(fn: () => void, ms: number) {
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!document.hidden) fn();
+    }, ms);
+    return () => clearInterval(id);
+  }, [fn, ms]);
+}
 
 // "3d 4h" / "5h 12m" / "8m" - coarse on purpose, a teaser on a card rather
 // than the live countdown the Weekly Round page itself shows.
@@ -105,6 +122,9 @@ export function LandingPage() {
   const wheel = useWheelRound();
   const weekly = useWeeklyRound();
   const cyol = useCyolCounts();
+  useVisibleInterval(wheel.refetch, ROUNDS_REFRESH_MS);
+  useVisibleInterval(weekly.refetch, ROUNDS_REFRESH_MS);
+  useVisibleInterval(cyol.refetch, CYOL_REFRESH_MS);
 
   const howSteps = t("landing.howSteps", { returnObjects: true }) as StepItem[];
   const trustItems = t("landing.trustItems", { returnObjects: true }) as StepItem[];
@@ -145,10 +165,17 @@ export function LandingPage() {
   let creatorsStatus: string | null = null;
   if (cyol.status === "loaded") {
     const c = cyol.counts;
-    rafflesStatus =
-      c.liveRaffles > 0 ? t("landing.raffles.live", { count: c.liveRaffles }) : t("landing.raffles.none");
-    airdropsStatus =
-      c.liveAirdrops > 0 ? t("landing.airdrops.live", { count: c.liveAirdrops }) : t("landing.airdrops.none");
+    // Incomplete data (see CyolCounts.splitComplete) can only undercount:
+    // show what was found as a floor ("N+"), and say nothing rather than
+    // claim "none live" when some raffle's status couldn't be read.
+    const liveLabel = (kind: "raffles" | "airdrops", count: number) =>
+      count > 0
+        ? t(c.splitComplete ? `landing.${kind}.live` : `landing.${kind}.liveAtLeast`, { count })
+        : c.splitComplete
+          ? t(`landing.${kind}.none`)
+          : null;
+    rafflesStatus = liveLabel("raffles", c.liveRaffles);
+    airdropsStatus = liveLabel("airdrops", c.liveAirdrops);
     creatorsStatus =
       c.totalCreated === 0
         ? t("landing.creators.none")
