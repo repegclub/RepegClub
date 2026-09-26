@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import "../../styles/wheel.css";
@@ -23,13 +23,27 @@ const ROUNDS_REFRESH_MS = 60_000;
 const CYOL_REFRESH_MS = 180_000;
 
 // Calls `fn` every `ms` while the tab is visible - no point querying the
-// chain for a page nobody is looking at.
+// chain for a page nobody is looking at. A tick skipped while hidden is made
+// up as soon as the tab is visible again, instead of waiting out a full
+// interval; switching tabs without having missed one costs no query.
 function useVisibleInterval(fn: () => void, ms: number) {
   useEffect(() => {
+    let missed = false;
     const id = setInterval(() => {
-      if (!document.hidden) fn();
+      if (document.hidden) missed = true;
+      else fn();
     }, ms);
-    return () => clearInterval(id);
+    const onVisibilityChange = () => {
+      if (!document.hidden && missed) {
+        missed = false;
+        fn();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fn, ms]);
 }
 
@@ -121,7 +135,23 @@ export function LandingPage() {
   const { t } = useTranslation();
   const wheel = useWheelRound();
   const weekly = useWeeklyRound();
-  const cyol = useCyolCounts();
+  // The raffle counts cost 1 query per raffle, so they're only read once the
+  // attraction cards actually scroll into view - on narrow screens they sit
+  // below the hero, and a visitor who never gets there shouldn't pay for
+  // them. Observes the cards grid, not their <section>: from 1100px up the
+  // section is display:contents and has no box to intersect.
+  const attractionsRef = useRef<HTMLDivElement>(null);
+  const [attractionsSeen, setAttractionsSeen] = useState(false);
+  useEffect(() => {
+    const el = attractionsRef.current;
+    if (!el || attractionsSeen) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setAttractionsSeen(true);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [attractionsSeen]);
+  const cyol = useCyolCounts(attractionsSeen);
   useVisibleInterval(wheel.refetch, ROUNDS_REFRESH_MS);
   useVisibleInterval(weekly.refetch, ROUNDS_REFRESH_MS);
   useVisibleInterval(cyol.refetch, CYOL_REFRESH_MS);
@@ -233,7 +263,7 @@ export function LandingPage() {
           <h2 className="landing-section-title landing-attractions-title" id="attractions">
             {t("landing.attractionsTitle")}
           </h2>
-          <div className="landing-attractions">
+          <div className="landing-attractions" ref={attractionsRef}>
             <AttractionCard
               art="/weekly-pixel/booth-bg.png"
               artPosition="center 38%"

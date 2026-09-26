@@ -29,15 +29,49 @@ const PAGE_LIMIT = 100;
 // throttled.
 const CONCURRENCY = 5;
 
+// Reloading or coming back to the landing within this window reuses the last
+// counts from this browser instead of re-reading every raffle. Same 3 minutes
+// the landing's own periodic refresh uses, which always reads fresh.
+const CACHE_KEY = "repegclub:cyolCounts";
+const CACHE_TTL_MS = 180_000;
+
+function loadCachedCounts(): CyolCounts | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { savedAt: number; counts: CyolCounts };
+    if (typeof cached.savedAt !== "number" || Date.now() - cached.savedAt > CACHE_TTL_MS) return null;
+    return cached.counts;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedCounts(counts: CyolCounts): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), counts }));
+  } catch {
+    // localStorage can be unavailable - degrades to reading the chain every time.
+  }
+}
+
 // Landing-page teaser counts for Create Your Own Luck. Only needs each
 // raffle's status (which already carries raffle_type), not its full config
-// like useCyolRaffleSummaries does for the list page.
-export function useCyolCounts(): CyolCountsState & { refetch: () => void } {
+// like useCyolRaffleSummaries does for the list page. Reads nothing until
+// `enabled` (the landing passes whether the cards have been seen yet).
+export function useCyolCounts(enabled: boolean): CyolCountsState & { refetch: () => void } {
   const [state, setState] = useState<CyolCountsState>({ status: "loading" });
   const { start, isCurrent } = useLatestRequest();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (useCache: boolean) => {
     const token = start();
+    if (useCache) {
+      const cached = loadCachedCounts();
+      if (cached) {
+        setState({ status: "loaded", counts: cached });
+        return;
+      }
+    }
     try {
       const { raffles, total_count } = await getRaffles(undefined, PAGE_LIMIT);
       const results: PromiseSettledResult<CyolRaffleStatusResponse>[] = [];
@@ -68,20 +102,28 @@ export function useCyolCounts(): CyolCountsState & { refetch: () => void } {
           else counts.liveRaffles++;
         }
       }
-      if (isCurrent(token)) setState({ status: "loaded", counts });
+      if (isCurrent(token)) {
+        saveCachedCounts(counts);
+        setState({ status: "loaded", counts });
+      }
     } catch {
       if (isCurrent(token)) setState({ status: "error" });
     }
   }, [start, isCurrent]);
 
   useEffect(() => {
-    load();
+    if (!enabled) return;
+    load(true);
     // Leaving the page invalidates the in-flight load, so its remaining
     // status batches aren't sent to the RPC for nobody.
     return () => {
       start();
     };
-  }, [load, start]);
+  }, [enabled, load, start]);
 
-  return { ...state, refetch: load };
+  const refetch = useCallback(() => {
+    if (enabled) load(false);
+  }, [enabled, load]);
+
+  return { ...state, refetch };
 }
