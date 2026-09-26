@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getRaffles } from "../lib/queryFactory";
-import { getRaffleStatus } from "../lib/queryCyolRaffle";
+import { getRaffleStatus, type CyolRaffleStatusResponse } from "../lib/queryCyolRaffle";
 import { useLatestRequest } from "./useLatestRequest";
 
 export type CyolCounts = {
@@ -23,6 +23,12 @@ export type CyolCountsState = { status: "loading" } | { status: "error" } | { st
 // query.rs) - newest-first, so anything still live is always in here.
 const PAGE_LIMIT = 100;
 
+// Status reads in flight at once. This runs for every homepage visitor on
+// the shared public RPC, so it's kept lower than the history scans' 15 -
+// up to PAGE_LIMIT reads all at once could get the site's own RPC traffic
+// throttled.
+const CONCURRENCY = 5;
+
 // Landing-page teaser counts for Create Your Own Luck. Only needs each
 // raffle's status (which already carries raffle_type), not its full config
 // like useCyolRaffleSummaries does for the list page.
@@ -34,7 +40,13 @@ export function useCyolCounts(): CyolCountsState & { refetch: () => void } {
     const token = start();
     try {
       const { raffles, total_count } = await getRaffles(undefined, PAGE_LIMIT);
-      const results = await Promise.allSettled(raffles.map((r) => getRaffleStatus(r.address)));
+      const results: PromiseSettledResult<CyolRaffleStatusResponse>[] = [];
+      for (let i = 0; i < raffles.length; i += CONCURRENCY) {
+        // A newer load superseded this one - stop spending queries on it.
+        if (!isCurrent(token)) return;
+        const batch = raffles.slice(i, i + CONCURRENCY);
+        results.push(...(await Promise.allSettled(batch.map((r) => getRaffleStatus(r.address)))));
+      }
       const counts: CyolCounts = {
         liveRaffles: 0,
         liveAirdrops: 0,
