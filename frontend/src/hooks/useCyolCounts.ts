@@ -76,7 +76,12 @@ export function useCyolCounts(): CyolCountsState & { refetch: () => void } {
 
   useEffect(() => {
     load();
-  }, [load]);
+    // Leaving the page invalidates the in-flight load, so its remaining
+    // status batches aren't sent to the RPC for nobody.
+    return () => {
+      start();
+    };
+  }, [load, start]);
 
   return { ...state, refetch: load };
 }
