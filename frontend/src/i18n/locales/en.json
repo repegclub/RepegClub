@@ -7,7 +7,10 @@
     "title": "Your unclaimed prizes",
     "roundLabel": "Round #{{roundId}} — unredeemed",
     "weekLabel": "Week #{{weekId}} — unredeemed",
-    "amount": "{{amount}} USDC"
+    "amount": "{{amount}} USDC",
+    "refundsTitle": "Tickets to reclaim",
+    "refundLabel_one": "Round #{{roundId}} expired — {{count}} ticket",
+    "refundLabel_other": "Round #{{roundId}} expired — {{count}} tickets"
   },
   "platformRepegged": {
     "label": "Total USTC REPEGGED by Repeg Club:",

@@ -34,7 +34,7 @@ type HistorySource = {
   prizeShare: number;
 };
 
-function wheelSource(contractAddress: string): HistorySource {
+export function wheelSource(contractAddress: string): HistorySource {
   return {
     contractAddress,
     getCurrentId: async () => (await getCurrentRound(contractAddress)).round_id,
@@ -95,7 +95,7 @@ async function scanRounds(source: HistorySource, roundIds: number[], wallet: str
 // every deployed tier (and Weekly Round) and merged into one combined,
 // platform-wide history (matching the scope of the lifetime-stats totals it
 // sits next to).
-async function openSource(source: HistorySource, wallet: string) {
+export async function openSource(source: HistorySource, wallet: string) {
   const cached = loadHistoryCache(source.contractAddress, wallet);
   const currentId = await source.getCurrentId();
   const newestResolvable = currentId - 1;

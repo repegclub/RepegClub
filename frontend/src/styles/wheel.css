@@ -484,6 +484,18 @@
     border-top: 1px dashed var(--border-bright);
     text-align: center;
   }
+  /* Unclaimed prizes and tickets-to-reclaim share this one panel - each
+     group keeps its own title, spaced apart when both show at once. */
+  .my-winnings-group + .my-winnings-group {
+    margin-top: 1.4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border-bright);
+  }
+  /* .round-action-btn's own 2.2rem top margin is sized for the wheel's
+     action column - too much gap under the amount in here. */
+  .my-winnings-entry .round-action-btn {
+    margin-top: 0;
+  }
   .my-winnings-entry:first-of-type {
     padding-top: 0;
     margin-top: 0;

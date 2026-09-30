@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { buildArcs, buildPlaceholderArcs, type Entrant } from "../../lib/wheelData";
 import { useWheelSpin } from "../../hooks/useWheelSpin";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { PixelWheelCanvas } from "./PixelWheelCanvas";
 import { drawPixelWheel } from "../../lib/drawPixelWheel";
 import type { WheelRoundState } from "../../hooks/useWheelRound";
@@ -133,6 +134,9 @@ export function WheelCard({
     setRequestSubmitted(false);
     setRequestSubmittedAt(null);
     setFinalizeSubmittedAt(null);
+    // An error from the previous round (e.g. Withdraw rejected because the
+    // keeper had already expired it) would otherwise linger on the new one.
+    setActionError(null);
   }, [currentRoundId]);
 
   // A fresh purchase makes any earlier "just withdrew/reclaimed" note stale
@@ -196,6 +200,8 @@ export function WheelCard({
       onRoundFinished(expiredRoundId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      // Usually means the keeper already expired it - resync with the chain.
+      roundState.refetch();
     } finally {
       setActionBusy("idle");
     }
@@ -319,6 +325,8 @@ export function WheelCard({
       onWithdrawn?.();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      // Usually means the round already moved on - resync with the chain.
+      roundState.refetch();
     } finally {
       setActionBusy("idle");
     }
@@ -379,6 +387,16 @@ export function WheelCard({
     loaded &&
     !hasMinPlayers &&
     nowSec >= roundState.round.opened_at + roundState.config.max_round_age_seconds + DEADLINE_SAFETY_BUFFER_SECONDS;
+
+  // Once a round is past its deadline/hard cap, the keeper closes or expires
+  // it within one of its ~15s ticks - but nothing refetched an Open round, so
+  // a page left open kept showing the old round (with Withdraw/Expire
+  // buttons the contract now rejects) until a manual reload. Only polls in
+  // that short window, not the whole time a round sits open waiting.
+  usePollWhileClosed(
+    loaded && roundState.round.status === "open" && (closeEligible || expireEligible),
+    roundState.refetch
+  );
 
   // Mirrors execute_request_expire_closed_round's own condition exactly
   // (closed_at + max_reveal_age_seconds) - the outage safety net becomes

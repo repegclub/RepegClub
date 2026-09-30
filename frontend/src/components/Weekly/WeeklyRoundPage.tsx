@@ -40,6 +40,10 @@ export function WeeklyRoundPage() {
   const weekId = weekState.status === "loaded" ? weekState.week.week_id : null;
   const entrantsState = useWeeklyEntrants(weekId);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];
+  // Same auto-retry as WheelOfRepeg - a single failed read shouldn't leave
+  // the panel buttonless until a manual reload.
+  usePollWhileClosed(weekState.status === "error", weekState.refetch, 5000);
+  usePollWhileClosed(entrantsState.status === "error", entrantsState.refetch, 5000);
   const lifetimeStats = useLifetimeStats(address);
   const platformRepegged = usePlatformRepegged();
 
