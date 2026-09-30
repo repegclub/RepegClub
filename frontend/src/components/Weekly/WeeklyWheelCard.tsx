@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { buildArcs, buildPlaceholderArcs, type Entrant } from "../../lib/wheelData";
 import { useWheelSpin } from "../../hooks/useWheelSpin";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { PixelWheelCanvas } from "../Wheel/PixelWheelCanvas";
 import { drawWeeklyPixelWheel } from "../../lib/drawWeeklyPixelWheel";
 import { HostGuide } from "../Wheel/HostGuide";
@@ -121,6 +122,8 @@ export function WeeklyWheelCard({
     setRequestSubmitted(false);
     setRequestSubmittedAt(null);
     setFinalizeSubmittedAt(null);
+    // Same as WheelCard - don't carry a previous week's error onto the new one.
+    setActionError(null);
   }, [currentWeekId]);
 
   const maxPlayers = weekState.status === "loaded" ? weekState.config.max_players : 10;
@@ -178,6 +181,8 @@ export function WeeklyWheelCard({
       onWeekFinished(expiredWeekId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      // Usually means the keeper already expired it - resync with the chain.
+      weekState.refetch();
     } finally {
       setActionBusy("idle");
     }
@@ -276,6 +281,8 @@ export function WeeklyWheelCard({
       onWithdrawn?.();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : t("wheel.actionFailed"));
+      // Usually means the week already moved on - resync with the chain.
+      weekState.refetch();
     } finally {
       setActionBusy("idle");
     }
@@ -330,6 +337,13 @@ export function WeeklyWheelCard({
     !hasMinPlayers &&
     deadlineEstimate !== null &&
     nowSec >= deadlineEstimate + DEADLINE_SAFETY_BUFFER_SECONDS;
+
+  // Same short post-deadline poll as WheelCard (see its comment) - the
+  // keeper closes/expires the week here, and nothing else refetches an Open one.
+  usePollWhileClosed(
+    loaded && weekState.week.status === "open" && (closeEligible || expireEligible),
+    weekState.refetch
+  );
 
   // Mirrors execute_request_expire_closed_week's own condition exactly
   // (closed_at + max_reveal_age_seconds) - same outage safety net as Wheel of

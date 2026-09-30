@@ -69,6 +69,10 @@ export function WheelOfRepeg() {
   const roundId = roundState.status === "loaded" ? roundState.round.round_id : null;
   const entrantsState = useRoundEntrants(roundId, selectedTier ?? undefined);
   const entrants = entrantsState.status === "loaded" ? entrantsState.entrants : [];
+  // A single failed read (flaky public RPC) used to leave the round panel
+  // with no buttons until a manual page reload - retry instead.
+  usePollWhileClosed(roundState.status === "error", roundState.refetch, 5000);
+  usePollWhileClosed(entrantsState.status === "error", entrantsState.refetch, 5000);
 
   const ticketPriceDisplay =
     roundState.status === "loaded"
@@ -210,11 +214,13 @@ export function WheelOfRepeg() {
           {roundState.status === "loaded" && (
             <MyWinningsPanel
               redemptionDenom={roundState.config.redemption_denom}
+              ticketPrice={roundState.config.ticket_price}
               unclaimedDeadlineDays={roundState.config.unclaimed_deadline_days}
               contractAddress={selectedTier ?? undefined}
               onRedeemed={handleRedeemed}
               revealVersion={revealVersion}
               currentRoundId={roundId}
+              onReclaimed={lifetimeStats.refetch}
             />
           )}
           <LifetimeStatsPanel stats={lifetimeStats} />
