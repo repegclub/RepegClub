@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWallet } from "../../contexts/WalletContext";
 import { useMyWinnings } from "../../hooks/useMyWinnings";
 import { useMyRefunds } from "../../hooks/useMyRefunds";
+import { usePollWhileClosed } from "../../hooks/usePollWhileClosed";
 import { ulunaToDisplayNumber } from "../../lib/format";
 import { reclaimTicket } from "../../lib/roundActions";
 import { isRevealed } from "../../lib/revealCache";
@@ -61,6 +62,15 @@ export function MyWinningsPanel({
   const refunds = useMyRefunds(address, contractAddress, currentRoundId ?? null);
   const [reclaimingRound, setReclaimingRound] = useState<number | null>(null);
   const [reclaimError, setReclaimError] = useState<string | null>(null);
+  // A failed refunds read would otherwise just hide the list silently -
+  // retry, same as the round/entrants reads in WheelOfRepeg.
+  usePollWhileClosed(refunds.status === "error", refunds.refetch, 5000);
+  // Lets handleReclaim tell whether the wallet was switched while its tx
+  // was pending - its follow-up refetches belong to the old wallet then.
+  const addressRef = useRef(address);
+  useEffect(() => {
+    addressRef.current = address;
+  }, [address]);
 
   if (!address) return null;
 
@@ -80,13 +90,16 @@ export function MyWinningsPanel({
 
   async function handleReclaim(roundId: number) {
     if (walletState.status !== "connected") return;
+    const reclaimAddress = walletState.address;
     setReclaimingRound(roundId);
     setReclaimError(null);
     try {
       await reclaimTicket(walletState.wallet, roundId, contractAddress);
+      if (addressRef.current !== reclaimAddress) return;
       refunds.refetch();
       onReclaimed?.();
     } catch (err) {
+      if (addressRef.current !== reclaimAddress) return;
       setReclaimError(err instanceof Error ? err.message : t("wheel.actionFailed"));
       refunds.refetch();
     } finally {

@@ -10,7 +10,9 @@ export type MyRefundsState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "loaded"; refunds: RefundEntry[] };
+  // `key` (wallet + contract) lets a plain refetch keep showing the current
+  // list instead of blanking it, while a wallet/tier switch still resets.
+  | { status: "loaded"; refunds: RefundEntry[]; key: string };
 
 // Expired rounds this wallet already reclaimed - ReclaimTicket removes the
 // wallet from that round's entrants for good, so once seen gone it never
@@ -45,6 +47,11 @@ function saveReclaimed(contractAddress: string, wallet: string, roundIds: number
 // entrants, since the cached entry only says the wallet played it, not
 // whether it has reclaimed since. `currentRoundId` is a dependency so a
 // round the keeper just expired gets picked up as soon as the page moves on.
+// Known limit, accepted on purpose (PR #60): a browser with no cache only
+// scans the last 30 rounds (openSource's DEFAULT_DEPTH), so a refund older
+// than that wouldn't show here - scanning full history on first visit would
+// cost 2 public-RPC queries per round ever played. Revisit if round counts
+// grow enough for that to matter.
 export function useMyRefunds(
   wallet: string | null,
   contractAddress: string | undefined,
@@ -60,7 +67,8 @@ export function useMyRefunds(
       setState({ status: "idle" });
       return;
     }
-    setState({ status: "loading" });
+    const key = `${wallet}:${address}`;
+    setState((prev) => (prev.status === "loaded" && prev.key === key ? prev : { status: "loading" }));
     try {
       const { entries } = await openSource(wheelSource(address), wallet);
       const reclaimed = loadReclaimed(address, wallet);
@@ -77,6 +85,7 @@ export function useMyRefunds(
         setState({
           status: "loaded",
           refunds: checked.filter((c) => c.ticket_count > 0).sort((a, b) => b.round_id - a.round_id),
+          key,
         });
       }
     } catch (err) {
