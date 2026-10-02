@@ -436,7 +436,7 @@ export const ONRAMP_BORDER_RADIUS_PILL = "999px";
 // carried over from anything said in chat. The return leg (BSC/Ethereum/
 // Solana -> Terra Classic) needs its own EVM/Solana wallet integration this
 // project doesn't have yet (see project notes, 2026-09-02) - not built.
-export type HyperlaneAsset = "LUNC" | "USTC" | "JURIS";
+export type HyperlaneAsset = "LUNC" | "USTC" | "JURIS" | "TERRA";
 
 // LUNC/USTC ride CwHypNative in `collateral` mode: lock the real native coin
 // (uluna/uusd) via `funds` on the way out. JURIS (added 2026-09-04, first
@@ -472,7 +472,30 @@ export const HYPERLANE_TERRA_CLASSIC_WARP = {
     warpContract: "terra1dkr5hngjngneqmfrye2fuppckk34uxuxjes5pqzfu59jvncs27uszw8wj5",
     decimals: 6,
   },
+  // TERRA (Terraport's own token, not LUNC) - Delfos Hub's route to BSC,
+  // deployed and round-trip tested with real funds 2026-10-02 (10 TERRA out,
+  // 5 back, both delivered in ~15s). Same CwHypCollateral code_id 11389 as
+  // JURIS. Verified live: contract_info (code 11389, label "cw-hpl:
+  // hpl_warp_cw20 TERRA (by Delfos Hub)"), token_type c_w20 = tokenContract,
+  // token_mode collateral, list_routes domain 56 -> the BSC token below.
+  // Hidden from the asset picker unless unlocked by URL (see
+  // HIDDEN_HYPERLANE_ASSETS) while Terraport's governance vote on taking the
+  // route over is pending - the route is still owned by a single deploy
+  // wallet, not a multisig.
+  TERRA: {
+    kind: "cw20",
+    tokenContract: "terra1ex0hjv3wurhj4wgup4jzlzaqj4av6xqd8le4etml7rg9rs207y4s8cdvrp",
+    warpContract: "terra1mq5yw9dvkcmct8dxv23lxhwflgczyfd2scx6jelm2zk99v7jswfq6prgcf",
+    decimals: 6,
+  },
 } as const satisfies Record<HyperlaneAsset, HyperlaneNativeWarp | HyperlaneCw20Warp>;
+
+// Assets with a working route that the picker only offers when the page is
+// opened with `?preview=<symbol lowercase>` (e.g. /onramp?preview=terra) -
+// a way to let specific people use a route without listing it publicly.
+// Not access control: anyone with the link (or the contracts) can use it.
+export const HIDDEN_HYPERLANE_ASSETS: readonly HyperlaneAsset[] = ["TERRA"];
+export const HIDDEN_ASSET_PREVIEW_PARAM = "preview";
 
 // Ronda 2 pre-mainnet audit finding (Opus, 2026-09-08): the CW20 warp path
 // (onrampActions.ts) sends `transfer_remote`'s amount on the wire as a raw
@@ -521,6 +544,9 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
     tokenAddress: {
       LUNC: "0x481095ecEd7A907e7f390b6226F53a66D379e6e2",
       USTC: "0xfC067fd98FD123fC2cAd72d040AF60a523274339",
+      // HypERC20 synthetic "Terraport"/TERRA, 6 decimals - verified live
+      // 2026-10-02: routers(132556) = the TERRA warp contract above.
+      TERRA: "0x1413bd3E91036Fa21aA548E1a95e086c379Fb26D",
     },
   },
   {
