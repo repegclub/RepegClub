@@ -1104,7 +1104,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
 
           <label className="onramp-field-label" htmlFor={`outbound-address-${destination.domain}`}>
             {destination.kind === "evm"
-              ? t("onramp.outbound.evmAddressLabel")
+              ? t("onramp.outbound.evmAddressLabel", { chain: destination.label })
               : t("onramp.outbound.solanaAddressLabel")}
           </label>
           <div className={"onramp-input-wrap" + (destAddressInvalid ? " onramp-dest-input-invalid" : "")}>
