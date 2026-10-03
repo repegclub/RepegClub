@@ -763,8 +763,8 @@
       "Injective's the next stop —\nget your USDC out today!"
     ],
     "title": "Move Funds with Terra Classic",
-    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana, or USDC back out to Noble. Heads up: Circle is retiring Noble-USDC on Dec 1, 2026 — if you're holding it here, now's the time to move it out. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
-    "modeBring": "Bring USDC in",
+    "subtitle": "Bring USDC in from Noble, Cosmos Hub, or Osmosis to buy a ticket, or bring LUNC and USTC back from BSC or Ethereum — or send LUNC, USTC, or supported CW20 tokens out to BSC, Ethereum, or Solana, or USDC back out to Noble. Heads up: Circle is retiring Noble-USDC on Dec 1, 2026 — if you're holding it here, now's the time to move it out. Connect the right wallet, confirm, done. No account, no sign-up, nothing held in between.",
+    "modeBring": "Bring assets in",
     "modeSend": "Send assets out",
     "direct": {
       "destAddressLabel": "Terra Classic address to receive",
@@ -786,6 +786,21 @@
       "outcomeUnknownWithHash": "We couldn't confirm whether this went through — check tx hash {{hash}} in your wallet's transaction history or a block explorer before trying again. Sending twice would move funds and fees twice.",
       "outcomeUnknownAck": "I checked — let me try again",
       "sent": "Sent! Tx hash: {{hash}}"
+    },
+    "inbound": {
+      "desc": "Connect your {{chain}} wallet (MetaMask, Rabby, Keplr…), then bring LUNC, USTC, or a supported token back to your Terra Classic address via Hyperlane.",
+      "connectButton": "Connect {{chain}} wallet",
+      "noWallet": "No browser wallet found. Install MetaMask, Rabby, or Keplr, then reload this page.",
+      "mobileHint": "On your phone? Open this page inside your wallet app's own built-in browser.",
+      "balance": "Your balance: {{amount}} {{symbol}} · {{native}} {{nativeSymbol}} for gas",
+      "balanceError": "Couldn't read your balance.",
+      "quoteError": "Couldn't get a price for this transfer.",
+      "tokenShort": "Not enough {{symbol}} for this amount plus fees.",
+      "gasNeeded": "You need at least {{amount}} {{symbol}} in this wallet for the interchain gas, plus a little more for this transaction's own gas.",
+      "breakdown": "{{send}} {{symbol}} will arrive at {{address}} on Terra Classic. Interchain gas: {{gas}} {{nativeSymbol}}.",
+      "breakdownWithRouteFee": "{{send}} {{symbol}} will arrive at {{address}} on Terra Classic. Route fee: {{routeFee}} {{symbol}} (0.2%). Interchain gas: {{gas}} {{nativeSymbol}}.",
+      "sendFailed": "Transaction failed.",
+      "sent": "Sent! It usually lands on Terra Classic within a minute or two. Tx:"
     },
     "outbound": {
       "desc": "Connect your Terra Classic wallet, then send LUNC, USTC, or a supported CW20 token out to {{chain}} via Hyperlane.",

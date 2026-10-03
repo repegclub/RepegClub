@@ -20,13 +20,15 @@ import {
 } from "../../lib/onrampActions";
 import { quoteHyperlaneGasFee } from "../../lib/queryHyperlaneGas";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
+import { EvmInboundForm } from "./EvmInboundForm";
 import {
   DIRECT_ORIGIN_CHAINS,
   HIDDEN_ASSET_PREVIEW_PARAM,
-  HIDDEN_HYPERLANE_ASSETS,
+  HYPERLANE_DESTINATIONS,
   HYPERLANE_TERRA_CLASSIC_WARP,
   SEND_DESTINATIONS,
   TERRA_CLASSIC_MAINNET,
+  availableHyperlaneAssets,
   displayToMicro,
   getDirectFeeSplit,
   microToDisplay,
@@ -74,6 +76,10 @@ function truncate(address: string): string {
 // wouldn't have fixed the same-glance problem.
 type Mode = "bring" | "send";
 
+type BringTab =
+  | { kind: "cosmos"; key: string; label: string; chain: DirectOriginChain }
+  | { kind: "evm"; key: string; label: string; destination: HyperlaneDestination };
+
 // A stable identifier for a SendDestination tab - HyperlaneDestination and
 // IbcSendDestination don't share a field that's both unique and always
 // present (domain means nothing for the IBC leg, chainId means nothing for
@@ -87,8 +93,8 @@ export function DirectTransferCard() {
   const [mode, setMode] = useState<Mode>("bring");
   // Each mode remembers its own last-picked chain independently (2 separate
   // state slots, not 1 shared "selected tab") - switching modes and back
-  // shouldn't reset which chain was chosen.
-  const [selectedOrigin, setSelectedOrigin] = useState<DirectOriginChain>(DIRECT_ORIGIN_CHAINS[0]);
+  // shouldn't reset which chain was chosen. The "bring" slot is
+  // selectedBringKey below.
   const [selectedDestination, setSelectedDestination] = useState<SendDestination>(SEND_DESTINATIONS[0]);
   // Lifted up here (not local to DirectOriginForm) so it survives
   // switching between the Noble/Cosmos Hub/Osmosis tabs - the destination
@@ -97,6 +103,26 @@ export function DirectTransferCard() {
   // isValidTerraClassicAddress in onrampActions.ts for why.
   const [terraClassicAddressInput, setTerraClassicAddressInput] = useState("");
   const terraClassicAddressValid = isValidTerraClassicAddress(terraClassicAddressInput);
+  // Hidden assets unlocked via ?preview=<symbol> (onrampConfig.ts's
+  // HIDDEN_HYPERLANE_ASSETS), shared by both directions. Read once at
+  // mount, not reactively, so the picker can't drop the selected asset out
+  // from under an in-progress form.
+  const [searchParams] = useSearchParams();
+  const [previewAssets] = useState(
+    () => new Set(searchParams.getAll(HIDDEN_ASSET_PREVIEW_PARAM).map((v) => v.trim().toUpperCase()))
+  );
+  // "Bring in" tabs: the Cosmos origins (USDC/ATOM/OSMO, signed with a
+  // Cosmos wallet) followed by the EVM Hyperlane chains (LUNC/USTC/TERRA
+  // coming back, signed with an EVM wallet). Solana stays send-only for now
+  // (stage 2, see project notes).
+  const bringTabs: BringTab[] = [
+    ...DIRECT_ORIGIN_CHAINS.map((chain): BringTab => ({ kind: "cosmos", key: chain.chainId, label: chain.label, chain })),
+    ...HYPERLANE_DESTINATIONS.filter((d) => d.kind === "evm").map(
+      (destination): BringTab => ({ kind: "evm", key: `evm-${destination.domain}`, label: destination.label, destination })
+    ),
+  ];
+  const [selectedBringKey, setSelectedBringKey] = useState(bringTabs[0].key);
+  const selectedBring = bringTabs.find((tab) => tab.key === selectedBringKey) ?? bringTabs[0];
 
   return (
     <div className="onramp-tool-panel pixel-stepped-corners">
@@ -124,33 +150,41 @@ export function DirectTransferCard() {
       {mode === "bring" ? (
         <>
           <div className="onramp-tabs" role="tablist">
-            {DIRECT_ORIGIN_CHAINS.map((chain, index) => (
+            {bringTabs.map((tab, index) => (
               <button
-                key={chain.chainId}
+                key={tab.key}
                 type="button"
                 role="tab"
-                aria-selected={selectedOrigin.chainId === chain.chainId}
+                aria-selected={selectedBring.key === tab.key}
                 // onramp-tab-cN: which of the 3 established accent colors
                 // (green/blue/crimson) this tab turns into once picked -
                 // stays plain gray otherwise, see
                 // .onramp-tab-active.onramp-tab-cN in onramp.css.
-                className={
-                  `onramp-tab onramp-tab-c${index}` +
-                  (selectedOrigin.chainId === chain.chainId ? " onramp-tab-active" : "")
-                }
-                onClick={() => setSelectedOrigin(chain)}
+                className={`onramp-tab onramp-tab-c${index}` + (selectedBring.key === tab.key ? " onramp-tab-active" : "")}
+                onClick={() => setSelectedBringKey(tab.key)}
               >
-                {chain.label}
+                {tab.label}
               </button>
             ))}
           </div>
-          <DirectOriginForm
-            key={selectedOrigin.chainId}
-            chain={selectedOrigin}
-            terraClassicAddressInput={terraClassicAddressInput}
-            onTerraClassicAddressInputChange={setTerraClassicAddressInput}
-            terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
-          />
+          {selectedBring.kind === "cosmos" ? (
+            <DirectOriginForm
+              key={selectedBring.key}
+              chain={selectedBring.chain}
+              terraClassicAddressInput={terraClassicAddressInput}
+              onTerraClassicAddressInputChange={setTerraClassicAddressInput}
+              terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
+            />
+          ) : (
+            <EvmInboundForm
+              key={selectedBring.key}
+              origin={selectedBring.destination}
+              previewAssets={previewAssets}
+              terraClassicAddressInput={terraClassicAddressInput}
+              onTerraClassicAddressInputChange={setTerraClassicAddressInput}
+              terraClassicAddress={terraClassicAddressValid ? terraClassicAddressInput : null}
+            />
+          )}
         </>
       ) : (
         <>
@@ -174,7 +208,11 @@ export function DirectTransferCard() {
           {selectedDestination.kind === "ibc" ? (
             <DirectOutboundIbcForm key={`out-${selectedDestination.chainId}`} destination={selectedDestination} />
           ) : (
-            <DirectOutboundForm key={`out-${selectedDestination.domain}`} destination={selectedDestination} />
+            <DirectOutboundForm
+              key={`out-${selectedDestination.domain}`}
+              destination={selectedDestination}
+              previewAssets={previewAssets}
+            />
           )}
         </>
       )}
@@ -776,7 +814,13 @@ function DirectOutboundIbcForm({ destination }: { destination: IbcSendDestinatio
 // component rather than parameterizing DirectOriginForm - the extra
 // Hyperlane gas reserve (ulunaReserve below) doesn't fit that component's
 // existing gasIsSameDenom/maxGasReserve math without contorting it.
-function DirectOutboundForm({ destination }: { destination: HyperlaneDestination }) {
+function DirectOutboundForm({
+  destination,
+  previewAssets,
+}: {
+  destination: HyperlaneDestination;
+  previewAssets: Set<string>;
+}) {
   const { t } = useTranslation();
   const chain = TERRA_CLASSIC_MAINNET;
   const { state: walletState, connect, disconnect } = useCosmosWallet(chain);
@@ -785,20 +829,9 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   const address = walletState.status === "connected" ? walletState.address : null;
   const { copiedKey, copy } = useCopyable();
 
-  // Hidden assets unlocked via ?preview=<symbol> (onrampConfig.ts's
-  // HIDDEN_HYPERLANE_ASSETS). Read once at mount, not reactively, so the
-  // picker can't drop the selected asset out from under an in-progress form.
-  const [searchParams] = useSearchParams();
-  const [previewAssets] = useState(() =>
-    new Set(searchParams.getAll(HIDDEN_ASSET_PREVIEW_PARAM).map((v) => v.trim().toUpperCase()))
-  );
-
   // Which assets this destination actually has a route for (JURIS is
   // Solana-only) - see onrampConfig.ts's HyperlaneDestination.tokenAddress.
-  const availableAssets = (Object.keys(HYPERLANE_TERRA_CLASSIC_WARP) as HyperlaneAsset[]).filter(
-    (sym) =>
-      destination.tokenAddress[sym] !== undefined && (!HIDDEN_HYPERLANE_ASSETS.includes(sym) || previewAssets.has(sym))
-  );
+  const availableAssets = availableHyperlaneAssets(destination, previewAssets);
   const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>(availableAssets[0]);
   const warp = HYPERLANE_TERRA_CLASSIC_WARP[assetSymbol];
 

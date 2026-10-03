@@ -433,9 +433,9 @@ export const ONRAMP_BORDER_RADIUS_PILL = "999px";
 // own config YAML (hyperlane-registry/deployments/warp_routes/{LUNC,USTC}/)
 // and the Terra Classic Hyperlane team's own audited per-token docs
 // (terra-classic-hyperlane/cw-hyperlane, WARP-LUNC.md/WARP-USTC.md) - not
-// carried over from anything said in chat. The return leg (BSC/Ethereum/
-// Solana -> Terra Classic) needs its own EVM/Solana wallet integration this
-// project doesn't have yet (see project notes, 2026-09-02) - not built.
+// carried over from anything said in chat. The BSC/Ethereum return leg is
+// built on top of this same config (2026-10-03, see "Bring assets in" below
+// and evmOnramp.ts); Solana's return leg is not built yet.
 export type HyperlaneAsset = "LUNC" | "USTC" | "JURIS" | "TERRA";
 
 // LUNC/USTC ride CwHypNative in `collateral` mode: lock the real native coin
@@ -526,8 +526,8 @@ export type HyperlaneDestination = {
   label: string;
   kind: HyperlaneChainKind;
   // The synthetic token contract/program on this destination, per asset -
-  // never called directly by this leg (only shown to the user, and kept
-  // ready for a future entrada implementation). Partial, not every asset
+  // only shown to the user by the send-out leg; on EVM chains it's also the
+  // contract the "Bring assets in" leg calls (evmOnramp.ts). Partial, not every asset
   // has a route to every destination - JURIS is Solana-only (confirmed
   // directly by Igor, the Terra Classic Hyperlane infra lead, 2026-09-02:
   // Juris only ever deployed the Solana leg). The asset picker in
@@ -589,6 +589,54 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
     },
   },
 ];
+
+// ---------- Hyperlane return leg: BSC/Ethereum -> Terra Classic ("Bring assets in", 2026-10-03) ----------
+// Terra Classic's own Hyperlane domain - the `destination` argument of the
+// EVM token's transferRemote/quoteTransferRemote. Confirmed live 2026-10-03:
+// routers(132556) on all 5 EVM tokens above (LUNC/USTC on BSC and Ethereum,
+// TERRA on BSC) returns exactly the bech32-decoded bytes of the matching
+// HYPERLANE_TERRA_CLASSIC_WARP contract.
+export const TERRA_CLASSIC_HYPERLANE_DOMAIN = 132556;
+
+// Per-chain parameters for the EVM side of the return leg, keyed by the
+// same Hyperlane domain HYPERLANE_DESTINATIONS uses (bsc=56/ethereum=1 equal
+// their EVM chainId, but kept as two fields so nothing silently relies on
+// that). Reads (balances, quotes, receipts) go through `rpc` - our own
+// public endpoint, never the wallet's - so a wallet on the wrong network
+// can't feed the form wrong numbers; only signing goes through the wallet.
+export type EvmChainParams = {
+  chainId: number;
+  name: string;
+  nativeSymbol: string;
+  rpc: string;
+  explorerTxUrl: string;
+};
+
+export const EVM_CHAIN_PARAMS: Record<number, EvmChainParams> = {
+  56: {
+    chainId: 56,
+    name: "BNB Smart Chain",
+    nativeSymbol: "BNB",
+    rpc: "https://bsc-dataseed.bnbchain.org",
+    explorerTxUrl: "https://bscscan.com/tx/",
+  },
+  1: {
+    chainId: 1,
+    name: "Ethereum",
+    nativeSymbol: "ETH",
+    rpc: "https://ethereum-rpc.publicnode.com",
+    explorerTxUrl: "https://etherscan.io/tx/",
+  },
+};
+
+// Same hidden-asset rule as the "send out" picker, shared so both
+// directions offer exactly the same assets per chain.
+export function availableHyperlaneAssets(destination: HyperlaneDestination, previewAssets: Set<string>): HyperlaneAsset[] {
+  return (Object.keys(HYPERLANE_TERRA_CLASSIC_WARP) as HyperlaneAsset[]).filter(
+    (sym) =>
+      destination.tokenAddress[sym] !== undefined && (!HIDDEN_HYPERLANE_ASSETS.includes(sym) || previewAssets.has(sym))
+  );
+}
 
 // "Send out" destination that isn't a Hyperlane warp route - USDC leaving
 // Terra Classic back to Noble via a plain IBC transfer, the mirror of
