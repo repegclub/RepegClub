@@ -117,11 +117,11 @@ export function OriginOptionsPanel() {
                       ))}
                     </div>
                     <p className="origin-option-note">
-                      Or choose the chain where you already have your funds — USDC, OSMO, or ATOM —
-                      and just bring them in below.
+                      Or choose the chain where you already have your funds — USDC, OSMO, or ATOM, or
+                      LUNC and USTC on BSC (BNB Chain) or Ethereum — and just bring them in below.
                     </p>
                     <p className="origin-option-note">
-                      Going the other way? Switch to "Send LUNC/USTC/CW20 out" below to bridge
+                      Going the other way? Switch to "Send assets out" below to bridge
                       LUNC, USTC, or a supported CW20 token straight to BSC, Ethereum, or Solana
                       via Hyperlane.
                     </p>

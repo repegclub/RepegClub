@@ -836,7 +836,7 @@
     }
   },
   "onrampFaq": {
-    "title": "F.A.Q. - How does getting USDC here work?",
+    "title": "F.A.Q. - How does moving funds here work?",
     "screenPrompt": "Ask away",
     "screenPlaceholder": "Tap a question below and the professor will answer it up here.",
     "screenAnswerLabel": "Answer",
@@ -847,7 +847,7 @@
       },
       {
         "q": "What can I bring in?",
-        "a": "USDC already sitting on Noble, Cosmos Hub, or Osmosis — or native ATOM or OSMO, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this."
+        "a": "USDC already sitting on Noble, Cosmos Hub, or Osmosis — or native ATOM or OSMO, which get swapped to USDC automatically along the way. You don't need to already hold USDC to use this. You can also bring LUNC and USTC back to Terra Classic from BSC (BNB Chain) or Ethereum, using a browser wallet like MetaMask, Rabby, or Keplr."
       },
       {
         "q": "Is Noble-USDC going away?",
@@ -867,11 +867,11 @@
       },
       {
         "q": "How much does it cost?",
-        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small."
+        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small. Bringing LUNC or USTC back from BSC or Ethereum has no mandatory Repeg Club fee: you pay the interchain gas in BNB or ETH (shown before you sign), and Terra Classic itself charges its burn tax (1.5% today) when the coins arrive. On BSC there's also an optional 0.2% payment to support Repeg Club — pre-checked, and you can uncheck it."
       },
       {
         "q": "How long does it take?",
-        "a": "Close to instant either way — Noble, Cosmos Hub, and Osmosis all settle directly on-chain, no bridge or long confirmation wait involved."
+        "a": "Close to instant from Noble, Cosmos Hub, and Osmosis — they settle directly on-chain, no bridge or long confirmation wait involved. Coming back from BSC or Ethereum goes through Hyperlane and usually lands within a minute or two."
       },
       {
         "q": "Is this safe — does Repeg Club hold my funds?",
@@ -879,7 +879,7 @@
       },
       {
         "q": "Why does my wallet show more than one message when I confirm?",
-        "a": "For Noble, Cosmos Hub, and Osmosis, one signature covers both your transfer and Repeg Club's 0.2% service fee — that's why Keplr's confirmation screen shows 2 or 3 messages instead of just one. Nothing extra is being asked of you: it adds up to exactly the amount you typed, split between your transfer and the fee, both visible before you sign."
+        "a": "For Noble, Cosmos Hub, and Osmosis, one signature covers both your transfer and Repeg Club's 0.2% service fee — that's why Keplr's confirmation screen shows 2 or 3 messages instead of just one. Nothing extra is being asked of you: it adds up to exactly the amount you typed, split between your transfer and the fee, both visible before you sign. Coming back from BSC with the optional support box checked works differently: your wallet asks for two separate signatures, first the 0.2% support payment and then the transfer. Declining the first one still sends your transfer."
       },
       {
         "q": "Why do I have to paste my Terra Classic address?",
@@ -895,7 +895,7 @@
       },
       {
         "q": "Can I bridge back from BSC/Ethereum/Solana to Terra Classic?",
-        "a": "Not yet from this site — only the outbound direction (Terra Classic → those chains) is built so far. Coming back needs its own wallet connection (MetaMask/Phantom), which isn't wired up here yet."
+        "a": "Yes, from BSC (BNB Chain) and Ethereum: switch to \"Bring assets in\", pick BSC or Ethereum, and connect a browser wallet (MetaMask, Rabby, or Keplr). LUNC and USTC arrive minus Terra Classic's own burn tax (1.5% today), which the chain charges when the coins are released. Coming back from Solana isn't available yet."
       },
       {
         "q": "How much does sending LUNC/USTC out cost?",
@@ -1044,7 +1044,7 @@
     },
     "onramp": {
       "title": "No USDC on Terra Classic yet?",
-      "body": "The fair's port brings USDC in from Noble, Cosmos Hub or Osmosis, and sends your assets out to other chains. No account, no sign-up.",
+      "body": "The fair's port brings USDC in from Noble, Cosmos Hub or Osmosis, brings LUNC and USTC back from BSC and Ethereum, and sends your assets out to other chains. No account, no sign-up.",
       "cta": "Go to the Onramp"
     },
     "faq": {
