@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { WalletProviderPopover } from "../Wallet/WalletProviderPopover";
 import { useCosmosWallet } from "../../hooks/useCosmosWallet";
 import { useBalance } from "../../hooks/useBalance";
@@ -21,6 +22,8 @@ import { quoteHyperlaneGasFee } from "../../lib/queryHyperlaneGas";
 import { WALLET_PROVIDERS } from "../../lib/walletProviders";
 import {
   DIRECT_ORIGIN_CHAINS,
+  HIDDEN_ASSET_PREVIEW_PARAM,
+  HIDDEN_HYPERLANE_ASSETS,
   HYPERLANE_TERRA_CLASSIC_WARP,
   SEND_DESTINATIONS,
   TERRA_CLASSIC_MAINNET,
@@ -782,10 +785,19 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
   const address = walletState.status === "connected" ? walletState.address : null;
   const { copiedKey, copy } = useCopyable();
 
+  // Hidden assets unlocked via ?preview=<symbol> (onrampConfig.ts's
+  // HIDDEN_HYPERLANE_ASSETS). Read once at mount, not reactively, so the
+  // picker can't drop the selected asset out from under an in-progress form.
+  const [searchParams] = useSearchParams();
+  const [previewAssets] = useState(() =>
+    new Set(searchParams.getAll(HIDDEN_ASSET_PREVIEW_PARAM).map((v) => v.trim().toUpperCase()))
+  );
+
   // Which assets this destination actually has a route for (JURIS is
   // Solana-only) - see onrampConfig.ts's HyperlaneDestination.tokenAddress.
   const availableAssets = (Object.keys(HYPERLANE_TERRA_CLASSIC_WARP) as HyperlaneAsset[]).filter(
-    (sym) => destination.tokenAddress[sym] !== undefined
+    (sym) =>
+      destination.tokenAddress[sym] !== undefined && (!HIDDEN_HYPERLANE_ASSETS.includes(sym) || previewAssets.has(sym))
   );
   const [assetSymbol, setAssetSymbol] = useState<HyperlaneAsset>(availableAssets[0]);
   const warp = HYPERLANE_TERRA_CLASSIC_WARP[assetSymbol];
@@ -1092,7 +1104,7 @@ function DirectOutboundForm({ destination }: { destination: HyperlaneDestination
 
           <label className="onramp-field-label" htmlFor={`outbound-address-${destination.domain}`}>
             {destination.kind === "evm"
-              ? t("onramp.outbound.evmAddressLabel")
+              ? t("onramp.outbound.evmAddressLabel", { chain: destination.label })
               : t("onramp.outbound.solanaAddressLabel")}
           </label>
           <div className={"onramp-input-wrap" + (destAddressInvalid ? " onramp-dest-input-invalid" : "")}>
