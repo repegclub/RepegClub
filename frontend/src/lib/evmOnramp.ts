@@ -1,5 +1,6 @@
 import { bech32 } from "@goblinhunt/cosmes/codec";
 import {
+  BaseError,
   createPublicClient,
   createWalletClient,
   custom,
@@ -13,6 +14,7 @@ import {
 } from "viem";
 import {
   EVM_CHAIN_PARAMS,
+  EVM_SUPPORT_TIP,
   HYPERLANE_TERRA_CLASSIC_WARP,
   TERRA_CLASSIC_HYPERLANE_DOMAIN,
   type EvmChainParams,
@@ -42,6 +44,16 @@ const HYP_ERC20_ABI = [
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
   },
   {
     type: "function",
@@ -183,6 +195,63 @@ export async function readEvmBalances(
   return { token: tokenBalance, native };
 }
 
+async function walletOnChain(provider: EIP1193Provider, account: Hex, params: EvmChainParams) {
+  const chain = viemChain(params);
+  const wallet = createWalletClient({ account, chain, transport: custom(provider) });
+  await wallet.switchChain({ id: params.chainId });
+  // switchChain resolving isn't proof - some wallets resolve without
+  // switching. Checked against the wallet's own answer before signing.
+  const walletChainId = await wallet.getChainId();
+  if (walletChainId !== params.chainId) {
+    throw new Error(`Switch your wallet to ${params.name} and try again.`);
+  }
+  return { chain, wallet };
+}
+
+// True when the error chain says the user turned the request down in their
+// wallet (EIP-1193 code 4001) - for the optional tip below, that means
+// "skip it", not "stop".
+export function isUserRejection(err: unknown): boolean {
+  return err instanceof BaseError && err.walk((e) => (e as { code?: unknown }).code === 4001) !== null;
+}
+
+// The optional "support Repeg Club" payment (EVM_SUPPORT_TIP): a plain
+// ERC20 transfer of `tip` of the same token to the fee-keeper, waited on
+// before the bridge transfer is signed. Same outcome rules as the bridge
+// call below: anything thrown before the hash exists means nothing was
+// paid; a receipt that can't be read is TxOutcomeUnknownError.
+export async function sendEvmSupportTip(args: {
+  provider: EIP1193Provider;
+  account: Hex;
+  params: EvmChainParams;
+  token: Hex;
+  tip: bigint;
+}): Promise<{ txHash: Hex }> {
+  const { provider, account, params, token, tip } = args;
+  if (tip <= 0n) throw new Error("Nothing to send.");
+  const client = evmPublicClient(params);
+  const balance = await client.readContract({ address: token, abi: HYP_ERC20_ABI, functionName: "balanceOf", args: [account] });
+  if (balance < tip) throw new Error("Not enough balance for the support payment.");
+  const { chain, wallet } = await walletOnChain(provider, account, params);
+  const txHash = await wallet.writeContract({
+    address: token,
+    abi: HYP_ERC20_ABI,
+    functionName: "transfer",
+    args: [EVM_SUPPORT_TIP.recipient, tip],
+    chain,
+  });
+  let status: "success" | "reverted";
+  try {
+    const receipt = await client.waitForTransactionReceipt({ hash: txHash, timeout: RECEIPT_TIMEOUT_MS });
+    status = receipt.status;
+  } catch (err) {
+    console.error(err);
+    throw new TxOutcomeUnknownError(txHash);
+  }
+  if (status !== "success") throw new Error(`The support payment failed on ${params.name} (nothing was paid). Tx: ${txHash}`);
+  return { txHash };
+}
+
 // How long to wait for the receipt before handing the user a tx hash to
 // check instead of an answer. BSC confirms in seconds and Ethereum in ~12s,
 // so 3 minutes only runs out under real congestion.
@@ -242,15 +311,7 @@ export async function sendEvmToTerraClassic(args: {
     throw new Error(`Not enough ${params.nativeSymbol} to pay the gas for this transfer.`);
   }
 
-  const chain = viemChain(params);
-  const wallet = createWalletClient({ account, chain, transport: custom(provider) });
-  await wallet.switchChain({ id: params.chainId });
-  // switchChain resolving isn't proof - some wallets resolve without
-  // switching. Checked against the wallet's own answer before signing.
-  const walletChainId = await wallet.getChainId();
-  if (walletChainId !== params.chainId) {
-    throw new Error(`Switch your wallet to ${params.name} and try again.`);
-  }
+  const { chain, wallet } = await walletOnChain(provider, account, params);
 
   // Anything thrown up to and including this call means nothing was sent
   // (rejected in the wallet, or refused before broadcast).

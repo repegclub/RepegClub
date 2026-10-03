@@ -4,10 +4,18 @@ import { formatEther, type Hex } from "viem";
 import { useEvmWallet } from "../../hooks/useEvmWallet";
 import { useEvmBalances, useEvmInboundQuote } from "../../hooks/useEvmInboundData";
 import { RATE_SCALE, useTerraBurnTaxRate } from "../../hooks/useTerraBurnTaxRate";
-import { evmChainParamsFor, quoteEvmInbound, sendEvmToTerraClassic } from "../../lib/evmOnramp";
+import {
+  evmChainParamsFor,
+  isUserRejection,
+  quoteEvmInbound,
+  sendEvmSupportTip,
+  sendEvmToTerraClassic,
+} from "../../lib/evmOnramp";
 import { TxOutcomeUnknownError } from "../../lib/onrampActions";
 import {
+  EVM_SUPPORT_TIP,
   HYPERLANE_TERRA_CLASSIC_WARP,
+  evmSupportTipAmount,
   availableHyperlaneAssets,
   displayToMicro,
   microToDisplay,
@@ -70,16 +78,28 @@ export function EvmInboundForm({
     assetTaxed && burnTax.status === "loaded" ? amountRaw - (amountRaw * burnTax.rateE18) / RATE_SCALE : amountRaw;
   const taxPercent = burnTax.status === "loaded" ? (Number((burnTax.rateE18 * 10000n) / RATE_SCALE) / 100).toString() : "";
 
+  // Optional 0.2% support payment (onrampConfig.ts's EVM_SUPPORT_TIP):
+  // pre-checked where offered, always skippable.
+  const tipOffered = EVM_SUPPORT_TIP.domains.includes(origin.domain) && EVM_SUPPORT_TIP.assets.includes(assetSymbol);
+  const [tipChecked, setTipChecked] = useState(true);
+  const tipActive = tipOffered && tipChecked;
+  const tip = tipActive ? evmSupportTipAmount(amountRaw) : 0n;
+
   const [busy, setBusy] = useState(false);
+  // Which wallet prompt is open while busy, so the two-signature flow says
+  // which one the user is looking at.
+  const [step, setStep] = useState<"tip" | "transfer" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [tipTxHash, setTipTxHash] = useState<string | null>(null);
   // Same reasoning as DirectOriginForm's outcomeUnknown (DirectTransferCard.
   // tsx): the tx was broadcast but its result couldn't be read, so retrying
   // could send twice. Always carries the hash to check here.
   const [outcomeUnknownTxHash, setOutcomeUnknownTxHash] = useState<string | null>(null);
 
   const destAddressInvalid = terraClassicAddressInput !== "" && terraClassicAddress === null;
-  const tokenShort = balances.status === "loaded" && currentQuote !== null && currentQuote.tokenTotal > balances.token;
+  const tokenShort =
+    balances.status === "loaded" && currentQuote !== null && currentQuote.tokenTotal + tip > balances.token;
   const nativeShort = balances.status === "loaded" && currentQuote !== null && balances.native < currentQuote.nativeGas;
   const amountValid =
     Number.isFinite(amountNumber) &&
@@ -93,6 +113,7 @@ export function EvmInboundForm({
 
   function resetResult() {
     setTxHash(null);
+    setTipTxHash(null);
     setError(null);
   }
 
@@ -116,20 +137,62 @@ export function EvmInboundForm({
       if (candidate <= 0n) return;
       const check = await quoteEvmInbound(params, token, zero, candidate);
       if (check.tokenTotal > balances.token) candidate -= check.tokenTotal - balances.token;
+      // Leave room for the support payment too, when it's on.
+      if (tipActive) candidate = (candidate * 10000n) / (10000n + EVM_SUPPORT_TIP.bps);
       if (candidate > 0n) setAmountInput(microToDisplay(candidate).toString());
     } catch {
       setError(t("onramp.inbound.quoteError"));
     }
   }
 
+  // viem errors carry a short, readable shortMessage (e.g. "User rejected
+  // the request.") next to a long technical message.
+  function errorMessage(err: unknown): string {
+    const short = (err as { shortMessage?: unknown }).shortMessage;
+    return typeof short === "string" ? short : err instanceof Error ? err.message : t("onramp.inbound.sendFailed");
+  }
+
   async function handleSend() {
     if (walletState.status !== "connected" || !amountValid || !token || !terraClassicAddress) return;
     setBusy(true);
     setError(null);
+    setTipTxHash(null);
+    const provider = walletState.detail.provider;
+    const account = walletState.address;
+    if (tip > 0n) {
+      setStep("tip");
+      try {
+        const paid = await sendEvmSupportTip({ provider, account, params, token, tip });
+        setTipTxHash(paid.txHash);
+        // Paid once - a retry after a failed transfer below mustn't ask for
+        // it again.
+        setTipChecked(false);
+      } catch (err) {
+        if (err instanceof TxOutcomeUnknownError) {
+          // The payment may still land, and the balance is uncertain until it
+          // does - stop here instead of signing the transfer on a guess.
+          setOutcomeUnknownTxHash(err.txHash);
+          setStep(null);
+          setBusy(false);
+          return;
+        }
+        // Declining the optional payment in the wallet is a "no thanks",
+        // not a reason to stop. Any other failure means nothing was paid,
+        // but stops so the user sees it and can uncheck the box.
+        if (!isUserRejection(err)) {
+          console.error(err);
+          setError(errorMessage(err));
+          setStep(null);
+          setBusy(false);
+          return;
+        }
+      }
+    }
+    setStep("transfer");
     try {
       const result = await sendEvmToTerraClassic({
-        provider: walletState.detail.provider,
-        account: walletState.address,
+        provider,
+        account,
         params,
         asset: assetSymbol,
         token,
@@ -138,18 +201,18 @@ export function EvmInboundForm({
       });
       setTxHash(result.txHash);
       setAmountInput("");
+      // Offered again (pre-checked) for the next transfer.
+      setTipChecked(true);
       balances.refetch();
     } catch (err) {
       if (err instanceof TxOutcomeUnknownError) {
         setOutcomeUnknownTxHash(err.txHash);
       } else {
         console.error(err);
-        // viem errors carry a short, readable shortMessage (e.g. "User
-        // rejected the request.") next to a long technical message.
-        const short = (err as { shortMessage?: unknown }).shortMessage;
-        setError(typeof short === "string" ? short : err instanceof Error ? err.message : t("onramp.inbound.sendFailed"));
+        setError(errorMessage(err));
       }
     } finally {
+      setStep(null);
       setBusy(false);
     }
   }
@@ -304,6 +367,23 @@ export function EvmInboundForm({
             </p>
           )}
 
+          {tipOffered && (
+            <label className="onramp-support-tip">
+              <input
+                type="checkbox"
+                checked={tipChecked}
+                onChange={(e) => setTipChecked(e.target.checked)}
+                disabled={busy}
+              />
+              <span>
+                {t("onramp.inbound.tipLabel", {
+                  tip: amountRaw > 0n ? microToDisplay(evmSupportTipAmount(amountRaw)).toFixed(2) : "0.2%",
+                  symbol: assetSymbol,
+                })}
+              </span>
+            </label>
+          )}
+
           {amountValid && currentQuote && (
             <p className="onramp-breakdown">
               {assetTaxed
@@ -347,7 +427,13 @@ export function EvmInboundForm({
             onClick={handleSend}
             disabled={busy || !amountValid || outcomeUnknownTxHash !== null}
           >
-            {busy ? t("onramp.direct.sending") : t("onramp.direct.sendButton")}
+            {step === "tip"
+              ? t("onramp.inbound.stepTip")
+              : step === "transfer" && tipTxHash
+              ? t("onramp.inbound.stepTransfer")
+              : busy
+              ? t("onramp.direct.sending")
+              : t("onramp.direct.sendButton")}
           </button>
           {error && <p className="onramp-error-text">{error}</p>}
           {outcomeUnknownTxHash && (
@@ -366,6 +452,14 @@ export function EvmInboundForm({
                 {t("onramp.direct.outcomeUnknownAck")}
               </button>
             </div>
+          )}
+          {tipTxHash && (
+            <p className="onramp-success-text">
+              {t("onramp.inbound.tipPaid")}{" "}
+              <a href={`${params.explorerTxUrl}${tipTxHash}`} target="_blank" rel="noreferrer">
+                {truncate(tipTxHash)}
+              </a>
+            </p>
           )}
           {txHash && (
             <p className="onramp-success-text">

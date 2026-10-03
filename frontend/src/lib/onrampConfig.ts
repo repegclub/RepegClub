@@ -629,6 +629,26 @@ export const EVM_CHAIN_PARAMS: Record<number, EvmChainParams> = {
   },
 };
 
+// Optional 0.2% "support Repeg Club" payment on the EVM return leg (product
+// decision, 2026-10-03). Unlike every Cosmos-side flow, an EVM wallet can't
+// bundle the fee and the bridge call into one signature, so it's a separate
+// ERC20 transfer the user can decline - pre-checked, but declining (or
+// rejecting it in the wallet) still sends. LUNC/USTC only (TERRA already
+// pays Delfos' route fee) and BSC only (an extra Ethereum transfer usually
+// costs more gas than the fee itself). All of it goes to the fee-keeper's
+// EVM wallet (the only EVM fee address the user has confirmed); the
+// treasury's half is settled by hand when it's brought back.
+export const EVM_SUPPORT_TIP = {
+  domains: [56] as readonly number[],
+  assets: ["LUNC", "USTC"] as readonly HyperlaneAsset[],
+  recipient: EVM_FEE_KEEPER_ADDRESS as `0x${string}`,
+  bps: 20n,
+};
+
+export function evmSupportTipAmount(amount: bigint): bigint {
+  return (amount * EVM_SUPPORT_TIP.bps) / 10000n;
+}
+
 // Same hidden-asset rule as the "send out" picker, shared so both
 // directions offer exactly the same assets per chain.
 export function availableHyperlaneAssets(destination: HyperlaneDestination, previewAssets: Set<string>): HyperlaneAsset[] {
