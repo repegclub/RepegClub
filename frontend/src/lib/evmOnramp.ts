@@ -195,6 +195,27 @@ export async function readEvmBalances(
   return { token: tokenBalance, native };
 }
 
+// The route still points at the expected Terra Classic contract, and the
+// token has the 6 decimals the form's micro-unit math (displayToMicro)
+// assumes - like every token on this leg today (checked live on all 5).
+// Run right before the bridge signature, and also before the optional
+// support payment, so that payment can't go through for a transfer these
+// checks would then refuse (CodeRabbit finding, PR #62).
+export async function assertEvmRoute(params: EvmChainParams, asset: HyperlaneAsset, token: Hex): Promise<void> {
+  const client = evmPublicClient(params);
+  const router = await client.readContract({
+    address: token,
+    abi: HYP_ERC20_ABI,
+    functionName: "routers",
+    args: [TERRA_CLASSIC_HYPERLANE_DOMAIN],
+  });
+  if (router.toLowerCase() !== expectedTerraRouter(asset).toLowerCase()) {
+    throw new Error("This route doesn't point to the expected Terra Classic contract - nothing was sent.");
+  }
+  const decimals = await client.readContract({ address: token, abi: HYP_ERC20_ABI, functionName: "decimals" });
+  if (decimals !== 6) throw new Error(`Unexpected ${asset} decimals (${decimals}) - nothing was sent.`);
+}
+
 async function walletOnChain(provider: EIP1193Provider, account: Hex, params: EvmChainParams) {
   const chain = viemChain(params);
   const wallet = createWalletClient({ account, chain, transport: custom(provider) });
@@ -279,20 +300,7 @@ export async function sendEvmToTerraClassic(args: {
   const recipient = terraClassicAddressToBytes32(terraClassicAddress);
   const client = evmPublicClient(params);
 
-  const router = await client.readContract({
-    address: token,
-    abi: HYP_ERC20_ABI,
-    functionName: "routers",
-    args: [TERRA_CLASSIC_HYPERLANE_DOMAIN],
-  });
-  if (router.toLowerCase() !== expectedTerraRouter(asset).toLowerCase()) {
-    throw new Error("This route doesn't point to the expected Terra Classic contract - nothing was sent.");
-  }
-  // The form's micro-unit math (displayToMicro) assumes 6 decimals, like
-  // every token on this leg today (checked live on all 5) - refuse rather
-  // than move a different amount than the user typed.
-  const decimals = await client.readContract({ address: token, abi: HYP_ERC20_ABI, functionName: "decimals" });
-  if (decimals !== 6) throw new Error(`Unexpected ${asset} decimals (${decimals}) - nothing was sent.`);
+  await assertEvmRoute(params, asset, token);
 
   const quote = await quoteEvmInbound(params, token, recipient, amount);
   const balances = await readEvmBalances(params, token, account);

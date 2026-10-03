@@ -5,6 +5,7 @@ import { useEvmWallet } from "../../hooks/useEvmWallet";
 import { useEvmBalances, useEvmInboundQuote } from "../../hooks/useEvmInboundData";
 import { RATE_SCALE, useTerraBurnTaxRate } from "../../hooks/useTerraBurnTaxRate";
 import {
+  assertEvmRoute,
   evmChainParamsFor,
   isUserRejection,
   quoteEvmInbound,
@@ -161,6 +162,18 @@ export function EvmInboundForm({
     const account = walletState.address;
     if (tip > 0n) {
       setStep("tip");
+      // Same route/decimals checks the transfer re-runs before its own
+      // signature - done first here so the support payment can't be paid
+      // for a transfer that would then be refused.
+      try {
+        await assertEvmRoute(params, assetSymbol, token);
+      } catch (err) {
+        console.error(err);
+        setError(errorMessage(err));
+        setStep(null);
+        setBusy(false);
+        return;
+      }
       try {
         const paid = await sendEvmSupportTip({ provider, account, params, token, tip });
         setTipTxHash(paid.txHash);
