@@ -382,6 +382,16 @@
     inset -2px -2px 0 rgba(74,29,150,0.9),
     0 3px 0 #4c1d95;
 }
+/* 5th accent (Ethereum tab, "bring" mode - Noble/Cosmos Hub/Osmosis/BSC/
+   Ethereum, 2026-10-03). Same reasoning as c3 above: teal, distinct from
+   gold and the 4 colors before it. */
+.onramp-tab-active.onramp-tab-c4 {
+  background: #0d9488;
+  box-shadow:
+    inset 2px 2px 0 rgba(153,246,228,0.9),
+    inset -2px -2px 0 rgba(15,80,70,0.9),
+    0 3px 0 #134e4a;
+}
 
 .onramp-panel-desc {
   margin: 0 0 0.8rem;
@@ -633,4 +643,39 @@
   color: #2fb968; /* ONRAMP_THEME.success.text */
   text-align: center;
   word-break: break-all;
+}
+
+/* EVM wallet picker for "Bring assets in" from BSC/Ethereum
+   (EvmInboundForm.tsx) - one button per extension found via EIP-6963. */
+.onramp-evm-wallets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.onramp-evm-wallet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* Explorer link inside the success message - the browser's default link
+   blue was nearly invisible on the dark panel (reported live, 2026-10-03). */
+.onramp-success-text a {
+  color: #9dc0ff;
+}
+/* Optional "support Repeg Club" checkbox (EvmInboundForm.tsx) - pre-checked,
+   so it has to be impossible to miss: gold like the site's other hints. */
+.onramp-support-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  color: #ffd166;
+  text-align: left;
+  cursor: pointer;
+}
+.onramp-support-tip input {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
 }
