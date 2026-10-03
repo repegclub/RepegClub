@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import { formatEther, type Hex } from "viem";
 import { useEvmWallet } from "../../hooks/useEvmWallet";
 import { useEvmBalances, useEvmInboundQuote } from "../../hooks/useEvmInboundData";
+import { RATE_SCALE, useTerraBurnTaxRate } from "../../hooks/useTerraBurnTaxRate";
 import { evmChainParamsFor, quoteEvmInbound, sendEvmToTerraClassic } from "../../lib/evmOnramp";
 import { TxOutcomeUnknownError } from "../../lib/onrampActions";
 import {
+  HYPERLANE_TERRA_CLASSIC_WARP,
   availableHyperlaneAssets,
   displayToMicro,
   microToDisplay,
@@ -60,6 +62,13 @@ export function EvmInboundForm({
   // Only a quote for exactly what's typed now counts.
   const currentQuote = quote.status === "loaded" && quote.amount === amountRaw ? quote : null;
   const routeFee = currentQuote ? currentQuote.tokenTotal - amountRaw : 0n;
+  // LUNC/USTC (native coins on Terra Classic) pay the chain's burn tax when
+  // the route contract releases them; CW20s like TERRA arrive whole.
+  const burnTax = useTerraBurnTaxRate();
+  const assetTaxed = HYPERLANE_TERRA_CLASSIC_WARP[assetSymbol].kind === "native";
+  const arriving =
+    assetTaxed && burnTax.status === "loaded" ? amountRaw - (amountRaw * burnTax.rateE18) / RATE_SCALE : amountRaw;
+  const taxPercent = burnTax.status === "loaded" ? (Number((burnTax.rateE18 * 10000n) / RATE_SCALE) / 100).toString() : "";
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,7 +306,24 @@ export function EvmInboundForm({
 
           {amountValid && currentQuote && (
             <p className="onramp-breakdown">
-              {routeFee > 0n
+              {assetTaxed
+                ? burnTax.status === "loaded"
+                  ? t("onramp.inbound.breakdownTaxed", {
+                      arrive: microToDisplay(arriving).toFixed(2),
+                      symbol: assetSymbol,
+                      taxPercent,
+                      gas: formatNative(currentQuote.nativeGas),
+                      nativeSymbol: params.nativeSymbol,
+                      address: truncate(terraClassicAddress ?? ""),
+                    })
+                  : t("onramp.inbound.breakdownTaxUnknown", {
+                      send: microToDisplay(amountRaw).toFixed(2),
+                      symbol: assetSymbol,
+                      gas: formatNative(currentQuote.nativeGas),
+                      nativeSymbol: params.nativeSymbol,
+                      address: truncate(terraClassicAddress ?? ""),
+                    })
+                : routeFee > 0n
                 ? t("onramp.inbound.breakdownWithRouteFee", {
                     send: microToDisplay(amountRaw).toFixed(2),
                     routeFee: microToDisplay(routeFee).toFixed(4),

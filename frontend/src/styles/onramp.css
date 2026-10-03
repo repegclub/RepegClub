@@ -658,3 +658,8 @@
   align-items: center;
   gap: 0.4rem;
 }
+/* Explorer link inside the success message - the browser's default link
+   blue was nearly invisible on the dark panel (reported live, 2026-10-03). */
+.onramp-success-text a {
+  color: #9dc0ff;
+}

@@ -798,6 +798,8 @@
       "tokenShort": "Not enough {{symbol}} for this amount plus fees.",
       "gasNeeded": "You need at least {{amount}} {{symbol}} in this wallet for the interchain gas, plus a little more for this transaction's own gas.",
       "breakdown": "{{send}} {{symbol}} will arrive at {{address}} on Terra Classic. Interchain gas: {{gas}} {{nativeSymbol}}.",
+      "breakdownTaxed": "About {{arrive}} {{symbol}} will arrive at {{address}} on Terra Classic, after the chain's own {{taxPercent}}% burn tax (charged by Terra Classic when the coins are released, not by us). Interchain gas: {{gas}} {{nativeSymbol}}.",
+      "breakdownTaxUnknown": "{{send}} {{symbol}}, minus Terra Classic's own burn tax, will arrive at {{address}} on Terra Classic. Interchain gas: {{gas}} {{nativeSymbol}}.",
       "breakdownWithRouteFee": "{{send}} {{symbol}} will arrive at {{address}} on Terra Classic. Route fee: {{routeFee}} {{symbol}} (0.2%). Interchain gas: {{gas}} {{nativeSymbol}}.",
       "sendFailed": "Transaction failed.",
       "sent": "Sent! It usually lands on Terra Classic within a minute or two. Tx:"
