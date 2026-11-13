@@ -228,7 +228,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",
-        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this round\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired round's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours (the reveal also needs the committed secret, which our keeper publishes). You don't have to trust our bot or our frontend either — \"Verify this round\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired round's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. Before the round opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -689,7 +689,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",
-        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this week\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired week's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours (the reveal also needs the committed secret, which our keeper publishes). You don't have to trust our bot or our frontend either — \"Verify this week\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired week's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. Before the week opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -749,7 +749,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the creator or the team control the outcome?",
-        "a": "Neither can. Every step, from opening to payout, is permissionless — triggerable by any wallet, not just the creator's or ours — and the draw itself is decided by the same locked-in-secret-plus-ticket-list formula as Wheel of Repeg and Weekly Round, recomputable by anyone. Prizes go straight to the winners when the raffle draws. In an Airdrop, shares nobody claimed by the raffle's deadline go back to its creator; nothing goes to the team."
+        "a": "The creator has no part in the draw. Every step, from opening to payout, is permissionless — triggerable by any wallet, not just the creator's or ours (the reveal also needs the committed secret, which our keeper publishes) — and the draw itself is decided by the same locked-in-secret-plus-ticket-list formula as Wheel of Repeg and Weekly Round, recomputable by anyone. Before the raffle opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result. Prizes go straight to the winners when the raffle draws. In an Airdrop, shares nobody claimed by the raffle's deadline go back to its creator; nothing goes to the team."
       }
     ]
   },
@@ -990,7 +990,7 @@
       },
       {
         "title": "The wheel spins",
-        "body": "Once enough players join, the winner is drawn on-chain. Nobody picks it, not even us."
+        "body": "Once enough players join, the winner is drawn on-chain. The result comes from a secret committed on-chain before the round opened, and anyone can check it."
       },
       {
         "title": "Repeg your USTC",
@@ -1064,8 +1064,8 @@
           "a": "If the minimum number of players isn't reached in time, the round expires and everyone can take their ticket money back with one click. On Wheel of Repeg and Weekly Round, reclaim within 90 days (each raffle sets its own deadline): after that, unreclaimed funds can be moved to the treasury."
         },
         {
-          "q": "Can the team pick the winner?",
-          "a": "No. The winner comes from a secret locked on-chain before the round opens plus the public ticket list. Anyone can recompute it with \"Verify this round\"."
+          "q": "How is the winner picked?",
+          "a": "Before the round opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result. \"Verify this round\" does that check for you."
         }
       ]
     }
