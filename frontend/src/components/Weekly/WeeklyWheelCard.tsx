@@ -442,13 +442,13 @@ export function WeeklyWheelCard({
       // here - CodeRabbit finding, confirmed live: a week below min_players
       // was showing a countdown instead of the waiting message).
       if (!hasMinPlayers) {
-        return { type: "horizontal", message: t("wheel.waitingForMinPlayers", { min: weekState.config.min_players }) };
+        return { type: "horizontal", message: t("weekly.waitingForMinPlayers", { weekId: weekState.week.week_id, min: weekState.config.min_players }) };
       }
       if (secondsToDeadline !== null && secondsToDeadline <= 20) {
         return { type: "alarma", message: t("wheel.lastCallShort") };
       }
       if (secondsToDeadline !== null) {
-        return { type: "horizontal", message: t("weekly.closesIn", { time: formatCountdown(secondsToDeadline) }) };
+        return { type: "horizontal", message: t("weekly.closesIn", { weekId: weekState.week.week_id, time: formatCountdown(secondsToDeadline) }) };
       }
     }
     if (weekState.week.status === "closed") {
