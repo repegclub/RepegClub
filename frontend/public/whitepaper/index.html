@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>Repeg Club — Whitepaper v1</title>
+<title>Repeg Club — Whitepaper v1.2</title>
 <meta name="description" content="How Repeg Club turns ticket sales into a self-funded, on-chain-verifiable repeg mechanism for USTC on Terra Classic." />
 <style>
   @font-face {
@@ -83,7 +83,7 @@
     * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     /* Fixed-position UI has no place in a printed/exported page - it would
        render on top of every page's content instead of scrolling with it. */
-    .social-links-bar, .lang-toggle-bar, .back-to-site { display: none; }
+    .social-links-bar, .lang-toggle-bar, .back-to-site { display: none !important; }
   }
 
   * { box-sizing: border-box; }
@@ -587,12 +587,12 @@
       <span class="eyebrow">Repeg Club presents</span>
     </div>
     <h1>WHITEPAPER</h1>
-    <div class="version">v1.1 — Wheel of Repeg · Weekly Round · Create Your Own Luck</div>
-    <p class="tagline">Win the <em>right</em> to repeg your own USTC 1:1 for USDC — funded entirely by ticket sales, decided by public blockchain data, and checkable by anyone in their own browser.</p>
+    <div class="version">v1.2 — Wheel of Repeg · Weekly Round · Create Your Own Luck · 13 November 2026</div>
+    <p class="tagline">Win the <em>right</em> to repeg your own USTC 1:1 for USDC — funded entirely by ticket sales, decided by a secret committed on-chain before each round plus the public ticket list, and checkable by anyone in their own browser.</p>
     <div class="meta-row">
       <span>Chain: <b>Terra Classic (CosmWasm)</b></span>
       <span>Live at: <b>repegclub.com</b></span>
-      <span class="status-chip">Public testnet — testing phase</span>
+      <span class="status-chip">Live on mainnet</span>
     </div>
   </div>
 
@@ -600,7 +600,7 @@
     <div class="sec-head"><span class="sec-num">01</span><h2>The idea</h2></div>
     <p>USTC trades today at a small fraction of a dollar, and nothing about that changes just because a token pair says otherwise. Repeg Club doesn't promise to move that market price for everyone — nobody can, honestly, without a treasury large enough to buy the entire float, and no such treasury exists here.</p>
     <p>What it does instead is smaller, real, and repeatable: players pool USDC by buying tickets to a round. When that round draws, the winner doesn't receive cash — they receive the <strong>right to redeem their own USTC for USDC, 1:1</strong>, up to that round's prize. The USDC for that redemption isn't borrowed from anywhere else; it's exactly what the other players paid for their tickets. It's a personal repeg, funded by the community that wanted one, one round at a time.</p>
-    <p class="lead">No outside treasury backs the prize. No admin sets the outcome. The chain does the drawing, and anyone — not just the winner — can redo the math and check it.</p>
+    <p class="lead">No outside treasury backs the prize. The contract does the drawing, from a secret committed on-chain before the round opened, and anyone — not just the winner — can redo the math and check it.</p>
     <div class="panel" style="margin-top:24px;">
       <h3>Why this, really</h3>
       <p style="margin:0;">The 2022 depeg wasn't just a market event for the people who lived through it — it was a real loss, and for a lot of people it left a wound that's stayed open since. Repeg Club can't undo that. What it can do is give someone a real, public, on-chain moment: their own USTC, redeemed 1:1, verifiable, and impossible for anyone to take back or argue away. That moment is worth something on its own, separate from how much money is actually involved. That's the part of this project that isn't really about economics.</p>
@@ -609,27 +609,27 @@
 
   <section>
     <div class="sec-head"><span class="sec-num">02</span><h2>How Wheel of Repeg works</h2></div>
-    <p class="lead">A round moves through five stages. Every step can be triggered by any wallet — in practice an automated keeper bot usually does it within seconds, but nothing about the game depends on Repeg Club's own infrastructure staying online.</p>
+    <p class="lead">A round moves through five stages. Every step can be triggered by any wallet; in practice Repeg Club's keeper bot does it within seconds. The draw also needs the secret the keeper committed before the round opened: if that reveal never comes, the round expires and every ticket can be reclaimed (see below).</p>
     <div class="lifecycle">
       <div class="stage"><div class="stage-n">1</div><div class="stage-title">Open</div><div class="stage-desc">Anyone buys tickets. More tickets, better odds — but every ticket, even a single one, has a real shot.</div></div>
       <div class="stage"><div class="stage-n">2</div><div class="stage-title">Close</div><div class="stage-desc">Once a minimum headcount is reached, every new ticket resets a short countdown — like a live auction, so nobody's shut out by a split-second timer.</div></div>
-      <div class="stage"><div class="stage-n">3</div><div class="stage-title">Draw</div><div class="stage-desc">A future block's hash — not yet known when the round closed — picks the winning ticket. No oracle, no off-chain randomness.</div></div>
+      <div class="stage"><div class="stage-n">3</div><div class="stage-title">Draw</div><div class="stage-desc">The keeper reveals the secret it committed on-chain, as a hash, before the round opened. The contract checks it against that hash and combines it with the ticket list to pick the winning ticket. No oracle, no block data.</div></div>
       <div class="stage"><div class="stage-n">4</div><div class="stage-title">Settle</div><div class="stage-desc">The pool splits automatically (see below) and the winning wallet is recorded, on-chain, as eligible to redeem.</div></div>
       <div class="stage"><div class="stage-n">5</div><div class="stage-title">Redeem</div><div class="stage-desc">The winner sends their own USTC and receives USDC 1:1, in one or several transactions, until the prize is used up.</div></div>
     </div>
-    <p style="margin-top:22px;">Two safety nets, both self-service — nobody has to ask Repeg Club for anything: a round that never reaches its minimum player count simply expires, and anyone who bought in can reclaim their exact ticket cost. And any wallet can back out for a full refund at any point <em>before</em> the minimum is reached, no questions asked.</p>
+    <p style="margin-top:22px;">Three safety nets, all self-service — nobody has to ask Repeg Club for anything: a round that never reaches its minimum player count simply expires, and anyone who bought in can reclaim their exact ticket cost. Any wallet can back out for a full refund at any point <em>before</em> the minimum is reached, no questions asked. And if a round closes but its reveal hasn't arrived 1 hour later, anyone can start its expiry; about 20 minutes after that, every ticket can be reclaimed. Reclaim within 90 days: after that, unclaimed funds can be moved to the treasury, and only there.</p>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">03</span><h2>Don't trust — verify</h2></div>
     <p class="lead">The spinning wheel on screen is presentation, not the mechanism. The actual draw happens inside the smart contract, and every player's own browser can recompute it independently — without asking Repeg Club's servers, or Repeg Club's word, for anything.</p>
     <div class="verify-steps">
-      <div class="verify-step"><div class="verify-step-n">1</div><div><strong>The block is real.</strong><p>The exact block the draw used — its height and its real timestamp — is public chain data. Anyone can open its raw contents directly from the network.</p></div></div>
+      <div class="verify-step"><div class="verify-step-n">1</div><div><strong>The commit is real.</strong><p>The hash of the secret was published on-chain when the round opened, before anyone bought a ticket. When the round draws, the revealed secret has to hash to exactly that value — anyone can check both directly from the network.</p></div></div>
       <div class="verify-step"><div class="verify-step-n">2</div><div><strong>The ticket list is real.</strong><p>Every ticket bought that round, in order, is also public on-chain data with its own direct link — not something Repeg Club could quietly edit.</p></div></div>
-      <div class="verify-step"><div class="verify-step-n">3</div><div><strong>One fixed formula.</strong><p>Round ID, block height, block time, and the full ticket list all feed one hash. The result always points to the same single ticket.</p></div></div>
+      <div class="verify-step"><div class="verify-step-n">3</div><div><strong>One fixed formula.</strong><p>The contract's address, the round ID, the revealed secret and the full ticket list (each ticket is the buyer's address as text, in the order bought) feed one SHA-256 hash; the round ID goes in as 8 bytes, big-endian, and so are the digest's first 8 bytes read. The result always points to the same single ticket.</p></div></div>
     </div>
-    <span class="formula">winner = SHA256( round_id, block.height, block.time, tickets[] )</span>
-    <p style="margin-top:20px;">Every drawn round has a "Verify this round" panel that runs all three steps live, in the visitor's own browser, and shows every input plus a one-click JSON export — enough for anyone technical, or any AI they paste it to, to redo the whole calculation from scratch.</p>
+    <span class="formula">digest = SHA256( contract ‖ 0x00 ‖ round_id ‖ secret ‖<br>&nbsp;&nbsp;ticket₁ ‖ 0x00 ‖ … ‖ ticketₙ ‖ 0x00 )<br>winner = ticket[ first 8 bytes of digest mod n ]</span>
+    <p style="margin-top:20px;">Every drawn round has a "Verify this round" panel that runs all three steps live, in the visitor's own browser, and shows every input plus a one-click JSON export — enough for anyone technical, or any AI they paste it to, to redo the whole calculation from scratch. Weekly Round uses the same formula with the week ID; raffles use the same pieces in a slightly different order (contract, secret, a place number, tickets), and their own panel shows every input.</p>
   </section>
 
   <section>
@@ -657,24 +657,24 @@
 
     <div class="module">
       <div class="module-head"><h3>Weekly Round</h3><span class="module-tag">shared jackpot</span></div>
-      <p>One platform-wide round, not one per ticket tier. It starts every week already funded by the 20% every single Wheel of Repeg round contributes, and sells its own ticket with a price that climbs a little each day the week runs — buy early, pay less. Same close/draw/settle/redeem mechanism, same public verification.</p>
+      <p>One platform-wide round, not one per ticket tier. It starts every week already funded by the 20% every single Wheel of Repeg round contributes, and sells its own ticket with a price that climbs a little each day the week runs — buy early, pay less. Unlike a Wheel of Repeg round, the week runs on one fixed 7-day countdown: when it ends, it draws if enough players joined, or expires with reclaimable tickets if not. Its pool splits three ways: 85% to the winner's prize, 12% to the treasury, 3% admin fee. Same draw and redeem mechanism, same public verification.</p>
     </div>
 
     <div class="module">
       <div class="module-head"><h3>Create Your Own Luck</h3><span class="module-tag">for any creator</span></div>
       <p>The same contract engine, offered as a tool: anyone can spin up their own raffle — a single winner, or an equal airdrop to everyone who entered — funding whatever prize they want to offer. The platform's own cut is a flat USDC fee decided at creation, never a percentage of someone else's prize, and it's hardcoded rather than set by the raffle's creator, so nobody running a raffle can quietly redirect it. Every raffle gets the exact same public verification panel described above.</p>
       <p>For a project manager or builder in the community, this doubles as a real fundraising tool: a genuinely compelling prize can pull in far more in ticket sales than the prize itself costs — funding real things, like liquidity, ongoing costs, or whatever the project actually needs, not just a giveaway. A growing cooldown already discourages any single wallet from running many small, low-effort raffles back to back. Next up: a public reputation system for creator wallets, so a track record of well-funded, well-run raffles is visible before anyone risks a ticket on a new one — protecting players and rewarding the creators actually worth backing.</p>
-      <p>A <em>paid</em> raffle's prize has to be LUNC, USTC, or USDC — never a token the creator picks, whose name and symbol can't be independently verified. Reputable, liquid CW20 tokens will be whitelisted later, after the same manual review the native assets already went through. Free-to-enter raffles are the exception already, today: an Airdrop can hand out any CW20 to up to 1,000 wallets, since nobody has to trust the token to enter for free. The creator still pays for that — a flat USDC fee that scales with how many wallets could receive a share (from $3 up to 100 wallets, to $18 up to 1,000), split the same 50/50 between the founder and the treasury as everywhere else on the platform. Claiming costs each recipient nothing beyond their own transaction gas — the contract flatly refuses any funds attached to a claim, so "pay a small fee to receive your airdrop" can never be a legitimate request here.</p>
+      <p>A <em>paid</em> raffle's prize has to be LUNC, USTC, or USDC — never a token the creator picks, whose name and symbol can't be independently verified. Reputable, liquid CW20 tokens will be whitelisted later, after the same manual review the native assets already went through. Free-to-enter raffles are the exception in the contract: an Airdrop can hand out any CW20 to up to 1,000 wallets, since nobody has to trust the token to enter for free (the site's form offers LUNC, USTC and USDC prizes only, for now). The creator still pays for that — a flat USDC fee that scales with how many wallets could receive a share (from $3 up to 100 wallets, to $18 up to 1,000), split 50/50 between the founder and the treasury (Wheel of Repeg and Weekly Round split their cuts differently, see Section 04). Claiming costs each recipient nothing beyond their own transaction gas — the contract flatly refuses any funds attached to a claim, so "pay a small fee to receive your airdrop" can never be a legitimate request here.</p>
     </div>
   </section>
 
   <section>
-    <div class="sec-head"><span class="sec-num">06</span><h2>Bringing USDC in</h2></div>
-    <p class="lead">Terra Classic's 1.5% burn tax applies to LUNC-denominated trades — USDC and other CW20 tokens are exempt, and that's already reshaping where liquidity sits: some projects are re-pairing pools around USDC instead of LUNC or USTC, specifically to dodge the tax. But USDC's presence on the chain today is thin — less a lack of demand than a lack of an easy way in, since getting it here means knowing about Noble, IBC, and a multi-hop transfer most people have never had a reason to learn.</p>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Bringing assets in and out</h2></div>
+    <p class="lead">Terra Classic's burn tax (1.5%, read on chain on 13 November 2026) applies to LUNC-denominated trades — USDC and other CW20 tokens are exempt, and that's already reshaping where liquidity sits: some projects are re-pairing pools around USDC instead of LUNC or USTC, specifically to dodge the tax. But USDC's presence on the chain today is thin — less a lack of demand than a lack of an easy way in, since getting it here means knowing about Noble, IBC, and a multi-hop transfer most people have never had a reason to learn.</p>
     <p>The onramp at <strong>repegclub.com/onramp</strong> exists to close exactly that gap — not to replace an exchange, just to remove the one step between "I have USDC somewhere" and "I have USDC on Terra Classic, ready to play." Same trust model as the rest of this site: funds move wallet-to-wallet, on-chain, and Repeg Club never holds anything in between. The cost is a flat 0.2% service fee on top of whatever the network itself already charges — a few cents, on the cheapest path.</p>
     <div class="panel" style="margin-top:24px;">
-      <h3>Three ways in</h3>
-      <p style="margin:0;">Already have USDC on <strong>Noble</strong> — the fastest, cheapest path, a direct transfer with no swap involved. Already hold <strong>ATOM</strong> (Cosmos Hub) or <strong>OSMO</strong> (Osmosis) — send it, and it gets swapped to USDC automatically along the way. Coming from an exchange — <strong>Binance</strong> and <strong>KuCoin</strong> both support withdrawing USDC straight to Noble, and from there it's the same direct path.</p>
+      <h3>Routes (13 November 2026)</h3>
+      <p style="margin:0;"><strong>In to Terra Classic:</strong> USDC from <strong>Noble</strong> (the fastest, cheapest path; Binance and KuCoin withdraw USDC straight to Noble); ATOM or USDC from <strong>Cosmos Hub</strong> and OSMO or USDC from <strong>Osmosis</strong> (ATOM and OSMO are swapped to USDC on the way); LUNC and USTC back from <strong>BSC</strong> and <strong>Ethereum</strong> through Hyperlane.<br><strong>Out of Terra Classic:</strong> LUNC and USTC to BSC and Ethereum; LUNC, USTC and JURIS to <strong>Solana</strong>; USDC back to Noble.<br><strong>Fees:</strong> Repeg Club's 0.2% service fee on routes in from Noble, Cosmos Hub and Osmosis and on routes out to BSC, Ethereum and Solana; an optional 0.2% support payment on the way back from BSC; on top, each network's own gas, Hyperlane's interchain gas, and Terra Classic's burn tax where it applies. The page shows the exact amounts before you sign.</p>
     </div>
   </section>
 
@@ -683,34 +683,34 @@
     <p class="lead">This is a young, small project — worth saying plainly what's been done, and what deliberately hasn't yet.</p>
     <div class="check-list">
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Independent AI review on every contract change</strong><span class="d">Two separate models (Opus and Fable) review each change blind, with no hints that other checks already passed, before anything ships — plus an extra pass from a third model, Nemotron 3 Ultra, that has caught real issues the other two hadn't flagged.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Grinding window, not an open-ended retry</strong><span class="d">The draw can't be freely re-rolled by waiting for a favorable block — a bounded window caps how much of that is even possible.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Clean static analysis</strong><span class="d"><span class="mono">cargo audit</span> and <span class="mono">clippy</span> pass clean across all three contracts.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Commit-reveal draw</strong><span class="d">The winner comes from a secret committed on-chain before the round opens, so the transaction that runs the draw can't choose or retry its own randomness.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Clean static analysis</strong><span class="d"><span class="mono">cargo audit</span> and <span class="mono">clippy</span> pass clean across all four contracts.</span></div></div>
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Public, auditable source</strong><span class="d">The full repository is open — every contract, every frontend line, every commit.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Narrow, explicit admin key</strong><span class="d">It can only sweep long-unclaimed funds to the treasury after a long timeout — never redirect them anywhere else, and never touch an active round.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Narrow, explicit admin key</strong><span class="d">It can only move the USTC that winners hand in to the treasury — never anywhere else, and never touch an active round. Funds left unclaimed for 90 days go to that same treasury, and anyone can trigger that.</span></div></div>
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Every pull request reviewed by CodeRabbit</strong><span class="d">An automated code-review bot checks every change before it merges — a separate, independent layer from the reviews above.</span></div></div>
-      <div class="check-row"><span class="check-mark open">○</span><div><strong>No professional external audit yet</strong><span class="d">Funded by the treasury once it holds enough to cover one — not a corner cut, a sequencing choice. This testing phase is part of how that threshold gets reached responsibly.</span></div></div>
+      <div class="check-row"><span class="check-mark open">○</span><div><strong>No professional external audit yet</strong><span class="d">Funded by the treasury once it holds enough to cover one — not a corner cut, a sequencing choice. Ongoing ticket sales are part of how that threshold gets reached responsibly.</span></div></div>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">08</span><h2>Where things stand today</h2></div>
     <div class="status-banner">
-      <div class="badge">TESTNET</div>
-      <p>Wheel of Repeg, Weekly Round, and Create Your Own Luck are all <strong>fully working, end to end, on Terra Classic's public testnet</strong> — buy, close, draw, verify, redeem, all of it, live at <strong>repegclub.com</strong> right now. No real money is at risk on these games today, and nothing about the mechanics changes between now and a real-money launch.</p>
-    </div>
-    <div class="status-banner" style="margin-top:16px;">
       <div class="badge">MAINNET</div>
-      <p>The USDC onramp (Section 06, above) is the one exception — it's already live with <strong>real funds, on Terra Classic mainnet</strong>, moving real USDC between real wallets and charging its real 0.2% fee today. It's a separate tool from the games above: it doesn't touch the Wheel of Repeg, Weekly Round, or Create Your Own Luck contracts, which stay testnet-only until the mainnet launch described in the next section.</p>
+      <p>Wheel of Repeg, Weekly Round, Create Your Own Luck and the onramp are all <strong>live on Terra Classic mainnet (columbus-5), with real money</strong> — buy, close, draw, verify, redeem, all of it, at <strong>repegclub.com</strong>. The public testing phase on testnet is what got the mechanics here.</p>
+    </div>
+    <div class="panel" style="margin-top:16px;">
+      <h3>Contracts (mainnet, checked 13 November 2026)</h3>
+      <p style="margin:0; overflow-wrap:anywhere;" class="mono">Wheel of Repeg: terra1ludttd29cn8t603supz533ahpvlkega8gtrlg6vv5t620gst2t3qskggtd<br>Weekly Round: terra1m00z58xsj0f55dhqvxja8rv0dkrhft7ua50hvw8jhrl0m4ll6qus6yjdqw<br>Create Your Own Luck factory: terra17y9z5jpy9pnd2e95lmgptz6r6krszmrtw6e6edy8cxxskn6ku79s7u2p5x<br>Treasury (2-of-3 multisig): terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z</p>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">09</span><h2>What comes next</h2></div>
-    <p class="lead">The mainnet launch and the external audit aren't sequential gates — one doesn't wait on the other.</p>
+    <p class="lead">Mainnet launch and the external audit were never sequential gates — the audit doesn't wait on a launch that's already happened.</p>
     <div class="roadmap">
-      <div class="rmap-row now"><div class="rmap-stage">Now</div><div><h4>Public testing</h4><p>This is that phase. Real people, breaking things, before anything real is at stake.</p></div></div>
-      <div class="rmap-row next"><div class="rmap-stage">Next</div><div><h4>Mainnet launch</h4><p>Starting deliberately small — one ticket tier, proven before the next is added, not a wall of "coming soon" tiers shown in advance.</p></div></div>
-      <div class="rmap-row next"><div class="rmap-stage">Next</div><div><h4>External audit</h4><p>Paid for by the treasury once it holds enough to cover a proper professional review — independent of the mainnet launch date, informed by what this testing phase surfaces.</p></div></div>
+      <div class="rmap-row now"><div class="rmap-stage">Done</div><div><h4>Public testing</h4><p>Weeks of real people, breaking things on testnet, before anything real was at stake.</p></div></div>
+      <div class="rmap-row now"><div class="rmap-stage">Done</div><div><h4>Mainnet launch</h4><p>Started deliberately small — one ticket tier, proven before the next is added, not a wall of "coming soon" tiers shown in advance.</p></div></div>
+      <div class="rmap-row next"><div class="rmap-stage">Next</div><div><h4>External audit</h4><p>Paid for by the treasury once it holds enough to cover a proper professional review — independent of the mainnet launch date, informed by what the testing phase surfaced.</p></div></div>
       <div class="rmap-row later"><div class="rmap-stage">After</div><div><h4>More tiers, more games</h4><p>Higher ticket tiers once the first is proven, and Create Your Own Luck opened up as a tool the wider Terra Classic community can build on.</p></div></div>
     </div>
   </section>
@@ -718,22 +718,22 @@
   <section>
     <div class="sec-head"><span class="sec-num">10</span><h2>What you can do right now</h2></div>
     <ul class="plain">
-      <li><strong>Play a round.</strong> Connect Keplr, buy a ticket, watch it through to redemption — the whole loop, on testnet, no risk.</li>
+      <li><strong>Play a round.</strong> Connect Keplr, buy a ticket, watch it through to redemption — the whole loop, live on mainnet, with real money.</li>
       <li><strong>Check our work.</strong> Open "Verify this round" on any drawn round and try to catch it lying. You won't need to trust us to do it.</li>
       <li><strong>Tell us what broke, or what confused you.</strong> The Feedback button lives right on the site — that's exactly what this phase is for.</li>
     </ul>
     <div class="cta">
       <a class="cta-btn primary" href="https://repegclub.com">Try it at repegclub.com ↗</a>
-      <a class="cta-btn ghost" href="https://t.me/+ifW-eoWfLiY4OTAx">Join the Telegram testing group ↗</a>
+      <a class="cta-btn ghost" href="https://t.me/+ifW-eoWfLiY4OTAx">Join the official Telegram group ↗</a>
     </div>
   </section>
 
   <div class="disclaimer">
-    <strong>Read this part too.</strong> The games on this site (Wheel of Repeg, Weekly Round, Create Your Own Luck) run on Terra Classic's public testnet today — none of that involves real money. The USDC onramp is the exception: it's live on mainnet and moves real funds (see Section 06/08, above). None of this is financial advice. USTC's market price is not affected by this product; a repeg only ever applies to the specific amount a round's winner is entitled to. No professional external security audit has been completed yet (see Security, above). Contracts and copy are subject to change before any real-money launch of the games.
+    <strong>Read this part too.</strong> Repeg Club runs on Terra Classic's real mainnet today — this involves real money, and none of this is financial advice. USTC's market price is not affected by this product; a repeg only ever applies to the specific amount a round's winner is entitled to. No professional external security audit has been completed yet (see Security, above). Contracts and copy are still subject to change.
   </div>
 
   <footer>
-    <span>Repeg Club — Whitepaper v1.1</span>
+    <span>Repeg Club — Whitepaper v1.2</span>
     <span>repegclub.com</span>
   </footer>
 
@@ -751,12 +751,12 @@
       <span class="eyebrow">Repeg Club presenta</span>
     </div>
     <h1>WHITEPAPER</h1>
-    <div class="version">v1.1 — Wheel of Repeg · Weekly Round · Create Your Own Luck</div>
-    <p class="tagline">Gana el <em>derecho</em> a repegar tu propio USTC 1:1 por USDC — financiado enteramente por la venta de tickets, decidido por datos públicos de la blockchain, y verificable por cualquier persona desde su propio navegador.</p>
+    <div class="version">v1.2 — Wheel of Repeg · Weekly Round · Create Your Own Luck · 13 de noviembre de 2026</div>
+    <p class="tagline">Gana el <em>derecho</em> a repegar tu propio USTC 1:1 por USDC — financiado enteramente por la venta de tickets, decidido por un secreto sellado en la cadena antes de cada ronda más la lista pública de tickets, y verificable por cualquier persona desde su propio navegador.</p>
     <div class="meta-row">
       <span>Cadena: <b>Terra Classic (CosmWasm)</b></span>
       <span>En vivo en: <b>repegclub.com</b></span>
-      <span class="status-chip">Testnet público — etapa de pruebas</span>
+      <span class="status-chip">En vivo en mainnet</span>
     </div>
   </div>
 
@@ -764,7 +764,7 @@
     <div class="sec-head"><span class="sec-num">01</span><h2>La idea</h2></div>
     <p>USTC cotiza hoy a una fracción mínima de un dólar, y nada de eso cambia solo porque un par de trading diga lo contrario. Repeg Club no promete mover ese precio de mercado para todos — nadie puede, honestamente, sin un tesoro lo bastante grande como para comprar todo el flotante, y ese tesoro no existe aquí.</p>
     <p>Lo que hace en cambio es algo más pequeño, real y repetible: los jugadores juntan USDC comprando tickets para una ronda. Cuando esa ronda sortea, el ganador no recibe efectivo — recibe el <strong>derecho a canjear su propio USTC por USDC, 1:1</strong>, hasta el premio de esa ronda. El USDC de ese canje no viene prestado de ningún otro lado: es exactamente lo que pagaron los demás jugadores por sus tickets. Es un repeg personal, financiado por la propia comunidad que lo quiso, ronda tras ronda.</p>
-    <p class="lead">Ningún tesoro externo respalda el premio. Ningún administrador decide el resultado. La cadena hace el sorteo, y cualquier persona — no solo el ganador — puede rehacer el cálculo y comprobarlo.</p>
+    <p class="lead">Ningún tesoro externo respalda el premio. El contrato hace el sorteo, a partir de un secreto sellado en la cadena antes de que abriera la ronda, y cualquier persona — no solo el ganador — puede rehacer el cálculo y comprobarlo.</p>
     <div class="panel" style="margin-top:24px;">
       <h3>Por qué esto, en el fondo</h3>
       <p style="margin:0;">El depeg de 2022 no fue solo un evento de mercado para quienes lo vivieron — fue una pérdida real, y para mucha gente dejó una herida que sigue abierta. Repeg Club no puede deshacer eso. Lo que sí puede dar es un momento real, público y on-chain: el propio USTC, canjeado 1:1, verificable, e imposible de negar o discutir por nadie. Ese momento vale por sí mismo, más allá del monto de dinero involucrado. Esa es la parte de este proyecto que no es realmente sobre economía.</p>
@@ -773,27 +773,27 @@
 
   <section>
     <div class="sec-head"><span class="sec-num">02</span><h2>Cómo funciona Wheel of Repeg</h2></div>
-    <p class="lead">Una ronda pasa por cinco etapas. Cualquier wallet puede disparar cada paso — en la práctica un bot keeper automático lo hace en segundos, pero nada del juego depende de que la infraestructura propia de Repeg Club siga en pie.</p>
+    <p class="lead">Una ronda pasa por cinco etapas. Cualquier wallet puede disparar cada paso; en la práctica el bot keeper de Repeg Club lo hace en segundos. El sorteo además necesita el secreto que el keeper selló antes de que abriera la ronda: si esa revelación nunca llega, la ronda expira y todos los tickets se pueden reclamar (ver más abajo).</p>
     <div class="lifecycle">
       <div class="stage"><div class="stage-n">1</div><div class="stage-title">Abierta</div><div class="stage-desc">Cualquiera compra tickets. Más tickets, mejores probabilidades — pero incluso un solo ticket tiene una oportunidad real.</div></div>
       <div class="stage"><div class="stage-n">2</div><div class="stage-title">Cierre</div><div class="stage-desc">Una vez alcanzado un mínimo de jugadores, cada ticket nuevo reinicia una cuenta regresiva corta — como un remate en vivo, para que nadie quede afuera por una décima de segundo.</div></div>
-      <div class="stage"><div class="stage-n">3</div><div class="stage-title">Sorteo</div><div class="stage-desc">El hash de un bloque futuro — todavía desconocido cuando cerró la ronda — elige el ticket ganador. Sin oráculo, sin aleatoriedad fuera de la cadena.</div></div>
+      <div class="stage"><div class="stage-n">3</div><div class="stage-title">Sorteo</div><div class="stage-desc">El keeper revela el secreto que selló en la cadena, como hash, antes de que abriera la ronda. El contrato lo compara con ese hash y lo combina con la lista de tickets para elegir el ticket ganador. Sin oráculo, sin datos de bloque.</div></div>
       <div class="stage"><div class="stage-n">4</div><div class="stage-title">Liquidación</div><div class="stage-desc">El pozo se reparte automáticamente (ver más abajo) y la wallet ganadora queda registrada, on-chain, como habilitada para canjear.</div></div>
       <div class="stage"><div class="stage-n">5</div><div class="stage-title">Canje</div><div class="stage-desc">El ganador envía su propio USTC y recibe USDC 1:1, en una o varias transacciones, hasta agotar el premio.</div></div>
     </div>
-    <p style="margin-top:22px;">Dos redes de seguridad, ambas de autoservicio — nadie tiene que pedirle nada a Repeg Club: una ronda que nunca llega a su mínimo de jugadores simplemente expira, y cualquiera que haya comprado puede reclamar exactamente lo que pagó. Y cualquier wallet puede retirarse con reembolso completo en cualquier momento <em>antes</em> de alcanzar el mínimo, sin preguntas.</p>
+    <p style="margin-top:22px;">Tres redes de seguridad, todas de autoservicio — nadie tiene que pedirle nada a Repeg Club: una ronda que nunca llega a su mínimo de jugadores simplemente expira, y cualquiera que haya comprado puede reclamar exactamente lo que pagó. Cualquier wallet puede retirarse con reembolso completo en cualquier momento <em>antes</em> de alcanzar el mínimo, sin preguntas. Y si una ronda cierra pero su revelación no llegó una hora después, cualquiera puede iniciar su vencimiento; unos 20 minutos más tarde, todos los tickets se pueden reclamar. Hay que reclamar dentro de los 90 días: después, los fondos sin reclamar se pueden mover al tesoro, y solo ahí.</p>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">03</span><h2>No confíes — verifica</h2></div>
     <p class="lead">La rueda que gira en pantalla es presentación, no el mecanismo. El sorteo real ocurre dentro del contrato inteligente, y el navegador de cada jugador puede recalcularlo de forma independiente — sin pedirle nada a los servidores de Repeg Club, ni tomar su palabra por nada.</p>
     <div class="verify-steps">
-      <div class="verify-step"><div class="verify-step-n">1</div><div><strong>El bloque es real.</strong><p>El bloque exacto que usó el sorteo — su altura y su horario real — es un dato público de la cadena. Cualquiera puede abrir su contenido crudo directo desde la red.</p></div></div>
+      <div class="verify-step"><div class="verify-step-n">1</div><div><strong>El compromiso es real.</strong><p>El hash del secreto se publicó en la cadena cuando abrió la ronda, antes de que nadie comprara un ticket. Cuando la ronda sortea, el secreto revelado tiene que dar exactamente ese hash — cualquiera puede comprobar las dos cosas directo desde la red.</p></div></div>
       <div class="verify-step"><div class="verify-step-n">2</div><div><strong>La lista de tickets es real.</strong><p>Cada ticket comprado esa ronda, en orden, también es un dato público on-chain con su propio enlace directo — no algo que Repeg Club pueda editar en silencio.</p></div></div>
-      <div class="verify-step"><div class="verify-step-n">3</div><div><strong>Una sola fórmula fija.</strong><p>El ID de la ronda, la altura del bloque, su horario y la lista completa de tickets alimentan un mismo hash. El resultado siempre apunta a un único ticket.</p></div></div>
+      <div class="verify-step"><div class="verify-step-n">3</div><div><strong>Una sola fórmula fija.</strong><p>La dirección del contrato, el ID de la ronda, el secreto revelado y la lista completa de tickets (cada ticket es la dirección de quien lo compró, como texto, en el orden de compra) alimentan un mismo hash SHA-256; el ID de la ronda entra como 8 bytes big-endian, y así se leen también los primeros 8 bytes del digest. El resultado siempre apunta a un único ticket.</p></div></div>
     </div>
-    <span class="formula">ganador = SHA256( round_id, block.height, block.time, tickets[] )</span>
-    <p style="margin-top:20px;">Toda ronda ya sorteada tiene un panel "Verify this round" que corre los tres pasos en vivo, en el propio navegador de quien visita el sitio, y muestra cada dato usado más una exportación en JSON con un clic — suficiente para que cualquier persona técnica, o cualquier IA a la que se lo pase, rehaga todo el cálculo desde cero.</p>
+    <span class="formula">digest = SHA256( contrato ‖ 0x00 ‖ round_id ‖ secreto ‖<br>&nbsp;&nbsp;ticket₁ ‖ 0x00 ‖ … ‖ ticketₙ ‖ 0x00 )<br>ganador = ticket[ primeros 8 bytes del digest mod n ]</span>
+    <p style="margin-top:20px;">Toda ronda ya sorteada tiene un panel "Verify this round" que corre los tres pasos en vivo, en el propio navegador de quien visita el sitio, y muestra cada dato usado más una exportación en JSON con un clic — suficiente para que cualquier persona técnica, o cualquier IA a la que se lo pase, rehaga todo el cálculo desde cero. Weekly Round usa la misma fórmula con el ID de la semana; los sorteos de Create Your Own Luck usan las mismas piezas en otro orden (contrato, secreto, un número de puesto, tickets), y su propio panel muestra cada dato.</p>
   </section>
 
   <section>
@@ -821,24 +821,24 @@
 
     <div class="module">
       <div class="module-head"><h3>Weekly Round</h3><span class="module-tag">pozo compartido</span></div>
-      <p>Una sola ronda para toda la plataforma, no una por nivel de ticket. Arranca cada semana ya financiada con el 20% que aporta cada ronda de Wheel of Repeg, y vende su propio ticket con un precio que sube un poco cada día que dura la semana — comprar antes cuesta menos. Mismo mecanismo de cierre/sorteo/liquidación/canje, misma verificación pública.</p>
+      <p>Una sola ronda para toda la plataforma, no una por nivel de ticket. Arranca cada semana ya financiada con el 20% que aporta cada ronda de Wheel of Repeg, y vende su propio ticket con un precio que sube un poco cada día que dura la semana — comprar antes cuesta menos. A diferencia de una ronda de Wheel of Repeg, la semana corre con una sola cuenta regresiva fija de 7 días: cuando termina, sortea si se anotaron suficientes jugadores, o expira con tickets reclamables si no. Su pozo se reparte en tres: 85% para el premio del ganador, 12% al tesoro, 3% de honorario de administración. Mismo mecanismo de sorteo y canje, misma verificación pública.</p>
     </div>
 
     <div class="module">
       <div class="module-head"><h3>Create Your Own Luck</h3><span class="module-tag">para cualquier creador</span></div>
       <p>El mismo motor de contrato, ofrecido como herramienta: cualquiera puede armar su propio sorteo — un solo ganador, o un airdrop igualitario entre todos los que entraron — financiando el premio que quiera ofrecer. La comisión de la plataforma es un monto fijo en USDC decidido al crear el sorteo, nunca un porcentaje del premio de otra persona, y está fijada en el código, no la declara quien crea el sorteo, así que nadie puede redirigirla en silencio. Cada sorteo tiene exactamente el mismo panel de verificación pública descrito arriba.</p>
       <p>Para quien gestiona un proyecto o construye algo en la comunidad, esto también funciona como una herramienta real de recaudación de fondos: un premio realmente atractivo puede juntar en venta de tickets mucho más de lo que cuesta el premio en sí — financiando cosas reales, como liquidez, costos de mantenimiento, o lo que el proyecto necesite, no solo un regalo. Un límite creciente ya desalienta a cualquier wallet de repetir sorteos pequeños y de poco esfuerzo uno tras otro. Lo que sigue: un sistema público de reputación para wallets creadoras, para que un historial de sorteos bien financiados y bien gestionados sea visible antes de que alguien arriesgue un ticket en uno nuevo — protegiendo a los jugadores y premiando a los creadores que realmente valen la pena.</p>
-      <p>El premio de un sorteo <em>pago</em> tiene que ser LUNC, USTC o USDC — nunca un token elegido por quien crea el sorteo, cuyo nombre y símbolo no se pueden verificar de forma independiente. Tokens CW20 reputados y con buena liquidez se habilitarán más adelante, después de la misma revisión manual que ya pasaron los activos nativos. Los sorteos de entrada gratuita ya son la excepción hoy mismo: un Airdrop puede repartir cualquier CW20 entre hasta 1000 wallets, porque nadie necesita confiar en el token para participar sin pagar. Quien crea el sorteo igual paga por eso — una comisión fija en USDC que escala según cuántas wallets podrían recibir una parte (desde $3 hasta 100 wallets, hasta $18 hasta 1000), repartida 50/50 entre el fundador y el tesoro, igual que en el resto de la plataforma. Reclamar el premio no le cuesta a cada beneficiario nada más que el gas de su propia transacción — el contrato rechaza directamente cualquier fondo adjunto al reclamo, así que algo como "pagar una pequeña comisión para recibir tu airdrop" nunca puede ser un pedido legítimo aquí.</p>
+      <p>El premio de un sorteo <em>pago</em> tiene que ser LUNC, USTC o USDC — nunca un token elegido por quien crea el sorteo, cuyo nombre y símbolo no se pueden verificar de forma independiente. Tokens CW20 reputados y con buena liquidez se habilitarán más adelante, después de la misma revisión manual que ya pasaron los activos nativos. Los sorteos de entrada gratuita son la excepción en el contrato: un Airdrop puede repartir cualquier CW20 entre hasta 1000 wallets, porque nadie necesita confiar en el token para participar sin pagar (por ahora, el formulario del sitio ofrece solo premios en LUNC, USTC y USDC). Quien crea el sorteo igual paga por eso — una comisión fija en USDC que escala según cuántas wallets podrían recibir una parte (desde $3 hasta 100 wallets, hasta $18 hasta 1000), repartida 50/50 entre el fundador y el tesoro (Wheel of Repeg y Weekly Round reparten lo suyo de otra forma, ver sección 04). Reclamar el premio no le cuesta a cada beneficiario nada más que el gas de su propia transacción — el contrato rechaza directamente cualquier fondo adjunto al reclamo, así que algo como "pagar una pequeña comisión para recibir tu airdrop" nunca puede ser un pedido legítimo aquí.</p>
     </div>
   </section>
 
   <section>
-    <div class="sec-head"><span class="sec-num">06</span><h2>Cómo traer USDC</h2></div>
-    <p class="lead">El burn tax del 1.5% de Terra Classic se aplica a las operaciones en LUNC — USDC y otros tokens CW20 están exentos, y eso ya está reacomodando dónde se concentra la liquidez: algunos proyectos están re-armando sus pools alrededor de USDC en vez de LUNC o USTC, específicamente para esquivar el tax. Pero la presencia de USDC on-chain hoy es escasa — menos por falta de demanda que por falta de una puerta de entrada simple, ya que traerlo acá significa conocer Noble, IBC, y una transferencia de varios saltos que la mayoría de la gente nunca tuvo motivo para aprender.</p>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Cómo traer y sacar activos</h2></div>
+    <p class="lead">El burn tax de Terra Classic (1.5%, leído en la cadena el 13 de noviembre de 2026) se aplica a las operaciones en LUNC — USDC y otros tokens CW20 están exentos, y eso ya está reacomodando dónde se concentra la liquidez: algunos proyectos están re-armando sus pools alrededor de USDC en vez de LUNC o USTC, específicamente para esquivar el tax. Pero la presencia de USDC on-chain hoy es escasa — menos por falta de demanda que por falta de una puerta de entrada simple, ya que traerlo acá significa conocer Noble, IBC, y una transferencia de varios saltos que la mayoría de la gente nunca tuvo motivo para aprender.</p>
     <p>El onramp en <strong>repegclub.com/onramp</strong> existe para cerrar exactamente esa brecha — no reemplaza a un exchange, solo saca de en medio el paso entre "tengo USDC en algún lado" y "tengo USDC en Terra Classic, listo para jugar". Mismo modelo de confianza que el resto del sitio: los fondos se mueven de wallet a wallet, on-chain, y Repeg Club nunca retiene nada en el medio. El costo es una comisión de servicio fija del 0.2%, sumada a lo que ya cobre la propia red — unos centavos, en el camino más barato.</p>
     <div class="panel" style="margin-top:24px;">
-      <h3>Tres caminos de entrada</h3>
-      <p style="margin:0;">Ya tenés USDC en <strong>Noble</strong> — el camino más rápido y barato, una transferencia directa sin swap de por medio. Ya tenés <strong>ATOM</strong> (Cosmos Hub) u <strong>OSMO</strong> (Osmosis) — se envía, y se convierte a USDC automáticamente en el camino. Viniendo de un exchange — <strong>Binance</strong> y <strong>KuCoin</strong> permiten retirar USDC directo a Noble, y de ahí es el mismo camino directo.</p>
+      <h3>Rutas (13 de noviembre de 2026)</h3>
+      <p style="margin:0;"><strong>Hacia Terra Classic:</strong> USDC desde <strong>Noble</strong> (el camino más rápido y barato; Binance y KuCoin retiran USDC directo a Noble); ATOM o USDC desde <strong>Cosmos Hub</strong> y OSMO o USDC desde <strong>Osmosis</strong> (ATOM y OSMO se convierten a USDC en el camino); LUNC y USTC de vuelta desde <strong>BSC</strong> y <strong>Ethereum</strong> por Hyperlane.<br><strong>Desde Terra Classic:</strong> LUNC y USTC hacia BSC y Ethereum; LUNC, USTC y JURIS hacia <strong>Solana</strong>; USDC de vuelta a Noble.<br><strong>Costos:</strong> la comisión de servicio de Repeg Club del 0.2% en las entradas desde Noble, Cosmos Hub y Osmosis y en las salidas hacia BSC, Ethereum y Solana; un aporte opcional del 0.2% en la vuelta desde BSC; además, el gas de cada red, el gas interchain de Hyperlane y el burn tax de Terra Classic donde corresponda. La página muestra los montos exactos antes de firmar.</p>
     </div>
   </section>
 
@@ -847,34 +847,34 @@
     <p class="lead">Este es un proyecto joven y pequeño — vale la pena decir con claridad qué se hizo, y qué todavía no, a propósito.</p>
     <div class="check-list">
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Revisión de IA independiente en cada cambio de contrato</strong><span class="d">Dos modelos distintos (Opus y Fable) revisan cada cambio a ciegas, sin saber que otras revisiones ya dieron bien, antes de que se despliegue nada — más un pase extra de un tercer modelo, Nemotron 3 Ultra, que encontró problemas reales que los otros dos no habían marcado.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Ventana acotada, no reintento libre</strong><span class="d">El sorteo no se puede re-tirar libremente esperando un bloque favorable — una ventana con límite acota cuánto de eso es siquiera posible.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Análisis estático limpio</strong><span class="d"><span class="mono">cargo audit</span> y <span class="mono">clippy</span> pasan limpios en los tres contratos.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Sorteo commit-reveal</strong><span class="d">El ganador sale de un secreto sellado en la cadena antes de que abra la ronda, así que la transacción que corre el sorteo no puede elegir ni reintentar su propia aleatoriedad.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Análisis estático limpio</strong><span class="d"><span class="mono">cargo audit</span> y <span class="mono">clippy</span> pasan limpios en los cuatro contratos.</span></div></div>
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Código público y auditable</strong><span class="d">Todo el repositorio está abierto — cada contrato, cada línea del frontend, cada commit.</span></div></div>
-      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Clave de administración acotada y explícita</strong><span class="d">Solo puede barrer fondos sin reclamar por mucho tiempo hacia el tesoro, tras un plazo largo — nunca redirigirlos a otro lado, y nunca tocar una ronda activa.</span></div></div>
+      <div class="check-row"><span class="check-mark done">✓</span><div><strong>Clave de administración acotada y explícita</strong><span class="d">Solo puede mover al tesoro los USTC que entregan los ganadores al canjear — nunca a otro lado, y nunca tocar una ronda activa. Los fondos sin reclamar durante 90 días van a ese mismo tesoro, y eso lo puede disparar cualquiera.</span></div></div>
       <div class="check-row"><span class="check-mark done">✓</span><div><strong>Cada pull request revisado por CodeRabbit</strong><span class="d">Un bot de revisión de código automático revisa cada cambio antes de fusionarlo — una capa separada e independiente de las revisiones de arriba.</span></div></div>
-      <div class="check-row"><span class="check-mark open">○</span><div><strong>Todavía sin auditoría externa profesional</strong><span class="d">Financiada por el tesoro una vez que tenga fondos suficientes para cubrirla — no es un atajo, es una decisión de orden. Esta etapa de pruebas es parte de cómo se llega a ese punto de forma responsable.</span></div></div>
+      <div class="check-row"><span class="check-mark open">○</span><div><strong>Todavía sin auditoría externa profesional</strong><span class="d">Financiada por el tesoro una vez que tenga fondos suficientes para cubrirla — no es un atajo, es una decisión de orden. La venta de tickets en curso es parte de cómo se llega a ese punto de forma responsable.</span></div></div>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">08</span><h2>Dónde está parado el proyecto hoy</h2></div>
     <div class="status-banner">
-      <div class="badge">TESTNET</div>
-      <p>Wheel of Repeg, Weekly Round y Create Your Own Luck están <strong>funcionando completos, de punta a punta, en el testnet público de Terra Classic</strong> — comprar, cerrar, sortear, verificar, canjear, todo, en vivo en <strong>repegclub.com</strong> ahora mismo. Hoy no hay dinero real en riesgo en estos juegos, y nada de la mecánica cambia entre ahora y un lanzamiento con dinero real.</p>
-    </div>
-    <div class="status-banner" style="margin-top:16px;">
       <div class="badge">MAINNET</div>
-      <p>El onramp de USDC (sección 06, más arriba) es la excepción — ya está en vivo con <strong>fondos reales, en el mainnet de Terra Classic</strong>, moviendo USDC real entre wallets reales y cobrando hoy su comisión real del 0.2%. Es una herramienta separada de los juegos de arriba: no toca los contratos de Wheel of Repeg, Weekly Round ni Create Your Own Luck, que siguen siendo solo testnet hasta el lanzamiento en mainnet descrito en la próxima sección.</p>
+      <p>Wheel of Repeg, Weekly Round, Create Your Own Luck y el onramp están <strong>en vivo en el mainnet de Terra Classic (columbus-5), con dinero real</strong> — comprar, cerrar, sortear, verificar, canjear, todo, en <strong>repegclub.com</strong>. La etapa de pruebas públicas en testnet es lo que trajo la mecánica hasta acá.</p>
+    </div>
+    <div class="panel" style="margin-top:16px;">
+      <h3>Contratos (mainnet, verificados el 13 de noviembre de 2026)</h3>
+      <p style="margin:0; overflow-wrap:anywhere;" class="mono">Wheel of Repeg: terra1ludttd29cn8t603supz533ahpvlkega8gtrlg6vv5t620gst2t3qskggtd<br>Weekly Round: terra1m00z58xsj0f55dhqvxja8rv0dkrhft7ua50hvw8jhrl0m4ll6qus6yjdqw<br>Fábrica de Create Your Own Luck: terra17y9z5jpy9pnd2e95lmgptz6r6krszmrtw6e6edy8cxxskn6ku79s7u2p5x<br>Tesoro (multisig 2-de-3): terra1pmrw0x576skdqxel7aakph7nhjscuczn3kke0z</p>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><span class="sec-num">09</span><h2>Qué sigue</h2></div>
-    <p class="lead">El lanzamiento en mainnet y la auditoría externa no son pasos secuenciales — uno no espera al otro.</p>
+    <p class="lead">El lanzamiento en mainnet y la auditoría externa nunca fueron pasos secuenciales — la auditoría no espera a un lanzamiento que ya pasó.</p>
     <div class="roadmap">
-      <div class="rmap-row now"><div class="rmap-stage">Ahora</div><div><h4>Pruebas públicas</h4><p>Esta es esa etapa. Gente real rompiendo cosas, antes de que haya algo real en juego.</p></div></div>
-      <div class="rmap-row next"><div class="rmap-stage">Después</div><div><h4>Lanzamiento en mainnet</h4><p>Empezando deliberadamente pequeño — un solo nivel de ticket, probado antes de sumar el siguiente, no una pared de niveles "próximamente" mostrados de antemano.</p></div></div>
-      <div class="rmap-row next"><div class="rmap-stage">Después</div><div><h4>Auditoría externa</h4><p>Pagada por el tesoro una vez que tenga fondos suficientes para cubrir una revisión profesional como corresponde — independiente de la fecha de lanzamiento en mainnet, informada por lo que salga de esta etapa de pruebas.</p></div></div>
+      <div class="rmap-row now"><div class="rmap-stage">Hecho</div><div><h4>Pruebas públicas</h4><p>Semanas de gente real rompiendo cosas en testnet, antes de que hubiera algo real en juego.</p></div></div>
+      <div class="rmap-row now"><div class="rmap-stage">Hecho</div><div><h4>Lanzamiento en mainnet</h4><p>Empezó deliberadamente pequeño — un solo nivel de ticket, probado antes de sumar el siguiente, no una pared de niveles "próximamente" mostrados de antemano.</p></div></div>
+      <div class="rmap-row next"><div class="rmap-stage">Después</div><div><h4>Auditoría externa</h4><p>Pagada por el tesoro una vez que tenga fondos suficientes para cubrir una revisión profesional como corresponde — independiente de la fecha de lanzamiento en mainnet, informada por lo que salió de la etapa de pruebas.</p></div></div>
       <div class="rmap-row later"><div class="rmap-stage">Más adelante</div><div><h4>Más niveles, más juegos</h4><p>Niveles de ticket más altos una vez probado el primero, y Create Your Own Luck abierto como herramienta para que la construya toda la comunidad de Terra Classic.</p></div></div>
     </div>
   </section>
@@ -882,22 +882,22 @@
   <section>
     <div class="sec-head"><span class="sec-num">10</span><h2>Qué se puede hacer ahora mismo</h2></div>
     <ul class="plain">
-      <li><strong>Jugar una ronda.</strong> Conectar Keplr, comprar un ticket, seguirlo hasta el canje — el ciclo completo, en testnet, sin riesgo.</li>
+      <li><strong>Jugar una ronda.</strong> Conectar Keplr, comprar un ticket, seguirlo hasta el canje — el ciclo completo, en vivo en mainnet, con dinero real.</li>
       <li><strong>Revisar el trabajo.</strong> Abrir "Verify this round" en cualquier ronda ya sorteada e intentar encontrar una mentira. No hace falta confiar en nadie para hacerlo.</li>
       <li><strong>Avisar qué se rompió, o qué generó confusión.</strong> El botón de Feedback vive directo en el sitio — para eso exactamente es esta etapa.</li>
     </ul>
     <div class="cta">
       <a class="cta-btn primary" href="https://repegclub.com">Probarlo en repegclub.com ↗</a>
-      <a class="cta-btn ghost" href="https://t.me/+ifW-eoWfLiY4OTAx">Sumarse al grupo de testing en Telegram ↗</a>
+      <a class="cta-btn ghost" href="https://t.me/+ifW-eoWfLiY4OTAx">Sumarse al grupo oficial de Telegram ↗</a>
     </div>
   </section>
 
   <div class="disclaimer">
-    <strong>Leer también esta parte.</strong> Los juegos de este sitio (Wheel of Repeg, Weekly Round, Create Your Own Luck) corren hoy sobre el testnet público de Terra Classic — nada de eso involucra dinero real. El onramp de USDC es la excepción: ya está en vivo en mainnet y mueve fondos reales (ver sección 06/08, más arriba). Nada de esto es asesoramiento financiero. El precio de mercado de USTC no se ve afectado por este producto; un repeg solo aplica al monto puntual al que tiene derecho el ganador de una ronda. Todavía no se completó una auditoría de seguridad externa profesional (ver Seguridad, arriba). Los contratos y los textos pueden cambiar antes de cualquier lanzamiento con dinero real de los juegos.
+    <strong>Leer también esta parte.</strong> Repeg Club corre hoy sobre el mainnet real de Terra Classic — esto involucra dinero real, y nada de esto es asesoramiento financiero. El precio de mercado de USTC no se ve afectado por este producto; un repeg solo aplica al monto puntual al que tiene derecho el ganador de una ronda. Todavía no se completó una auditoría de seguridad externa profesional (ver Seguridad, arriba). Los contratos y los textos todavía pueden cambiar.
   </div>
 
   <footer>
-    <span>Repeg Club — Whitepaper v1.1</span>
+    <span>Repeg Club — Whitepaper v1.2</span>
     <span>repegclub.com</span>
   </footer>
 
@@ -909,7 +909,8 @@
 (function () {
   var STORAGE_KEY = "repegclub-whitepaper-lang";
   var saved = localStorage.getItem(STORAGE_KEY);
-  var lang = saved === "es" ? "es" : "en";
+  var param = new URLSearchParams(location.search).get("lang");
+  var lang = param === "es" || param === "en" ? param : (saved === "es" ? "es" : "en");
 
   function apply(l) {
     document.querySelectorAll("[data-lang]").forEach(function (el) {

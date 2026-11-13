@@ -868,7 +868,7 @@
       },
       {
         "q": "How much does it cost?",
-        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small. Bringing LUNC or USTC back from BSC or Ethereum has no mandatory Repeg Club fee: you pay the interchain gas in BNB or ETH (shown before you sign), and Terra Classic itself charges its burn tax (1.5% today) when the coins arrive. On BSC there's also an optional 0.2% payment to support Repeg Club — pre-checked, and you can uncheck it."
+        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small. Bringing LUNC or USTC back from BSC or Ethereum has no mandatory Repeg Club fee: you pay the interchain gas in BNB or ETH (shown before you sign), and Terra Classic itself charges its burn tax (1.5% on 13 November 2026) when the coins arrive. On BSC there's also an optional 0.2% payment to support Repeg Club — pre-checked, and you can uncheck it."
       },
       {
         "q": "How long does it take?",
@@ -896,7 +896,7 @@
       },
       {
         "q": "Can I bridge back from BSC/Ethereum/Solana to Terra Classic?",
-        "a": "Yes, from BSC (BNB Chain) and Ethereum: switch to \"Bring assets in\", pick BSC or Ethereum, and connect a browser wallet (MetaMask, Rabby, or Keplr). LUNC and USTC arrive minus Terra Classic's own burn tax (1.5% today), which the chain charges when the coins are released. Coming back from Solana isn't available yet."
+        "a": "Yes, from BSC (BNB Chain) and Ethereum: switch to \"Bring assets in\", pick BSC or Ethereum, and connect a browser wallet (MetaMask, Rabby, or Keplr). LUNC and USTC arrive minus Terra Classic's own burn tax (1.5% on 13 November 2026), which the chain charges when the coins are released. Coming back from Solana isn't available yet."
       },
       {
         "q": "How much does sending LUNC/USTC out cost?",
