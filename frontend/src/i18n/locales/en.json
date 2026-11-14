@@ -204,11 +204,11 @@
       },
       {
         "q": "What happens if a round never fills up?",
-        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+        "a": "If the minimum number of players is never reached in time, the round expires and everyone who bought a ticket can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired round's unreclaimed ticket pool can be swept to the treasury 90 days after the round expires, so don't let a reclaimable ticket sit unclaimed indefinitely."
       },
       {
         "q": "What happens if the round closes but the winner is never revealed?",
-        "a": "This is different from a round that never fills up — this covers a round that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and mark the round expired, letting everyone who bought a ticket reclaim their own money through the exact same self-service button used for a round that never filled up. Nobody is penalized for an outage that wasn't their fault."
+        "a": "This is different from a round that never fills up — this covers a round that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if there is still no reveal 1 hour after closing does a permissionless process — callable by anyone, not just us — kick in; about 20 minutes later it can mark the round expired, letting everyone who bought a ticket reclaim their own money through the exact same self-service button used for a round that never filled up. Nobody is penalized for an outage that wasn't their fault."
       },
       {
         "q": "Why does the countdown keep resetting?",
@@ -228,7 +228,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",
-        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this round\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. The one thing that still involves a team-held key is a limited admin power to move long-unclaimed funds to the treasury after a long timeout, so a forgotten prize or an abandoned round's pool doesn't sit lost forever inside the contract — it can never be redirected anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours (the reveal also needs the committed secret, which our keeper publishes). You don't have to trust our bot or our frontend either — \"Verify this round\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired round's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. Before the round opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -627,7 +627,8 @@
     "prizeLabel": "The grand prize",
     "todayPriceCaption": "today's ticket price: {{price}} — rises daily",
     "closeWeek": "Close week",
-    "closesIn": "Closes in {{time}} unless someone buys another ticket",
+    "closesIn": "Week #{{weekId}} — closes in {{time}}",
+    "waitingForMinPlayers": "Week #{{weekId}} — needs {{min}} players by the end of the week to draw. If fewer join, the week expires and every ticket can be reclaimed.",
     "viewPreviousWeek": "🏆 Week #{{weekId}} results",
     "continueNextWeek": "Continue to next week",
     "initialResult": "{{count}} tickets sold — {{amount}} pool",
@@ -644,7 +645,7 @@
     "items": [
       {
         "q": "How does the game work?",
-        "a": "Buy a ticket. Once enough players join (or time runs out), the week closes and a winner is drawn on-chain. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
+        "a": "Buy a ticket. The week runs on a fixed 7-day countdown (it closes early if it reaches its player cap). When it ends, if enough players joined, a winner is drawn on-chain; if not, the week expires and every ticket can be reclaimed. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
       },
       {
         "q": "How is the winner picked?",
@@ -652,11 +653,11 @@
       },
       {
         "q": "What happens if a week never fills up?",
-        "a": "If the minimum number of players is never reached in time, the week expires and everyone who bought a ticket that week can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired week's unreclaimed ticket pool can be swept to the treasury once the app's own unclaimed-prize deadline passes, so don't let a reclaimable ticket sit unclaimed indefinitely."
+        "a": "If the minimum number of players is never reached in time, the week expires and everyone who bought a ticket that week can reclaim their own money — no one has to ask for it back, it's a direct self-service transaction. It isn't unlimited, though: an expired week's unreclaimed ticket pool can be swept to the treasury 90 days after the week expires, so don't let a reclaimable ticket sit unclaimed indefinitely."
       },
       {
         "q": "What happens if the week closes but the winner is never revealed?",
-        "a": "This is different from a week that never fills up — this covers a week that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and mark the week expired, letting everyone who bought a ticket that week reclaim their own money through the exact same self-service button used for a week that never filled up. Nobody is penalized for an outage that wasn't their fault."
+        "a": "This is different from a week that never fills up — this covers a week that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if there is still no reveal 1 hour after closing does a permissionless process — callable by anyone, not just us — kick in; about 20 minutes later it can mark the week expired, letting everyone who bought a ticket that week reclaim their own money through the exact same self-service button used for a week that never filled up. Nobody is penalized for an outage that wasn't their fault."
       },
       {
         "q": "Why doesn't the countdown reset the way Wheel of Repeg's does?",
@@ -664,7 +665,7 @@
       },
       {
         "q": "Where does the weekly jackpot come from?",
-        "a": "Two sources, shown separately in the pool breakdown above: this week's own ticket sales (the price rises daily, see below), plus a share automatically contributed on-chain every time a Wheel of Repeg round finishes and draws a winner, from that round's own ticket pool."
+        "a": "Two sources, shown separately in the pool breakdown above: this week's own ticket sales (the price rises daily, see below), plus a share automatically contributed on-chain every time a Wheel of Repeg round finishes and draws a winner, from that round's own ticket pool (20% of it). The winner's prize is 85% of the weekly pool; 12% goes to the treasury and 3% to the admin fee address."
       },
       {
         "q": "Why does the ticket price go up every day?",
@@ -688,7 +689,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the team control the outcome?",
-        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours. You don't have to trust our bot or our frontend either — \"Verify this week\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. The one thing that still involves a team-held key is a limited admin power to move long-unclaimed funds to the treasury after a long timeout, so a forgotten prize or an abandoned week's pool doesn't sit lost forever inside the contract — it can never be redirected anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. And no, the team cannot control the outcome, and no one can."
+        "a": "The game, its prize, and its mechanics are decentralized and permissionless: every step, from start to payout, can be triggered by any wallet, not just ours (the reveal also needs the committed secret, which our keeper publishes). You don't have to trust our bot or our frontend either — \"Verify this week\" lets anyone recompute the draw from public blockchain data and get the same answer. The prize itself comes entirely from ticket sales, with no outside treasury the team controls. Long-unclaimed funds (a prize not redeemed, or an expired week's tickets not reclaimed, after 90 days) can be moved by anyone, and only to the treasury, so they don't sit lost forever inside the contract. The one thing that involves a team-held key is moving the USTC that winners hand in when they redeem to that same treasury. It can never be sent anywhere else, and the treasury itself requires 2-of-3 signers, not one person acting alone. Before the week opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -708,19 +709,19 @@
     "items": [
       {
         "q": "How does it work?",
-        "a": "Anyone can launch their own raffle: fund a prize, set a ticket price (or make it free to enter), and open it up. Once enough players join (or time runs out), it closes and a winner is drawn on-chain — the exact same permissionless, verifiable mechanism as Wheel of Repeg and Weekly Round, just pointed at a prize and rules the creator chose instead of ours."
+        "a": "Anyone can launch their own raffle: fund a prize, set a ticket price (free entry is available for Airdrops), and open it up. Once enough players join (or time runs out), it closes and a winner is drawn on-chain — the exact same permissionless, verifiable mechanism as Wheel of Repeg and Weekly Round, just pointed at a prize and rules the creator chose instead of ours."
       },
       {
         "q": "What are the three raffle types?",
-        "a": "Single Winner takes the whole prize. Podium splits it between several winners, in shares the creator sets when they launch it (say, 60/30/10 for 1st/2nd/3rd). Airdrop isn't really a \"winner\" raffle at all — everyone who entered gets an equal share of the prize, split among up to 1,000 wallets, and it can be free to enter since nobody's ticket money is ever at risk."
+        "a": "Single Winner takes the whole prize. Podium (several winners, in shares the creator sets, say 60/30/10) exists in the contract but can't be created or joined from this site yet. Airdrop isn't really a \"winner\" raffle at all — everyone who entered gets an equal share of the prize, split among up to 1,000 wallets, and it can be free to enter since nobody's ticket money is ever at risk."
       },
       {
         "q": "Who funds the prize, and can it be anything?",
-        "a": "The raffle's creator funds the prize upfront, before anyone can buy a ticket — never the ticket buyers. For a paid Single Winner or Podium raffle, the prize has to be LUNC, USTC, or USDC — never a token the creator picks that can't be independently verified. Reputable CW20 tokens will be allowed there too once they've gone through the same manual review the native assets already have. A free-to-enter Airdrop is the one exception today: since nobody has to trust the token to enter for free, it can hand out any CW20."
+        "a": "The raffle's creator funds the prize upfront, before anyone can buy a ticket — never the ticket buyers. For a paid Single Winner or Podium raffle, the prize has to be LUNC, USTC, or USDC — never a token the creator picks that can't be independently verified. Reputable CW20 tokens will be allowed there too once they've gone through the same manual review the native assets already have. A free-to-enter Airdrop is the one exception in the contract: since nobody has to trust the token to enter for free, it can hand out any CW20. This site's form doesn't offer CW20 prizes yet, only LUNC, USTC or USDC."
       },
       {
         "q": "What does the platform charge, and who pays it?",
-        "a": "A flat USDC fee, paid by the creator when they launch the raffle — never deducted from the prize, and never a cut of ticket sales. It's split 50/50 between the founder and the treasury, same as everywhere else on the platform, and it scales with how many players the raffle allows, not with how much the prize is worth."
+        "a": "A flat USDC fee, paid by the creator when they launch the raffle — never deducted from the prize, and never a cut of ticket sales. It's split 50/50 between the founder and the treasury (Wheel of Repeg and Weekly Round split their cuts differently: 12% treasury, 3% admin fee), and it scales with how many players the raffle allows, not with how much the prize is worth."
       },
       {
         "q": "Can one wallet buy all the tickets?",
@@ -732,11 +733,11 @@
       },
       {
         "q": "What happens if the raffle closes but the winner is never revealed?",
-        "a": "This is different from a raffle that never fills up — this covers one that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if a fixed waiting period passes with truly no reveal does a permissionless process — callable by anyone, not just us — kick in and refund everyone: the creator gets their prize and fee back, and every ticket buyer gets their ticket cost back. Nobody is penalized for an outage that wasn't their fault."
+        "a": "This is different from a raffle that never fills up — this covers one that did close normally (enough players joined) but where the reveal itself never arrives, for example if our automated bot has an outage right after closing. It's a no-fault situation: a legitimate reveal stays fully valid and takes priority the entire time this safety net is pending, so if the bot comes back online with the real result, that's what wins. Only if there is still no reveal 1 hour after closing does a permissionless process — callable by anyone, not just us — kick in; about 20 minutes later everyone can be refunded: the creator gets their prize and fee back, and every ticket buyer gets their ticket cost back. Nobody is penalized for an outage that wasn't their fault."
       },
       {
         "q": "Can the creator cancel a raffle after funding it?",
-        "a": "Yes, at any point before it draws — but not for free. Cancelling costs the creator part of their own fee, and that penalty gets bigger the later into the raffle's life they cancel. It exists so launching a raffle is a real commitment, not something to abandon on a whim once real people have already bought tickets hoping to win. Ticket buyers themselves are never penalized either way — a cancelled raffle refunds every ticket in full."
+        "a": "Yes, at any point before it closes — but, except for Airdrops, not for free. Cancelling costs the creator part of their own fee: 20% of it before the raffle reaches its minimum number of players, the whole fee after. Cancelling an Airdrop has no penalty. It exists so launching a raffle is a real commitment, not something to abandon on a whim once real people have already bought tickets hoping to win. Ticket buyers themselves are never penalized either way — a cancelled raffle refunds every ticket in full."
       },
       {
         "q": "Can a raffle be invite-only?",
@@ -748,7 +749,7 @@
       },
       {
         "q": "Is this actually decentralized, or could the creator or the team control the outcome?",
-        "a": "Neither can. Every step, from opening to payout, is permissionless — triggerable by any wallet, not just the creator's or ours — and the draw itself is decided by the same locked-in-secret-plus-ticket-list formula as Wheel of Repeg and Weekly Round, recomputable by anyone. The one thing that still involves a team-held key is a narrow admin power to move long-unclaimed prizes or tickets to the treasury after a long timeout, so an abandoned raffle's funds don't sit lost forever — it can never redirect them anywhere else, and it has no say over who wins."
+        "a": "The creator has no part in the draw. Every step, from opening to payout, is permissionless — triggerable by any wallet, not just the creator's or ours (the reveal also needs the committed secret, which our keeper publishes) — and the draw itself is decided by the same locked-in-secret-plus-ticket-list formula as Wheel of Repeg and Weekly Round, recomputable by anyone. Before the raffle opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result. Prizes go straight to the winners when the raffle draws. In an Airdrop, shares nobody claimed by the raffle's deadline go back to its creator; nothing goes to the team."
       }
     ]
   },
@@ -859,7 +860,7 @@
       },
       {
         "q": "Why only these chains — can't I bring something else?",
-        "a": "This list is short on purpose. Every asset on it trades in deep, liquid markets, so the automatic swap doesn't lose real value to slippage. An obscure or illiquid token could get a bad swap on the way in — better to convert it to one of these first, somewhere else, than risk that here."
+        "a": "This list is short on purpose. Every asset on it trades in deep, liquid markets, so the automatic swap usually loses very little to slippage (the route shows the estimate before you sign). An obscure or illiquid token could get a bad swap on the way in — better to convert it to one of these first, somewhere else, than risk that here."
       },
       {
         "q": "What about Bitcoin?",
@@ -867,11 +868,11 @@
       },
       {
         "q": "How much does it cost?",
-        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small. Bringing LUNC or USTC back from BSC or Ethereum has no mandatory Repeg Club fee: you pay the interchain gas in BNB or ETH (shown before you sign), and Terra Classic itself charges its burn tax (1.5% today) when the coins arrive. On BSC there's also an optional 0.2% payment to support Repeg Club — pre-checked, and you can uncheck it."
+        "a": "Depends on where you're coming from. Bringing USDC straight from Noble is cheapest — just a small fixed network fee, a few cents, plus Repeg Club's own 0.2% service fee on the amount. Coming from Cosmos Hub or Osmosis with native ATOM or OSMO adds a swap step with its own gas on top — still a small fraction of a typical amount, but worth knowing before sending something very small. Bringing LUNC or USTC back from BSC or Ethereum has no mandatory Repeg Club fee: you pay the interchain gas in BNB or ETH (shown before you sign), and Terra Classic itself charges its burn tax (1.5% on 13 November 2026) when the coins arrive. On BSC there's also an optional 0.2% payment to support Repeg Club — pre-checked, and you can uncheck it."
       },
       {
         "q": "How long does it take?",
-        "a": "Close to instant from Noble, Cosmos Hub, and Osmosis — they settle directly on-chain, no bridge or long confirmation wait involved. Coming back from BSC or Ethereum goes through Hyperlane and usually lands within a minute or two."
+        "a": "Close to instant from Noble, Cosmos Hub, and Osmosis — they settle directly on-chain, no bridge or long confirmation wait involved. Coming back from BSC or Ethereum goes through Hyperlane and usually lands within a minute or two; if it takes longer, track it on the Hyperlane explorer with the transaction hash."
       },
       {
         "q": "Is this safe — does Repeg Club hold my funds?",
@@ -891,11 +892,11 @@
       },
       {
         "q": "I sent LUNC or USTC out but can't see the balance on the other chain — is it lost?",
-        "a": "No — it's a wallet display issue, not a lost transfer. Wallets don't automatically show a token they've never seen before. After sending, this page shows you the exact contract address (with a copy button) to add manually as a custom token on BSC/Ethereum — Solana wallets usually pick it up on their own. Once added, the balance shows up correctly."
+        "a": "Usually not — most often it's a wallet display issue. First check the transfer on the Terra Classic explorer and on the destination chain's explorer. Wallets don't automatically show a token they've never seen before. After sending, this page shows you the exact contract address (with a copy button) to add manually as a custom token on BSC/Ethereum — Solana wallets usually pick it up on their own. Once added, the balance shows up correctly."
       },
       {
         "q": "Can I bridge back from BSC/Ethereum/Solana to Terra Classic?",
-        "a": "Yes, from BSC (BNB Chain) and Ethereum: switch to \"Bring assets in\", pick BSC or Ethereum, and connect a browser wallet (MetaMask, Rabby, or Keplr). LUNC and USTC arrive minus Terra Classic's own burn tax (1.5% today), which the chain charges when the coins are released. Coming back from Solana isn't available yet."
+        "a": "Yes, from BSC (BNB Chain) and Ethereum: switch to \"Bring assets in\", pick BSC or Ethereum, and connect a browser wallet (MetaMask, Rabby, or Keplr). LUNC and USTC arrive minus Terra Classic's own burn tax (1.5% on 13 November 2026), which the chain charges when the coins are released. Coming back from Solana isn't available yet."
       },
       {
         "q": "How much does sending LUNC/USTC out cost?",
@@ -924,11 +925,11 @@
   "legal": {
     "backLink": "← Back to Repeg Club",
     "title": "Legal Disclaimer & Restricted Jurisdictions",
-    "intro": "Wheel of Repeg, Weekly Round, and Create Your Own Luck are games of chance: you pay for a ticket for a chance-based draw. This is not an investment product.",
+    "intro": "Wheel of Repeg, Weekly Round, and paid Create Your Own Luck raffles are games of chance: you pay for a ticket for a chance-based draw. This is not an investment product. The onramp, free airdrops and the documentation are tools, not games: nothing is staked and nothing is drawn.",
     "sections": [
       {
         "heading": "Eligibility",
-        "body": "You must be 18 or older. You may not access or use this site if you are located in, resident of, or accessing from the United States (any state), the United Kingdom, Australia, France, Italy, Spain, the Netherlands, Belgium, Germany, Austria, or any country or region subject to comprehensive U.S. sanctions (Cuba, Iran, North Korea, Syria, and the Crimea, Donetsk, and Luhansk regions of Ukraine) (\"Restricted Jurisdictions\")."
+        "body": "To buy a ticket in any of the games of chance above you must be 18 or older and you may not be located in, resident of, or accessing from the United States (any state), the United Kingdom, Australia, France, Italy, Spain, the Netherlands, Belgium, Germany, Austria, or any country or region subject to comprehensive U.S. sanctions (Cuba, Iran, North Korea, Syria, and the Crimea, Donetsk, and Luhansk regions of Ukraine) (\"Restricted Jurisdictions\")."
       },
       {
         "heading": "No warranties",
@@ -989,11 +990,11 @@
       },
       {
         "title": "The wheel spins",
-        "body": "Once enough players join, the winner is drawn on-chain. Nobody picks it, not even us."
+        "body": "Once enough players join, the winner is drawn on-chain. The result comes from a secret committed on-chain before the round opened, and anyone can check it."
       },
       {
         "title": "Repeg your USTC",
-        "body": "The winner swaps their own USTC for USDC 1:1, up to the whole pot."
+        "body": "The winner swaps their own USTC for USDC 1:1, up to the prize: 60% of the round's pool."
       }
     ],
     "trustTitle": "Don't trust. Verify!",
@@ -1056,15 +1057,15 @@
         },
         {
           "q": "What do I need to play?",
-          "a": "A Terra Classic wallet (Keplr or Galaxy Station, on desktop or mobile) with some USDC for the ticket. If you don't have USDC on Terra Classic yet, the Onramp brings it in."
+          "a": "A Terra Classic wallet (Keplr or Galaxy Station, on desktop or mobile) with some USDC for the ticket and a little LUNC for network fees. If you win, the prize is the right to swap your own USTC for USDC 1:1, so you'll need USTC to use it. If you don't have USDC on Terra Classic yet, the Onramp brings it in."
         },
         {
           "q": "What if a round never fills up?",
-          "a": "If the minimum number of players isn't reached in time, the round expires and everyone takes their ticket money back with one click."
+          "a": "If the minimum number of players isn't reached in time, the round expires and everyone can take their ticket money back with one click. On Wheel of Repeg and Weekly Round, reclaim within 90 days (each raffle sets its own deadline): after that, unreclaimed funds can be moved to the treasury."
         },
         {
-          "q": "Can the team pick the winner?",
-          "a": "No. The winner comes from a secret locked on-chain before the round opens plus the public ticket list. Anyone can recompute it with \"Verify this round\"."
+          "q": "How is the winner picked?",
+          "a": "Before the round opens, Repeg Club's keeper commits a secret on-chain as a hash. Once committed it can't be changed, and anyone can check that the revealed secret and the ticket list give the published result. \"Verify this round\" does that check for you."
         }
       ]
     }

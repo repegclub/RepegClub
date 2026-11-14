@@ -510,8 +510,10 @@ export function RaffleDetailPage() {
     // Shown once per browser, not once per purchase - see
     // jurisdictionGateCache.ts. Re-calling handleBuyTicket() itself from the
     // modal's confirm handler (below) re-enters here past this check and
-    // into the rest of the existing warning chain unchanged.
-    if (!hasAckedJurisdictionGate()) {
+    // into the rest of the existing warning chain unchanged. A free airdrop
+    // stakes nothing and draws nothing (equal shares), so it isn't a game of
+    // chance and skips the gate (see the legal page's scope).
+    if (!(isAirdrop && !isPaid) && !hasAckedJurisdictionGate()) {
       setShowJurisdictionGate(true);
       return;
     }
