@@ -645,7 +645,7 @@
     "items": [
       {
         "q": "How does the game work?",
-        "a": "Buy a ticket. The week runs on a fixed 7-day countdown. When it ends, if enough players joined, a winner is drawn on-chain; if not, the week expires and every ticket can be reclaimed. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
+        "a": "Buy a ticket. The week runs on a fixed 7-day countdown (it closes early if it reaches its player cap). When it ends, if enough players joined, a winner is drawn on-chain; if not, the week expires and every ticket can be reclaimed. The winner doesn't get cash — they get the right to redeem their own USTC for USDC 1:1, up to the prize amount."
       },
       {
         "q": "How is the winner picked?",
@@ -737,7 +737,7 @@
       },
       {
         "q": "Can the creator cancel a raffle after funding it?",
-        "a": "Yes, at any point before it draws — but not for free. Cancelling costs the creator part of their own fee: 20% of it before the raffle reaches its minimum number of players, the whole fee after. It exists so launching a raffle is a real commitment, not something to abandon on a whim once real people have already bought tickets hoping to win. Ticket buyers themselves are never penalized either way — a cancelled raffle refunds every ticket in full."
+        "a": "Yes, at any point before it closes — but, except for Airdrops, not for free. Cancelling costs the creator part of their own fee: 20% of it before the raffle reaches its minimum number of players, the whole fee after. Cancelling an Airdrop has no penalty. It exists so launching a raffle is a real commitment, not something to abandon on a whim once real people have already bought tickets hoping to win. Ticket buyers themselves are never penalized either way — a cancelled raffle refunds every ticket in full."
       },
       {
         "q": "Can a raffle be invite-only?",
