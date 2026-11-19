@@ -54,13 +54,14 @@ document.getElementById("connect").addEventListener("click", async () => {
     await window.keplr.enable(CHAIN_ID);
     const key = await window.keplr.getKey(CHAIN_ID);
     const pubkeyB64 = toBase64(key.pubKey);
-    resultEl.append(
+    // replace, not append: two clicks in a row show one result
+    resultEl.replaceChildren(
       row("Account name (in Keplr)", String(key.name)),
       row("Address", String(key.bech32Address)),
       row("Pubkey (base64) - this is what you paste into the derive script", pubkeyB64)
     );
   } catch (err) {
-    resultEl.append(el("error", String((err && err.message) || err)));
+    resultEl.replaceChildren(el("error", String((err && err.message) || err)));
   }
 });
 </script>

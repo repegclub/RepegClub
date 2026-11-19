@@ -59,6 +59,8 @@ export function loadHistoryCache(contractAddress: string, wallet: string): Cache
     // the shape is checked too, not just the version (audit 2026-11-18, R24):
     // anything off is treated as "no cache yet" and re-scanned
     if (!Number.isSafeInteger(parsed.newestScanned) || !Number.isSafeInteger(parsed.oldestScanned)) return null;
+    // the range useWalletHistory writes: round ids start at 1
+    if (parsed.oldestScanned < 1 || parsed.oldestScanned > parsed.newestScanned) return null;
     if (!Array.isArray(parsed.entries) || !parsed.entries.every(isHistoryEntry)) return null;
     return { newestScanned: parsed.newestScanned, oldestScanned: parsed.oldestScanned, entries: parsed.entries };
   } catch {
