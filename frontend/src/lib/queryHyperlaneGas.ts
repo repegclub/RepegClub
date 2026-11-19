@@ -1,4 +1,5 @@
 import { queryContract } from "@goblinhunt/cosmes/client";
+import { HYPERLANE_DESTINATIONS } from "./onrampConfig";
 
 // Hyperlane's mailbox on Terra Classic mainnet, shared by every warp route
 // (LUNC/USTC/JURIS all dispatch through this same one) - confirmed live
@@ -61,5 +62,18 @@ export async function quoteHyperlaneGasFee(rpc: string, warpContract: string, de
   });
   const ulunaFee = res.fees.find((c) => c.denom === "uluna");
   if (!ulunaFee) throw new Error("Hyperlane gas quote didn't return a uluna fee.");
-  return (BigInt(ulunaFee.amount) * MARGIN_NUM) / MARGIN_DEN;
+  const fee = (BigInt(ulunaFee.amount) * MARGIN_NUM) / MARGIN_DEN;
+  // ceiling per destination (onrampConfig.ts): a quote above it is refused before signing
+  const max = HYPERLANE_DESTINATIONS.find((d) => d.domain === destDomain)?.maxIgpFeeUluna;
+  if (max === undefined) throw new Error("No bridge fee limit set for this destination.");
+  if (fee > max) {
+    throw new Error(
+      `The bridge fee quoted right now (${luncText(fee)} LUNC) is above this app's limit (${luncText(max)} LUNC). Nothing was sent; try again later.`
+    );
+  }
+  return fee;
+}
+
+function luncText(uluna: bigint): string {
+  return (uluna / 1_000_000n).toLocaleString("en-US");
 }

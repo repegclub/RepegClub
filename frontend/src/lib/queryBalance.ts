@@ -23,10 +23,20 @@ export type DenomBalance = { denom: string; amount: string };
 // 100 denoms by default, comfortably more than the treasury holds on any
 // one chain today, but silently dropping anything past the first page on a
 // public balance display is the wrong failure mode to leave in.
+//
+// Bounded (audit 2026-11-18, R25): a node that keeps returning a next_key,
+// or repeats one already followed, ends in an error instead of looping.
+const MAX_BALANCE_PAGES = 20;
+
 export async function getAllBalances(address: string, lcd: string): Promise<DenomBalance[]> {
   const balances: DenomBalance[] = [];
+  const seen = new Set<string>();
   let key: string | undefined;
   do {
+    if (key) {
+      if (seen.has(key) || seen.size >= MAX_BALANCE_PAGES) throw new Error("Balance query did not finish (pagination)");
+      seen.add(key);
+    }
     const url = new URL(`${lcd}/cosmos/bank/v1beta1/balances/${address}`);
     if (key) url.searchParams.set("pagination.key", key);
     const res = await fetch(url);

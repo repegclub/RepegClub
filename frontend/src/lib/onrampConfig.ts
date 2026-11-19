@@ -534,6 +534,13 @@ export type HyperlaneDestination = {
   // DirectTransferCard.tsx reads this to decide which assets to offer per
   // destination tab, instead of hardcoding "JURIS only on Solana" there.
   tokenAddress: Partial<Record<HyperlaneAsset, string>>;
+  // Ceiling on the interchain gas (IGP) fee this app will pay to reach this
+  // destination, in uluna, compared against the quote with its 3% margin.
+  // The quote comes from the mailbox through a public node; a higher one is
+  // refused before anything is signed (audit 2026-11-18, report 07). Set at
+  // ~10x the live quotes of 2026-11-18 (BSC 1,891 / Ethereum 2,620 /
+  // Solana 1,848 LUNC).
+  maxIgpFeeUluna: bigint;
 };
 
 export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
@@ -548,6 +555,7 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       // 2026-10-02: routers(132556) = the TERRA warp contract above.
       TERRA: "0x1413bd3E91036Fa21aA548E1a95e086c379Fb26D",
     },
+    maxIgpFeeUluna: 19_000_000_000n,
   },
   {
     domain: 1,
@@ -557,6 +565,7 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       LUNC: "0xA4bc47a4C5461eB0E59A585a21A1222EF7544Ac6",
       USTC: "0xf49408beb319aeCe3E8B3550a5C750C19b3F1e51",
     },
+    maxIgpFeeUluna: 26_000_000_000n,
   },
   {
     domain: 1399811149,
@@ -587,6 +596,7 @@ export const HYPERLANE_DESTINATIONS: HyperlaneDestination[] = [
       // Dexscreener/Raydium.
       JURIS: "HmKUJLZGTyFbEUX5sDisr8PERHjJRyoAkgZwc2YsbeRr",
     },
+    maxIgpFeeUluna: 18_500_000_000n,
   },
 ];
 
@@ -610,6 +620,11 @@ export type EvmChainParams = {
   nativeSymbol: string;
   rpc: string;
   explorerTxUrl: string;
+  // Ceiling on the interchain gas sent as msg.value, in wei. The quote comes
+  // from the token contract through a public RPC; a higher one is refused
+  // before anything is signed (audit 2026-11-18, report 07). Set at ~10x the
+  // live quotes of 2026-11-18 (BSC 0.000107 BNB, Ethereum 0.0000339 ETH).
+  maxInterchainGasWei: bigint;
 };
 
 export const EVM_CHAIN_PARAMS: Record<number, EvmChainParams> = {
@@ -619,6 +634,7 @@ export const EVM_CHAIN_PARAMS: Record<number, EvmChainParams> = {
     nativeSymbol: "BNB",
     rpc: "https://bsc-dataseed.bnbchain.org",
     explorerTxUrl: "https://bscscan.com/tx/",
+    maxInterchainGasWei: 1_100_000_000_000_000n, // 0.0011 BNB
   },
   1: {
     chainId: 1,
@@ -626,6 +642,7 @@ export const EVM_CHAIN_PARAMS: Record<number, EvmChainParams> = {
     nativeSymbol: "ETH",
     rpc: "https://ethereum-rpc.publicnode.com",
     explorerTxUrl: "https://etherscan.io/tx/",
+    maxInterchainGasWei: 340_000_000_000_000n, // 0.00034 ETH
   },
 };
 

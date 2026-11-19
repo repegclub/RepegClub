@@ -36,13 +36,33 @@ function cacheKey(contractAddress: string, wallet: string): string {
   return `repegclub:history:${contractAddress}:${wallet}`;
 }
 
+function isHistoryEntry(e: unknown): e is HistoryEntry {
+  if (!e || typeof e !== "object") return false;
+  const x = e as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(x.round_id) &&
+    typeof x.contractAddress === "string" &&
+    typeof x.status === "string" &&
+    Number.isSafeInteger(x.ticket_count) &&
+    typeof x.won === "boolean" &&
+    typeof x.prize_amount === "string" &&
+    /^\d+$/.test(x.prize_amount)
+  );
+}
+
 export function loadHistoryCache(contractAddress: string, wallet: string): CachedHistory | null {
   try {
     const raw = localStorage.getItem(cacheKey(contractAddress, wallet));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredCache;
-    if (parsed.version !== CACHE_VERSION) return null;
-    return parsed;
+    if (parsed?.version !== CACHE_VERSION) return null;
+    // the shape is checked too, not just the version (audit 2026-11-18, R24):
+    // anything off is treated as "no cache yet" and re-scanned
+    if (!Number.isSafeInteger(parsed.newestScanned) || !Number.isSafeInteger(parsed.oldestScanned)) return null;
+    // the range useWalletHistory writes: round ids start at 1
+    if (parsed.oldestScanned < 1 || parsed.oldestScanned > parsed.newestScanned) return null;
+    if (!Array.isArray(parsed.entries) || !parsed.entries.every(isHistoryEntry)) return null;
+    return { newestScanned: parsed.newestScanned, oldestScanned: parsed.oldestScanned, entries: parsed.entries };
   } catch {
     return null;
   }
