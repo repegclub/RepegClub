@@ -32,30 +32,35 @@ function toBase64(bytes) {
   return btoa(binary);
 }
 
+// Wallet-supplied text (account name, error message) is written as text,
+// never parsed as HTML (audit 2026-11-18, R21).
+function el(cls, text) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.textContent = text;
+  return d;
+}
+function row(label, value) {
+  const r = el("row", "");
+  r.append(el("label", label), el("value", value));
+  return r;
+}
+
 document.getElementById("connect").addEventListener("click", async () => {
   const resultEl = document.getElementById("result");
-  resultEl.innerHTML = "";
+  resultEl.replaceChildren();
   try {
     if (!window.keplr) throw new Error("Keplr not found - is the extension installed and unlocked?");
     await window.keplr.enable(CHAIN_ID);
     const key = await window.keplr.getKey(CHAIN_ID);
     const pubkeyB64 = toBase64(key.pubKey);
-    resultEl.innerHTML = `
-      <div class="row">
-        <div class="label">Account name (in Keplr)</div>
-        <div class="value">${key.name}</div>
-      </div>
-      <div class="row">
-        <div class="label">Address</div>
-        <div class="value">${key.bech32Address}</div>
-      </div>
-      <div class="row">
-        <div class="label">Pubkey (base64) - this is what you paste into the derive script</div>
-        <div class="value">${pubkeyB64}</div>
-      </div>
-    `;
+    resultEl.append(
+      row("Account name (in Keplr)", String(key.name)),
+      row("Address", String(key.bech32Address)),
+      row("Pubkey (base64) - this is what you paste into the derive script", pubkeyB64)
+    );
   } catch (err) {
-    resultEl.innerHTML = `<div class="error">${err.message || err}</div>`;
+    resultEl.append(el("error", String((err && err.message) || err)));
   }
 });
 </script>

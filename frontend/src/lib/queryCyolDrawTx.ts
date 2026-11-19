@@ -1,3 +1,4 @@
+import { bech32 } from "@goblinhunt/cosmes/codec";
 import { LCD } from "./chainConfig";
 
 // Finds the transaction that actually paid the prize to a drawn raffle's
@@ -15,7 +16,19 @@ import { LCD } from "./chainConfig";
 // Returns null if nothing is found (e.g. an LCD node lagging behind, or an
 // older raffle whose event indexing was pruned) - callers should treat that
 // as "couldn't confirm right now", not "never happened".
+//
+// Both addresses go into the node's query text, so only real terra1
+// addresses are accepted (audit 2026-11-18, R22).
+function isTerraAddress(address: string): boolean {
+  try {
+    return bech32.decode(address as `${string}1${string}`).prefix === "terra";
+  } catch {
+    return false;
+  }
+}
+
 export async function findPrizePayoutTxHash(contractAddress: string, winnerAddress: string): Promise<string | null> {
+  if (!isTerraAddress(contractAddress) || !isTerraAddress(winnerAddress)) return null;
   const query = `transfer.recipient='${winnerAddress}' AND transfer.sender='${contractAddress}'`;
   const url = `${LCD}/cosmos/tx/v1beta1/txs?query=${encodeURIComponent(query)}&order_by=ORDER_BY_ASC&pagination.limit=1`;
   const res = await fetch(url);
