@@ -5,6 +5,7 @@ import {
   createWalletClient,
   custom,
   defineChain,
+  formatEther,
   http,
   isAddressEqual,
   zeroAddress,
@@ -179,6 +180,12 @@ export async function quoteEvmInbound(
     tokenTotal += q.amount;
   }
   if (tokenTotal < amount) throw new Error("Unexpected quote from the token contract.");
+  // ceiling per chain (onrampConfig.ts): a quote above it is refused before signing
+  if (quotes[0].amount > params.maxInterchainGasWei) {
+    throw new Error(
+      `The bridge fee quoted right now (${formatEther(quotes[0].amount)} ${params.nativeSymbol}) is above this app's limit (${formatEther(params.maxInterchainGasWei)} ${params.nativeSymbol}). Nothing was sent; try again later.`
+    );
+  }
   return { nativeGas: quotes[0].amount, tokenTotal };
 }
 
