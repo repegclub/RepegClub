@@ -7,6 +7,14 @@ export function maxTicketsPerWallet(maxPlayers: number): number {
   return Math.max(1, Math.floor(maxPlayers / 2));
 }
 
+// One unique-wallet slot left: whoever takes it closes the round and opens
+// the next one in the same transaction. A purchase signed now but included
+// after someone else's takes the next round instead (the contract buys into
+// whatever round is current at inclusion), so the booth says so.
+export function isLastSpot(entrants: Entrant[], maxPlayers: number): boolean {
+  return maxPlayers - entrants.length === 1;
+}
+
 // How many more tickets could still be sold in this round - personalized
 // per viewer, because a flat global countdown would be actively misleading
 // right at the critical moment. The round closes INSTANTLY the moment the
@@ -18,14 +26,6 @@ export function maxTicketsPerWallet(maxPlayers: number): number {
 // theoretical number would overpromise. A wallet already in the round isn't
 // the one who'd trigger that close by buying more, so it still sees the
 // full theoretical remaining count.
-// One unique-wallet slot left: whoever takes it closes the round and opens
-// the next one in the same transaction. A purchase signed now but included
-// after someone else's takes the next round instead (the contract buys into
-// whatever round is current at inclusion), so the booth says so.
-export function isLastSpot(entrants: Entrant[], maxPlayers: number): boolean {
-  return maxPlayers - entrants.length === 1;
-}
-
 export function computeAvailableTickets(
   entrants: Entrant[],
   maxPlayers: number,
