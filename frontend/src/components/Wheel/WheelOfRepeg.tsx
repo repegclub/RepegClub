@@ -26,6 +26,7 @@ import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { useWheelTiers, pickDefaultTierAddress } from "../../hooks/useWheelTiers";
 import { formatUluna } from "../../lib/format";
+import { getRoundEntrants } from "../../lib/queryWheelManager";
 import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 
 export function WheelOfRepeg() {
@@ -116,6 +117,11 @@ export function WheelOfRepeg() {
     roundState.status === "loaded" && roundState.round.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, roundState.config.max_players, address)
       : null;
+  async function recheckLastSpot() {
+    if (roundState.status !== "loaded" || roundId === null) return false;
+    const res = await getRoundEntrants(roundId, selectedTier ?? undefined);
+    return isLastSpot(new Set(res.entrants).size, roundState.config.max_players);
+  }
   const ticketCap =
     roundState.status === "loaded" ? maxTicketsPerWallet(roundState.config.max_players) : undefined;
   // The round's fixed sellable ceiling - same computeAvailableTickets used
@@ -207,7 +213,8 @@ export function WheelOfRepeg() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
-            lastSpot={availableTickets !== null && roundState.status === "loaded" && isLastSpot(entrants, roundState.config.max_players)}
+            lastSpot={availableTickets !== null && roundState.status === "loaded" && isLastSpot(entrants.length, roundState.config.max_players)}
+            recheckLastSpot={recheckLastSpot}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />

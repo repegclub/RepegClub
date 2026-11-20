@@ -26,6 +26,7 @@ import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
 import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 import { formatUluna } from "../../lib/format";
+import { getWeekEntrants } from "../../lib/queryWeeklyRound";
 import { buyWeeklyTickets } from "../../lib/roundActions";
 import { TicketBooth } from "../Wheel/TicketBooth";
 
@@ -77,6 +78,11 @@ export function WeeklyRoundPage() {
     weekState.status === "loaded" && weekState.week.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, weekState.config.max_players, address)
       : null;
+  async function recheckLastSpot() {
+    if (weekState.status !== "loaded" || weekId === null) return false;
+    const res = await getWeekEntrants(weekId, WEEKLY_ROUND_ADDRESS);
+    return isLastSpot(new Set(res.entrants).size, weekState.config.max_players);
+  }
   const ticketCap =
     weekState.status === "loaded" ? maxTicketsPerWallet(weekState.config.max_players) : undefined;
   // Same fixed sellable ceiling as Wheel of Repeg's own (see
@@ -146,7 +152,8 @@ export function WeeklyRoundPage() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
-            lastSpot={availableTickets !== null && weekState.status === "loaded" && isLastSpot(entrants, weekState.config.max_players)}
+            lastSpot={availableTickets !== null && weekState.status === "loaded" && isLastSpot(entrants.length, weekState.config.max_players)}
+            recheckLastSpot={recheckLastSpot}
             onPurchased={handlePurchased}
             buyAction={buyWeeklyTickets}
           />

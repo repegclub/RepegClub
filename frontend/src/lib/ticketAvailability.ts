@@ -11,8 +11,8 @@ export function maxTicketsPerWallet(maxPlayers: number): number {
 // the next one in the same transaction. A purchase signed now but included
 // after someone else's takes the next round instead (the contract buys into
 // whatever round is current at inclusion), so the booth says so.
-export function isLastSpot(entrants: Entrant[], maxPlayers: number): boolean {
-  return maxPlayers - entrants.length === 1;
+export function isLastSpot(uniquePlayers: number, maxPlayers: number): boolean {
+  return maxPlayers - uniquePlayers === 1;
 }
 
 // How many more tickets could still be sold in this round - personalized
