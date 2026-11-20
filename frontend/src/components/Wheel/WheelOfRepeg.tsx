@@ -26,7 +26,7 @@ import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { useWheelTiers, pickDefaultTierAddress } from "../../hooks/useWheelTiers";
 import { formatUluna } from "../../lib/format";
-import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
+import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 
 export function WheelOfRepeg() {
   const { t } = useTranslation();
@@ -204,6 +204,7 @@ export function WheelOfRepeg() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
+            lastSpot={roundState.status === "loaded" && roundState.round.status === "open" && isLastSpot(entrants, roundState.config.max_players)}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />

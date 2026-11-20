@@ -29,6 +29,9 @@ type TicketBoothProps = {
   // "🎟️ ..." format - requested live to add context availableTickets alone
   // doesn't give.
   maxTicketsPerRound?: number;
+  // One unique-wallet slot left in an open round - see isLastSpot in
+  // lib/ticketAvailability.ts.
+  lastSpot?: boolean;
   onPurchased?: () => void;
   // Defaults to Wheel Manager's buyTickets(). Weekly Round passes
   // buyWeeklyTickets instead - everything else here (validation, error
@@ -54,6 +57,7 @@ export function TicketBooth({
   availableTickets,
   ticketCap,
   maxTicketsPerRound,
+  lastSpot,
   onPurchased,
   buyAction = buyTickets,
 }: TicketBoothProps) {
@@ -174,6 +178,7 @@ export function TicketBooth({
                 : t("ticketBooth.available", { count: availableTickets })}
             </p>
           )}
+          {lastSpot && <p className="booth-cap-note">{t("ticketBooth.lastSpotNote")}</p>}
           {ticketCap !== undefined && (
             <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
           )}

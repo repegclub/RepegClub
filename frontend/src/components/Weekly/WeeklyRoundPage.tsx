@@ -24,7 +24,7 @@ import { useWeeklyEntrants } from "../../hooks/useWeeklyEntrants";
 import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
-import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
+import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 import { formatUluna } from "../../lib/format";
 import { buyWeeklyTickets } from "../../lib/roundActions";
 import { TicketBooth } from "../Wheel/TicketBooth";
@@ -143,6 +143,7 @@ export function WeeklyRoundPage() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
+            lastSpot={weekState.status === "loaded" && weekState.week.status === "open" && isLastSpot(entrants, weekState.config.max_players)}
             onPurchased={handlePurchased}
             buyAction={buyWeeklyTickets}
           />
