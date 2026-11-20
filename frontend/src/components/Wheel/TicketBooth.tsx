@@ -104,7 +104,15 @@ export function TicketBooth({
     return () => clearInterval(id);
   }, [HYPE_LINES.length]);
 
-  const ready = walletState.status === "connected" && ticketDenom && ticketPriceAmount && !noneAvailable;
+  // availableTickets null/undefined = round not open or entrants not loaded
+  // yet: nothing to buy into knowingly, so Buy waits for the count.
+  const ready =
+    walletState.status === "connected" &&
+    ticketDenom &&
+    ticketPriceAmount &&
+    availableTickets !== null &&
+    availableTickets !== undefined &&
+    !noneAvailable;
 
   async function handleBuy() {
     if (walletState.status !== "connected" || !ticketDenom || !ticketPriceAmount) return;

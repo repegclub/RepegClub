@@ -109,8 +109,11 @@ export function WheelOfRepeg() {
 
   const tiers = tiersState.status === "loaded" ? tiersState.tiers : [];
 
+  // Counted only once the entrants have loaded: an empty list while they
+  // load (or after a failed read) is not an empty round, and would show the
+  // full count and no last-spot warning. Null keeps Buy disabled meanwhile.
   const availableTickets =
-    roundState.status === "loaded" && roundState.round.status === "open"
+    roundState.status === "loaded" && roundState.round.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, roundState.config.max_players, address)
       : null;
   const ticketCap =
@@ -204,7 +207,7 @@ export function WheelOfRepeg() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
-            lastSpot={roundState.status === "loaded" && roundState.round.status === "open" && isLastSpot(entrants, roundState.config.max_players)}
+            lastSpot={availableTickets !== null && roundState.status === "loaded" && isLastSpot(entrants, roundState.config.max_players)}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />
