@@ -26,7 +26,8 @@ import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { useWheelTiers, pickDefaultTierAddress } from "../../hooks/useWheelTiers";
 import { formatUluna } from "../../lib/format";
-import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
+import { getRoundEntrants } from "../../lib/queryWheelManager";
+import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 
 export function WheelOfRepeg() {
   const { t } = useTranslation();
@@ -109,10 +110,25 @@ export function WheelOfRepeg() {
 
   const tiers = tiersState.status === "loaded" ? tiersState.tiers : [];
 
+  // Counted only once the entrants have loaded: an empty list while they
+  // load (or after a failed read) is not an empty round, and would show the
+  // full count and no last-spot warning. Null keeps Buy disabled meanwhile.
   const availableTickets =
-    roundState.status === "loaded" && roundState.round.status === "open"
+    roundState.status === "loaded" && roundState.round.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, roundState.config.max_players, address)
       : null;
+  // Spots left in the round on screen, read fresh. A full round is reloaded
+  // so the page moves on to the next one; with one spot left the entrants
+  // are reloaded too, so the ticket count (1 for a wallet not yet in) and
+  // the quantity follow the fresh list before the next click.
+  async function recheckSpotsLeft() {
+    if (roundState.status !== "loaded" || roundId === null) return Infinity;
+    const res = await getRoundEntrants(roundId, selectedTier ?? undefined);
+    const left = roundState.config.max_players - new Set(res.entrants).size;
+    if (left <= 0) roundState.refetch();
+    if (left <= 1) entrantsState.refetch();
+    return left;
+  }
   const ticketCap =
     roundState.status === "loaded" ? maxTicketsPerWallet(roundState.config.max_players) : undefined;
   // The round's fixed sellable ceiling - same computeAvailableTickets used
@@ -204,6 +220,8 @@ export function WheelOfRepeg() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
+            lastSpot={availableTickets !== null && roundState.status === "loaded" && isLastSpot(entrants.length, roundState.config.max_players)}
+            recheckSpotsLeft={recheckSpotsLeft}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />
