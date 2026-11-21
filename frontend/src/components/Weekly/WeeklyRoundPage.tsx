@@ -78,16 +78,16 @@ export function WeeklyRoundPage() {
     weekState.status === "loaded" && weekState.week.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, weekState.config.max_players, address)
       : null;
-  // Spots left in the week on screen, read fresh; a full week is reloaded so
-  // the page moves on to the next one.
+  // Spots left in the week on screen, read fresh. A full week is reloaded so
+  // the page moves on to the next one; with one spot left the entrants are
+  // reloaded too, so the ticket count (1 for a wallet not yet in) and the
+  // quantity follow the fresh list before the next click.
   async function recheckSpotsLeft() {
     if (weekState.status !== "loaded" || weekId === null) return Infinity;
     const res = await getWeekEntrants(weekId, WEEKLY_ROUND_ADDRESS);
     const left = weekState.config.max_players - new Set(res.entrants).size;
-    if (left <= 0) {
-      weekState.refetch();
-      entrantsState.refetch();
-    }
+    if (left <= 0) weekState.refetch();
+    if (left <= 1) entrantsState.refetch();
     return left;
   }
   const ticketCap =

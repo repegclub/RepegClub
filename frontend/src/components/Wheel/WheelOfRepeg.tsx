@@ -117,16 +117,16 @@ export function WheelOfRepeg() {
     roundState.status === "loaded" && roundState.round.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, roundState.config.max_players, address)
       : null;
-  // Spots left in the round on screen, read fresh; a full round is reloaded
-  // so the page moves on to the next one.
+  // Spots left in the round on screen, read fresh. A full round is reloaded
+  // so the page moves on to the next one; with one spot left the entrants
+  // are reloaded too, so the ticket count (1 for a wallet not yet in) and
+  // the quantity follow the fresh list before the next click.
   async function recheckSpotsLeft() {
     if (roundState.status !== "loaded" || roundId === null) return Infinity;
     const res = await getRoundEntrants(roundId, selectedTier ?? undefined);
     const left = roundState.config.max_players - new Set(res.entrants).size;
-    if (left <= 0) {
-      roundState.refetch();
-      entrantsState.refetch();
-    }
+    if (left <= 0) roundState.refetch();
+    if (left <= 1) entrantsState.refetch();
     return left;
   }
   const ticketCap =
