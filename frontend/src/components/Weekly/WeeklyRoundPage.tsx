@@ -78,10 +78,17 @@ export function WeeklyRoundPage() {
     weekState.status === "loaded" && weekState.week.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, weekState.config.max_players, address)
       : null;
-  async function recheckLastSpot() {
-    if (weekState.status !== "loaded" || weekId === null) return false;
+  // Spots left in the week on screen, read fresh; a full week is reloaded so
+  // the page moves on to the next one.
+  async function recheckSpotsLeft() {
+    if (weekState.status !== "loaded" || weekId === null) return Infinity;
     const res = await getWeekEntrants(weekId, WEEKLY_ROUND_ADDRESS);
-    return isLastSpot(new Set(res.entrants).size, weekState.config.max_players);
+    const left = weekState.config.max_players - new Set(res.entrants).size;
+    if (left <= 0) {
+      weekState.refetch();
+      entrantsState.refetch();
+    }
+    return left;
   }
   const ticketCap =
     weekState.status === "loaded" ? maxTicketsPerWallet(weekState.config.max_players) : undefined;
@@ -153,7 +160,7 @@ export function WeeklyRoundPage() {
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
             lastSpot={availableTickets !== null && weekState.status === "loaded" && isLastSpot(entrants.length, weekState.config.max_players)}
-            recheckLastSpot={recheckLastSpot}
+            recheckSpotsLeft={recheckSpotsLeft}
             onPurchased={handlePurchased}
             buyAction={buyWeeklyTickets}
           />

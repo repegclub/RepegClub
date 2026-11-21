@@ -117,10 +117,17 @@ export function WheelOfRepeg() {
     roundState.status === "loaded" && roundState.round.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, roundState.config.max_players, address)
       : null;
-  async function recheckLastSpot() {
-    if (roundState.status !== "loaded" || roundId === null) return false;
+  // Spots left in the round on screen, read fresh; a full round is reloaded
+  // so the page moves on to the next one.
+  async function recheckSpotsLeft() {
+    if (roundState.status !== "loaded" || roundId === null) return Infinity;
     const res = await getRoundEntrants(roundId, selectedTier ?? undefined);
-    return isLastSpot(new Set(res.entrants).size, roundState.config.max_players);
+    const left = roundState.config.max_players - new Set(res.entrants).size;
+    if (left <= 0) {
+      roundState.refetch();
+      entrantsState.refetch();
+    }
+    return left;
   }
   const ticketCap =
     roundState.status === "loaded" ? maxTicketsPerWallet(roundState.config.max_players) : undefined;
@@ -214,7 +221,7 @@ export function WheelOfRepeg() {
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
             lastSpot={availableTickets !== null && roundState.status === "loaded" && isLastSpot(entrants.length, roundState.config.max_players)}
-            recheckLastSpot={recheckLastSpot}
+            recheckSpotsLeft={recheckSpotsLeft}
             onPurchased={handlePurchased}
           />
           <OtherTicketsList tiers={tiers} selectedAddress={selectedTier ?? ""} onSelect={handleSelectTier} />

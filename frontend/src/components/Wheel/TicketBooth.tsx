@@ -32,11 +32,12 @@ type TicketBoothProps = {
   // One unique-wallet slot left in an open round - see isLastSpot in
   // lib/ticketAvailability.ts.
   lastSpot?: boolean;
-  // Re-reads the round's entrants and says whether one spot is left. The
-  // pages read entrants once per round (an open round is not polled), so
-  // the count on screen can be behind other wallets' purchases; this is
-  // checked right before signing instead.
-  recheckLastSpot?: () => Promise<boolean>;
+  // Re-reads the round's entrants and says how many unique-wallet spots are
+  // left (0 or less: the round on screen has already filled, and the page
+  // reloads it). The pages read entrants once per round (an open round is
+  // not polled), so the count on screen can be behind other wallets'
+  // purchases; this is checked right before signing instead.
+  recheckSpotsLeft?: () => Promise<number>;
   onPurchased?: () => void;
   // Defaults to Wheel Manager's buyTickets(). Weekly Round passes
   // buyWeeklyTickets instead - everything else here (validation, error
@@ -63,7 +64,7 @@ export function TicketBooth({
   ticketCap,
   maxTicketsPerRound,
   lastSpot,
-  recheckLastSpot,
+  recheckSpotsLeft,
   onPurchased,
   buyAction = buyTickets,
 }: TicketBoothProps) {
@@ -74,8 +75,11 @@ export function TicketBooth({
   const [showJurisdictionGate, setShowJurisdictionGate] = useState(false);
   // Set when the fresh read before signing found the last spot and the
   // warning was not on screen: the purchase stops there, the warning shows,
-  // and the next click buys.
-  const [warned, setWarned] = useState(false);
+  // and the next click buys. Kept per contract: switching Wheel tiers does
+  // not remount the booth, and a warning raised for one tier must not let
+  // a click on another skip its own re-read.
+  const [warnedFor, setWarnedFor] = useState<string | null>(null);
+  const warned = warnedFor !== null && warnedFor === (contractAddress ?? "");
 
   // How many tickets THIS purchase will buy - defaults to 1, capped to
   // availableTickets (already personalized per wallet, see the prop's own
@@ -98,7 +102,7 @@ export function TicketBooth({
   }, [maxBuyable]);
   // A new round (or a re-read after a purchase) starts without the warning.
   useEffect(() => {
-    if (availableTickets === null || availableTickets === undefined) setWarned(false);
+    if (availableTickets === null || availableTickets === undefined) setWarnedFor(null);
   }, [availableTickets]);
 
   // Guarded, not trusted blindly - returnObjects falls back to the raw key
@@ -144,13 +148,22 @@ export function TicketBooth({
     setBuying(true);
     setError(null);
     try {
-      if (recheckLastSpot && !lastSpot && !warned && (await recheckLastSpot())) {
-        setWarned(true);
-        return;
+      if (recheckSpotsLeft && !lastSpot && !warned) {
+        const left = await recheckSpotsLeft();
+        // Filled by others since it was read: a ticket bought now would land
+        // in the next round. Stop; the page reloads the round.
+        if (left <= 0) {
+          setError(t("ticketBooth.roundNotOpenHint"));
+          return;
+        }
+        if (left === 1) {
+          setWarnedFor(contractAddress ?? "");
+          return;
+        }
       }
       await buyAction(walletState.wallet, ticketDenom, ticketPriceAmount, quantity, contractAddress);
       setQuantity(1);
-      setWarned(false);
+      setWarnedFor(null);
       onPurchased?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
