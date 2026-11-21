@@ -24,8 +24,9 @@ import { useWeeklyEntrants } from "../../hooks/useWeeklyEntrants";
 import { useLifetimeStats } from "../../hooks/useLifetimeStats";
 import { usePlatformRepegged } from "../../hooks/usePlatformRepegged";
 import { WEEKLY_ROUND_ADDRESS } from "../../lib/deployment";
-import { computeAvailableTickets, maxTicketsPerWallet } from "../../lib/ticketAvailability";
+import { computeAvailableTickets, isLastSpot, maxTicketsPerWallet } from "../../lib/ticketAvailability";
 import { formatUluna } from "../../lib/format";
+import { getWeekEntrants } from "../../lib/queryWeeklyRound";
 import { buyWeeklyTickets } from "../../lib/roundActions";
 import { TicketBooth } from "../Wheel/TicketBooth";
 
@@ -70,10 +71,25 @@ export function WeeklyRoundPage() {
     lifetimeStats.refetch();
   }
 
+  // Counted only once the entrants have loaded: an empty list while they
+  // load (or after a failed read) is not an empty round, and would show the
+  // full count and no last-spot warning. Null keeps Buy disabled meanwhile.
   const availableTickets =
-    weekState.status === "loaded" && weekState.week.status === "open"
+    weekState.status === "loaded" && weekState.week.status === "open" && entrantsState.status === "loaded"
       ? computeAvailableTickets(entrants, weekState.config.max_players, address)
       : null;
+  // Spots left in the week on screen, read fresh; a full week is reloaded so
+  // the page moves on to the next one.
+  async function recheckSpotsLeft() {
+    if (weekState.status !== "loaded" || weekId === null) return Infinity;
+    const res = await getWeekEntrants(weekId, WEEKLY_ROUND_ADDRESS);
+    const left = weekState.config.max_players - new Set(res.entrants).size;
+    if (left <= 0) {
+      weekState.refetch();
+      entrantsState.refetch();
+    }
+    return left;
+  }
   const ticketCap =
     weekState.status === "loaded" ? maxTicketsPerWallet(weekState.config.max_players) : undefined;
   // Same fixed sellable ceiling as Wheel of Repeg's own (see
@@ -143,6 +159,8 @@ export function WeeklyRoundPage() {
             availableTickets={availableTickets}
             ticketCap={ticketCap}
             maxTicketsPerRound={maxTicketsPerRound}
+            lastSpot={availableTickets !== null && weekState.status === "loaded" && isLastSpot(entrants.length, weekState.config.max_players)}
+            recheckSpotsLeft={recheckSpotsLeft}
             onPurchased={handlePurchased}
             buyAction={buyWeeklyTickets}
           />

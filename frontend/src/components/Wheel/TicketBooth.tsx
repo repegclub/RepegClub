@@ -29,6 +29,15 @@ type TicketBoothProps = {
   // "🎟️ ..." format - requested live to add context availableTickets alone
   // doesn't give.
   maxTicketsPerRound?: number;
+  // One unique-wallet slot left in an open round - see isLastSpot in
+  // lib/ticketAvailability.ts.
+  lastSpot?: boolean;
+  // Re-reads the round's entrants and says how many unique-wallet spots are
+  // left (0 or less: the round on screen has already filled, and the page
+  // reloads it). The pages read entrants once per round (an open round is
+  // not polled), so the count on screen can be behind other wallets'
+  // purchases; this is checked right before signing instead.
+  recheckSpotsLeft?: () => Promise<number>;
   onPurchased?: () => void;
   // Defaults to Wheel Manager's buyTickets(). Weekly Round passes
   // buyWeeklyTickets instead - everything else here (validation, error
@@ -54,6 +63,8 @@ export function TicketBooth({
   availableTickets,
   ticketCap,
   maxTicketsPerRound,
+  lastSpot,
+  recheckSpotsLeft,
   onPurchased,
   buyAction = buyTickets,
 }: TicketBoothProps) {
@@ -62,6 +73,13 @@ export function TicketBooth({
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showJurisdictionGate, setShowJurisdictionGate] = useState(false);
+  // Set when the fresh read before signing found the last spot and the
+  // warning was not on screen: the purchase stops there, the warning shows,
+  // and the next click buys. Kept per contract: switching Wheel tiers does
+  // not remount the booth, and a warning raised for one tier must not let
+  // a click on another skip its own re-read.
+  const [warnedFor, setWarnedFor] = useState<string | null>(null);
+  const warned = warnedFor !== null && warnedFor === (contractAddress ?? "");
 
   // How many tickets THIS purchase will buy - defaults to 1, capped to
   // availableTickets (already personalized per wallet, see the prop's own
@@ -82,6 +100,10 @@ export function TicketBooth({
   useEffect(() => {
     setQuantity((q) => Math.min(Math.max(1, q), maxBuyable));
   }, [maxBuyable]);
+  // A new round (or a re-read after a purchase) starts without the warning.
+  useEffect(() => {
+    if (availableTickets === null || availableTickets === undefined) setWarnedFor(null);
+  }, [availableTickets]);
 
   // Guarded, not trusted blindly - returnObjects falls back to the raw key
   // string (not an array) if ticketBooth.hostHype is ever missing from a
@@ -100,10 +122,21 @@ export function TicketBooth({
     return () => clearInterval(id);
   }, [HYPE_LINES.length]);
 
-  const ready = walletState.status === "connected" && ticketDenom && ticketPriceAmount && !noneAvailable;
+  // availableTickets null/undefined = round not open or entrants not loaded
+  // yet: nothing to buy into knowingly, so Buy waits for the count.
+  const ready =
+    walletState.status === "connected" &&
+    ticketDenom &&
+    ticketPriceAmount &&
+    availableTickets !== null &&
+    availableTickets !== undefined &&
+    !noneAvailable;
 
   async function handleBuy() {
     if (walletState.status !== "connected" || !ticketDenom || !ticketPriceAmount) return;
+    // Same condition as the button's `ready`: the jurisdiction modal calls
+    // handleBuy directly, and the count can become unknown while it is open.
+    if (availableTickets === null || availableTickets === undefined || noneAvailable) return;
     // Shown once per browser, not once per purchase - see
     // jurisdictionGateCache.ts. Re-calling handleBuy() itself from the
     // modal's confirm handler (below) re-enters here past this check
@@ -115,8 +148,22 @@ export function TicketBooth({
     setBuying(true);
     setError(null);
     try {
+      if (recheckSpotsLeft && !lastSpot && !warned) {
+        const left = await recheckSpotsLeft();
+        // Filled by others since it was read: a ticket bought now would land
+        // in the next round. Stop; the page reloads the round.
+        if (left <= 0) {
+          setError(t("ticketBooth.roundNotOpenHint"));
+          return;
+        }
+        if (left === 1) {
+          setWarnedFor(contractAddress ?? "");
+          return;
+        }
+      }
       await buyAction(walletState.wallet, ticketDenom, ticketPriceAmount, quantity, contractAddress);
       setQuantity(1);
+      setWarnedFor(null);
       onPurchased?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
@@ -174,6 +221,7 @@ export function TicketBooth({
                 : t("ticketBooth.available", { count: availableTickets })}
             </p>
           )}
+          {(lastSpot || warned) && <p className="booth-cap-note">{t("ticketBooth.lastSpotNote")}</p>}
           {ticketCap !== undefined && (
             <p className="booth-cap-note">{t("ticketBooth.maxPerWallet", { max: ticketCap })}</p>
           )}

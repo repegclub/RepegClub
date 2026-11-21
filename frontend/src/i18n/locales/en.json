@@ -60,6 +60,7 @@
     "available_one": "🎟️ {{count}} ticket available",
     "available_other": "🎟️ {{count}} tickets available",
     "availableLast": "🎟️ Only 1 ticket available — hurry, this could be the best value of the round!",
+    "lastSpotNote": "Last spot in this round: if someone else takes it before your purchase confirms, your ticket may land in the next round instead.",
     "maxPerWallet": "🎟️ Max {{max}} per wallet",
     "maxPerRound": "🎟️ Max {{max}} total",
     "hostHype": [
